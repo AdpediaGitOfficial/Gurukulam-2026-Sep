@@ -15,3 +15,6 @@ coverage/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Written by apps/web verify:render — a verification artefact, not a source file.
+design-system.png
