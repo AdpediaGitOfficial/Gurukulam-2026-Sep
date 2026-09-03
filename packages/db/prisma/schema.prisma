@@ -1,0 +1,1478 @@
+// Gurukulam TMS — database schema
+//
+// Conventions (docs/architecture.md §8):
+//   · Tables are plural snake_case; join tables read <a>_<b>_mapping
+//   · Primary keys are <singular>_id, VARCHAR(36) UUID
+//   · Business IDs (STU-, BTC-, GK-CERT-…) are human-facing, generated on save,
+//     never typed, and immutable once issued
+//   · Money is ALWAYS integer minor units (paise), never a float — every money
+//     column is BigInt and suffixed _minor (invariant 5)
+//   · Every business table carries created_by / created_at and soft-delete
+//     columns deleted_at / deleted_by (ADR 0002)
+//
+// created_by is a polymorphic actor id — an admin_user, a college_user, or a
+// trainer — so it deliberately carries no foreign key. Tables that must resolve
+// the actor's *kind* carry an explicit column for it (see students).
+//
+// Constraints Prisma cannot express live in hand-written migration SQL:
+//   · fee_installments — exactly one of ledger_id / contract_id (invariant 4)
+//   · student_fee_ledger.discount_amount_minor — GENERATED ALWAYS … STORED
+//   · college_contracts.total_value_minor — GENERATED ALWAYS … STORED
+//   · partial unique indexes scoped to live rows (WHERE deleted_at IS NULL)
+//   · override_total_minor requires override_reason
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Enums
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// How a student was acquired. Never inferred from college_id being null — an
+/// admin may attach a retail student to a college later, and acquisition
+/// channel is a reporting dimension in its own right.
+enum EnrolmentChannel {
+  RETAIL
+  COLLEGE
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+/// Portal access lifecycle. GRANTED sends the credential email.
+enum PortalAccessStatus {
+  NONE
+  INVITED
+  GRANTED
+  REVOKED
+}
+
+enum DeliveryMode {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum RequirementStatus {
+  NEW
+  UNDER_REVIEW
+  CONFIRMED
+  REJECTED
+  FULFILLED
+}
+
+/// A trainer assignment is not committed delivery until the trainer confirms
+/// (invariant 9).
+enum TrainerAssignmentStatus {
+  PROPOSED
+  CONFIRMED
+  DECLINED
+}
+
+enum BatchStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum AvailabilityType {
+  LEAVE
+  BLOCKED
+}
+
+/// Derived from its installments, never set directly.
+enum LedgerStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID_FULL
+  OVERDUE
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  PAID
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+/// Transaction ID is required for every mode except CASH.
+enum PaymentMode {
+  UPI
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  OTHER
+}
+
+/// ADR 0003 — a contract stores both bases and records which one applies.
+enum CommercialBasis {
+  PER_STUDENT
+  FLAT_COHORT
+}
+
+/// Which headcount figure the contract bills on. Headcount drifts between
+/// requirement and delivery, so the contract records the choice.
+enum HeadcountBasis {
+  REQUIREMENT
+  ENROLLED
+  MANUAL
+}
+
+enum AssignmentStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+  LATE
+}
+
+enum CertificateStatus {
+  DRAFT
+  ISSUED
+  REVOKED
+}
+
+/// A college uploads names; an admin decides per row. An uploaded name is not
+/// a certificate (invariant 18).
+enum CertificateSubmissionStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RELEASED
+}
+
+enum SubmissionRowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum JobSource {
+  INTERNAL
+  NAUKRI
+  OTHER
+}
+
+enum WorkMode {
+  ONSITE
+  REMOTE
+  HYBRID
+}
+
+enum QuestionType {
+  MCQ_SINGLE
+  MCQ_MULTI
+  TRUE_FALSE
+  SHORT_ANSWER
+  DESCRIPTIVE
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+/// The bell is a work queue, not a news feed. ACTION_REQUIRED persists until
+/// its condition clears and badges; FYI auto-reads and never badges.
+enum NotificationClass {
+  ACTION_REQUIRED
+  ALERT
+  FYI
+}
+
+enum NotificationStatus {
+  OPEN
+  READ
+  RESOLVED
+}
+
+/// The kind of actor a polymorphic created_by / recipient id points at.
+enum ActorType {
+  ADMIN_USER
+  COLLEGE_USER
+  TRAINER
+  STUDENT
+  API_CLIENT
+  SYSTEM
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Localisation — cities scope sub-admin access
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Country {
+  countryId   String    @id @default(uuid()) @map("country_id") @db.VarChar(36)
+  countryCode String    @unique @map("country_code") @db.VarChar(16) // CTRY-IN
+  name        String    @db.VarChar(120)
+  iso2        String    @db.VarChar(2)
+  iso3        String    @db.VarChar(3)
+  dialCode    String    @map("dial_code") @db.VarChar(8)
+  currency    String    @db.VarChar(3)
+  timezone    String    @db.VarChar(64)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by") @db.VarChar(36)
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by") @db.VarChar(36)
+
+  cities   City[]
+  colleges College[]
+  students Student[]
+
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@map("countries")
+}
+
+model City {
+  cityId    String    @id @default(uuid()) @map("city_id") @db.VarChar(36)
+  cityCode  String    @unique @map("city_code") @db.VarChar(16) // CITY-BLR
+  countryId String    @map("country_id") @db.VarChar(36)
+  name      String    @db.VarChar(120)
+  state     String?   @db.VarChar(120)
+  timezone  String?   @db.VarChar(64)
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  createdBy String?   @map("created_by") @db.VarChar(36)
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(36)
+
+  country  Country   @relation(fields: [countryId], references: [countryId])
+  colleges College[]
+  students Student[]
+  batches  Batch[]
+
+  @@index([countryId, deletedAt])
+  @@index([deletedAt])
+  @@map("cities")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Access & identity
+//
+//  A college user is the same scoping mechanism as a regional sub-admin, with
+//  a college scope instead of a city one (architecture.md §7). Modelling it
+//  this way now avoids a parallel permission system when the college portal
+//  is built.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Role {
+  roleId      String    @id @default(uuid()) @map("role_id") @db.VarChar(36)
+  name        String    @unique @db.VarChar(80)
+  description String?   @db.VarChar(400)
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// { "<module>": { "read": bool, "edit": bool, "delete": bool } }
+  permissions Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by") @db.VarChar(36)
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by") @db.VarChar(36)
+
+  adminUsers AdminUser[]
+
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model AdminUser {
+  adminUserId   String        @id @default(uuid()) @map("admin_user_id") @db.VarChar(36)
+  roleId        String        @map("role_id") @db.VarChar(36)
+  name          String        @db.VarChar(160)
+  email         String        @db.VarChar(255)
+  phone         String?       @db.VarChar(24)
+  passwordHash  String        @map("password_hash") @db.VarChar(255)
+  mustReset     Boolean       @default(true) @map("must_reset_password")
+  photoUrl      String?       @map("photo_url") @db.VarChar(500)
+  /// null = global scope. Otherwise the city_ids this operator may see
+  /// (invariant 11 — applied inside the service, never by the caller).
+  cityScope     String[]      @map("city_scope")
+  accountStatus AccountStatus @default(ACTIVE) @map("account_status")
+  lastLoginAt   DateTime?     @map("last_login_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  createdBy     String?       @map("created_by") @db.VarChar(36)
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+  deletedBy     String?       @map("deleted_by") @db.VarChar(36)
+
+  role Role @relation(fields: [roleId], references: [roleId])
+
+  @@index([roleId, deletedAt])
+  @@index([deletedAt])
+  @@map("admin_users")
+}
+
+/// Portal accounts scoped to one college. A separate table rather than
+/// credentials on college_pocs, because not every POC is a portal user and
+/// some are both.
+model CollegeUser {
+  collegeUserId String             @id @default(uuid()) @map("college_user_id") @db.VarChar(36)
+  collegeId     String             @map("college_id") @db.VarChar(36)
+  pocId         String?            @map("poc_id") @db.VarChar(36)
+  name          String             @db.VarChar(160)
+  email         String             @db.VarChar(255)
+  phone         String?            @db.VarChar(24)
+  passwordHash  String?            @map("password_hash") @db.VarChar(255)
+  mustReset     Boolean            @default(true) @map("must_reset_password")
+  permissions   Json               @default("{}")
+  accessStatus  PortalAccessStatus @default(NONE) @map("access_status")
+  accountStatus AccountStatus      @default(ACTIVE) @map("account_status")
+  invitedAt     DateTime?          @map("invited_at")
+  grantedAt     DateTime?          @map("granted_at")
+  revokedAt     DateTime?          @map("revoked_at")
+  lastLoginAt   DateTime?          @map("last_login_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  createdBy     String?            @map("created_by") @db.VarChar(36)
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
+  deletedBy     String?            @map("deleted_by") @db.VarChar(36)
+
+  college                College                 @relation(fields: [collegeId], references: [collegeId])
+  poc                    CollegePoc?             @relation(fields: [pocId], references: [pocId])
+  certificateSubmissions CertificateSubmission[]
+
+  @@index([collegeId, deletedAt])
+  @@index([deletedAt])
+  @@map("college_users")
+}
+
+/// Rotating refresh tokens, stored hashed and revocable per device. Mobile
+/// clients hold bearer tokens; the web console keeps them in httpOnly cookies
+/// set by the Next.js BFF.
+model RefreshToken {
+  refreshTokenId String    @id @default(uuid()) @map("refresh_token_id") @db.VarChar(36)
+  actorType      ActorType @map("actor_type")
+  actorId        String    @map("actor_id") @db.VarChar(36)
+  tokenHash      String    @unique @map("token_hash") @db.VarChar(255)
+  /// Set when this token is rotated, pointing at its replacement — a reused
+  /// old token then identifies a stolen chain.
+  replacedById   String?   @map("replaced_by_id") @db.VarChar(36)
+  deviceLabel    String?   @map("device_label") @db.VarChar(160)
+  userAgent      String?   @map("user_agent") @db.VarChar(400)
+  ipAddress      String?   @map("ip_address") @db.VarChar(64)
+  expiresAt      DateTime  @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([actorType, actorId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Third-party consumers. Scoped API keys with their own permission set —
+/// never a user JWT.
+model ApiClient {
+  apiClientId        String    @id @default(uuid()) @map("api_client_id") @db.VarChar(36)
+  name               String    @db.VarChar(160)
+  keyHash            String    @unique @map("key_hash") @db.VarChar(255)
+  keyPrefix          String    @map("key_prefix") @db.VarChar(16)
+  permissions        Json      @default("{}")
+  cityScope          String[]  @map("city_scope")
+  collegeScope       String?   @map("college_scope") @db.VarChar(36)
+  rateLimitPerMinute Int       @default(60) @map("rate_limit_per_minute")
+  lastUsedAt         DateTime? @map("last_used_at")
+  expiresAt          DateTime? @map("expires_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  createdBy          String?   @map("created_by") @db.VarChar(36)
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+  deletedBy          String?   @map("deleted_by") @db.VarChar(36)
+
+  @@index([deletedAt])
+  @@map("api_clients")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Colleges — the institutional CRM
+//
+//  A college is an actor, not a directory row: it has users, contracts,
+//  requirements and its own students.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model College {
+  collegeId    String    @id @default(uuid()) @map("college_id") @db.VarChar(36)
+  /// CLG-SNC-01 — derived from the college name and city plus a running
+  /// number. Generated on save, never typed, immutable once issued.
+  collegeCode  String    @unique @map("college_code") @db.VarChar(32)
+  name         String    @db.VarChar(200)
+  shortName    String?   @map("short_name") @db.VarChar(80)
+  countryId    String    @map("country_id") @db.VarChar(36)
+  cityId       String    @map("city_id") @db.VarChar(36)
+  addressLine1 String?   @map("address_line1") @db.VarChar(255)
+  addressLine2 String?   @map("address_line2") @db.VarChar(255)
+  postalCode   String?   @map("postal_code") @db.VarChar(20)
+  website      String?   @db.VarChar(255)
+  affiliation  String?   @db.VarChar(200)
+  disciplines  String[]
+  logoUrl      String?   @map("logo_url") @db.VarChar(500)
+  isActive     Boolean   @default(true) @map("is_active")
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  createdBy    String?   @map("created_by") @db.VarChar(36)
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+  deletedBy    String?   @map("deleted_by") @db.VarChar(36)
+
+  country                Country                 @relation(fields: [countryId], references: [countryId])
+  city                   City                    @relation(fields: [cityId], references: [cityId])
+  pocs                   CollegePoc[]
+  users                  CollegeUser[]
+  requirements           CollegeRequirement[]
+  contracts              CollegeContract[]
+  students               Student[]
+  batches                Batch[]
+  certificateSubmissions CertificateSubmission[]
+
+  @@index([cityId, deletedAt])
+  @@index([deletedAt])
+  @@map("colleges")
+}
+
+model CollegePoc {
+  pocId       String    @id @default(uuid()) @map("poc_id") @db.VarChar(36)
+  collegeId   String    @map("college_id") @db.VarChar(36)
+  name        String    @db.VarChar(160)
+  designation String?   @db.VarChar(120)
+  department  String?   @db.VarChar(120)
+  email       String    @db.VarChar(255)
+  phone       String?   @db.VarChar(24)
+  isPrimary   Boolean   @default(false) @map("is_primary")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by") @db.VarChar(36)
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by") @db.VarChar(36)
+
+  college College       @relation(fields: [collegeId], references: [collegeId])
+  users   CollegeUser[]
+
+  @@index([collegeId, deletedAt])
+  @@map("college_pocs")
+}
+
+/// A college raises a requirement; an admin confirms it, which creates the
+/// dedicated batch. The confirmed requirement keeps a link to the batch it
+/// produced (invariant 14).
+model CollegeRequirement {
+  requirementId        String            @id @default(uuid()) @map("requirement_id") @db.VarChar(36)
+  requirementCode      String            @unique @map("requirement_code") @db.VarChar(32) // REQ-2026-014
+  collegeId            String            @map("college_id") @db.VarChar(36)
+  courseId             String            @map("course_id") @db.VarChar(36)
+  expectedHeadcount    Int               @map("expected_headcount")
+  preferredMode        DeliveryMode      @default(OFFLINE) @map("preferred_mode")
+  preferredWindowStart DateTime?         @map("preferred_window_start") @db.Date
+  preferredWindowEnd   DateTime?         @map("preferred_window_end") @db.Date
+  discipline           String?           @db.VarChar(120)
+  source               String?           @db.VarChar(80)
+  notes                String?           @db.Text
+  status               RequirementStatus @default(NEW)
+  rejectionReason      String?           @map("rejection_reason") @db.VarChar(500)
+  confirmedBy          String?           @map("confirmed_by") @db.VarChar(36)
+  confirmedAt          DateTime?         @map("confirmed_at")
+  /// The batch this requirement produced on confirmation (invariant 14).
+  batchId              String?           @unique @map("batch_id") @db.VarChar(36)
+  createdAt            DateTime          @default(now()) @map("created_at")
+  createdBy            String?           @map("created_by") @db.VarChar(36)
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  deletedAt            DateTime?         @map("deleted_at")
+  deletedBy            String?           @map("deleted_by") @db.VarChar(36)
+
+  college   College           @relation(fields: [collegeId], references: [collegeId])
+  course    Course            @relation(fields: [courseId], references: [courseId])
+  batch     Batch?            @relation(fields: [batchId], references: [batchId])
+  contracts CollegeContract[]
+
+  @@index([collegeId, status, deletedAt])
+  @@index([status, deletedAt])
+  @@map("college_requirements")
+}
+
+/// The billing parent for a college engagement. The college is billed, never
+/// its students (invariant 3).
+///
+/// ADR 0003 — both commercial bases are stored. computed_total_minor and
+/// total_value_minor are GENERATED ALWAYS … STORED columns; see the migration
+/// SQL. Never write to them.
+model CollegeContract {
+  contractId    String  @id @default(uuid()) @map("contract_id") @db.VarChar(36)
+  contractCode  String  @unique @map("contract_code") @db.VarChar(32) // CON-2026-007
+  collegeId     String  @map("college_id") @db.VarChar(36)
+  requirementId String? @map("requirement_id") @db.VarChar(36)
+  batchId       String? @map("batch_id") @db.VarChar(36)
+  courseId      String  @map("course_id") @db.VarChar(36)
+
+  commercialBasis      CommercialBasis @map("commercial_basis")
+  /// Null for a FLAT_COHORT contract.
+  perStudentRateMinor  BigInt?         @map("per_student_rate_minor")
+  /// Null for a PER_STUDENT contract.
+  flatCohortPriceMinor BigInt?         @map("flat_cohort_price_minor")
+  billableHeadcount    Int             @default(0) @map("billable_headcount")
+  headcountBasis       HeadcountBasis  @default(REQUIREMENT) @map("headcount_basis")
+  /// GENERATED — rate × headcount, or the flat price. Read-only.
+  computedTotalMinor   BigInt?         @map("computed_total_minor")
+  /// Set only when the negotiated total differs from the computed one.
+  /// A CHECK constraint requires override_reason alongside it.
+  overrideTotalMinor   BigInt?         @map("override_total_minor")
+  overrideReason       String?         @map("override_reason") @db.VarChar(500)
+  /// GENERATED — COALESCE(override, computed). The only total anything
+  /// downstream reads. Read-only.
+  totalValueMinor      BigInt?         @map("total_value_minor")
+
+  advanceCollectedMinor BigInt         @default(0) @map("advance_collected_amount_minor")
+  totalPaidMinor        BigInt         @default(0) @map("total_paid_minor")
+  balancePendingMinor   BigInt         @default(0) @map("balance_pending_minor")
+  status                ContractStatus @default(DRAFT)
+  signedAt              DateTime?      @map("signed_at")
+  notes                 String?        @db.Text
+  createdAt             DateTime       @default(now()) @map("created_at")
+  createdBy             String?        @map("created_by") @db.VarChar(36)
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  deletedAt             DateTime?      @map("deleted_at")
+  deletedBy             String?        @map("deleted_by") @db.VarChar(36)
+
+  college      College             @relation(fields: [collegeId], references: [collegeId])
+  requirement  CollegeRequirement? @relation(fields: [requirementId], references: [requirementId])
+  batch        Batch?              @relation(fields: [batchId], references: [batchId])
+  course       Course              @relation(fields: [courseId], references: [courseId])
+  installments FeeInstallment[]
+
+  @@index([collegeId, status, deletedAt])
+  @@index([status, deletedAt])
+  @@map("college_contracts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Catalog — Course › Topic, and who may teach it
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Course {
+  courseId                 String    @id @default(uuid()) @map("course_id") @db.VarChar(36)
+  courseCode               String    @unique @map("course_code") @db.VarChar(32) // CRS-DA-2026
+  name                     String    @db.VarChar(200)
+  shortName                String?   @map("short_name") @db.VarChar(80)
+  description              String?   @db.Text
+  category                 String?   @db.VarChar(120)
+  durationHours            Int?      @map("duration_hours")
+  durationWeeks            Int?      @map("duration_weeks")
+  /// Auto-fills the fee ledger and every contract.
+  standardMarketValueMinor BigInt    @map("standard_market_value_minor")
+  syllabusUrl              String?   @map("syllabus_url") @db.VarChar(500)
+  thumbnailUrl             String?   @map("thumbnail_url") @db.VarChar(500)
+  /// Attendance floor for certificate eligibility. Sits behind the
+  /// isEligibleForCertificate predicate so the rule can change without
+  /// touching the certificate generator.
+  attendanceFloorPct       Int?      @map("attendance_floor_pct")
+  isActive                 Boolean   @default(true) @map("is_active")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  createdBy                String?   @map("created_by") @db.VarChar(36)
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  deletedAt                DateTime? @map("deleted_at")
+  deletedBy                String?   @map("deleted_by") @db.VarChar(36)
+
+  topics         CourseTopic[]
+  batches        Batch[]
+  trainerCourses TrainerCourse[]
+  requirements   CollegeRequirement[]
+  contracts      CollegeContract[]
+  questions      QuestionBank[]
+  certificates   Certificate[]
+  ledgers        StudentFeeLedger[]
+  audienceRules  JobAudienceRule[]
+
+  @@index([deletedAt])
+  @@index([isActive, deletedAt])
+  @@map("courses")
+}
+
+/// A course holds topics; a topic carries one or more sessions.
+model CourseTopic {
+  topicId       String    @id @default(uuid()) @map("topic_id") @db.VarChar(36)
+  courseId      String    @map("course_id") @db.VarChar(36)
+  title         String    @db.VarChar(200)
+  description   String?   @db.Text
+  sequence      Int
+  durationHours Int?      @map("duration_hours")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  createdBy     String?   @map("created_by") @db.VarChar(36)
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedBy     String?   @map("deleted_by") @db.VarChar(36)
+
+  course    Course         @relation(fields: [courseId], references: [courseId])
+  sessions  BatchSession[]
+  questions QuestionBank[]
+
+  @@index([courseId, sequence, deletedAt])
+  @@map("course_topics")
+}
+
+/// Which trainers are *approved* for a course. Free-text skill tags cannot
+/// answer "who may run this batch?" without a string match — approval is a
+/// relationship (invariant 15).
+model TrainerCourse {
+  trainerCourseId String    @id @default(uuid()) @map("trainer_course_id") @db.VarChar(36)
+  trainerId       String    @map("trainer_id") @db.VarChar(36)
+  courseId        String    @map("course_id") @db.VarChar(36)
+  approvedBy      String?   @map("approved_by") @db.VarChar(36)
+  approvedAt      DateTime? @map("approved_at")
+  notes           String?   @db.VarChar(400)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdBy       String?   @map("created_by") @db.VarChar(36)
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  deletedBy       String?   @map("deleted_by") @db.VarChar(36)
+
+  trainer Trainer @relation(fields: [trainerId], references: [trainerId])
+  course  Course  @relation(fields: [courseId], references: [courseId])
+
+  @@index([courseId, deletedAt])
+  @@index([trainerId, deletedAt])
+  @@map("trainer_courses")
+}
+
+model QuestionBank {
+  questionId     String          @id @default(uuid()) @map("question_id") @db.VarChar(36)
+  courseId       String          @map("course_id") @db.VarChar(36)
+  topicId        String?         @map("topic_id") @db.VarChar(36)
+  questionType   QuestionType    @map("question_type")
+  difficulty     DifficultyLevel @default(MEDIUM)
+  questionText   String          @map("question_text") @db.Text
+  /// [{ "key": "A", "text": "…" }, …]
+  options        Json?
+  /// ["A"] for single-answer, ["A","C"] for multi.
+  correctAnswers Json?           @map("correct_answers")
+  explanation    String?         @db.Text
+  marks          Int             @default(1)
+  tags           String[]
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  createdBy      String?         @map("created_by") @db.VarChar(36)
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
+  deletedBy      String?         @map("deleted_by") @db.VarChar(36)
+
+  course Course       @relation(fields: [courseId], references: [courseId])
+  topic  CourseTopic? @relation(fields: [topicId], references: [topicId])
+
+  @@index([courseId, deletedAt])
+  @@index([topicId, deletedAt])
+  @@map("question_bank")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Trainers
+//
+//  Free/busy is COMPUTED from committed sessions plus declared leave, never
+//  stored (invariant 8) — storing it drifts the first time a session moves.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Trainer {
+  trainerId           String        @id @default(uuid()) @map("trainer_id") @db.VarChar(36)
+  trainerCode         String        @unique @map("trainer_code") @db.VarChar(32) // TRN-0042
+  name                String        @db.VarChar(160)
+  email               String        @db.VarChar(255)
+  phone               String?       @db.VarChar(24)
+  passwordHash        String?       @map("password_hash") @db.VarChar(255)
+  mustReset           Boolean       @default(true) @map("must_reset_password")
+  credentialsIssuedAt DateTime?     @map("credentials_issued_at")
+  qualification       String?       @db.VarChar(255)
+  experienceYears     Int?          @map("experience_years")
+  skillTags           String[]      @map("skill_tags")
+  payModel            String?       @map("pay_model") @db.VarChar(40)
+  payRateMinor        BigInt?       @map("pay_rate_minor")
+  maxWeeklyHours      Int?          @map("max_weekly_hours")
+  cityId              String?       @map("city_id") @db.VarChar(36)
+  photoUrl            String?       @map("photo_url") @db.VarChar(500)
+  accountStatus       AccountStatus @default(ACTIVE) @map("account_status")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  createdBy           String?       @map("created_by") @db.VarChar(36)
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+  deletedAt           DateTime?     @map("deleted_at")
+  deletedBy           String?       @map("deleted_by") @db.VarChar(36)
+
+  courses      TrainerCourse[]
+  assignments  BatchTrainerAssignment[]
+  availability TrainerAvailability[]
+  batches      Batch[]
+  sessions     BatchSession[]
+
+  @@index([deletedAt])
+  @@index([cityId, deletedAt])
+  @@map("trainers")
+}
+
+/// Declared leave and blocked time. One half of the free/busy computation;
+/// committed batch_sessions are the other.
+model TrainerAvailability {
+  availabilityId String           @id @default(uuid()) @map("availability_id") @db.VarChar(36)
+  trainerId      String           @map("trainer_id") @db.VarChar(36)
+  type           AvailabilityType @default(LEAVE)
+  startsAt       DateTime         @map("starts_at")
+  endsAt         DateTime         @map("ends_at")
+  isFullDay      Boolean          @default(true) @map("is_full_day")
+  reason         String?          @db.VarChar(400)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  createdBy      String?          @map("created_by") @db.VarChar(36)
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  deletedBy      String?          @map("deleted_by") @db.VarChar(36)
+
+  trainer Trainer @relation(fields: [trainerId], references: [trainerId])
+
+  @@index([trainerId, startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("trainer_availability")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Delivery — Batch › Session › (Attendance · Assignment · Recording)
+//
+//  The session is the unit that actually happens on a given day, so
+//  attendance, assignments and recordings hang off it rather than the batch.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Batch {
+  batchId          String       @id @default(uuid()) @map("batch_id") @db.VarChar(36)
+  /// BTC-DA-SEP-A — course, start month, cohort letter.
+  batchCode        String       @unique @map("batch_code") @db.VarChar(32)
+  name             String       @db.VarChar(200)
+  courseId         String       @map("course_id") @db.VarChar(36)
+  /// Set = dedicated to that college. Null = an open retail batch.
+  /// The two rosters never mix (invariant 2), enforced at the allocation
+  /// service because a CHECK cannot reach across to students.
+  collegeId        String?      @map("college_id") @db.VarChar(36)
+  cityId           String?      @map("city_id") @db.VarChar(36)
+  /// The CONFIRMED trainer. The proposal handshake lives in
+  /// batch_trainer_assignments; this is only ever the confirmed pointer.
+  primaryTrainerId String?      @map("primary_trainer_id") @db.VarChar(36)
+  mode             DeliveryMode @default(OFFLINE)
+  startDate        DateTime     @map("start_date") @db.Date
+  endDate          DateTime?    @map("end_date") @db.Date
+  maxCapacity      Int?         @map("max_capacity")
+  venue            String?      @db.VarChar(255)
+  meetingLink      String?      @map("meeting_link") @db.VarChar(500)
+  status           BatchStatus  @default(SCHEDULED)
+  notes            String?      @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  createdBy        String?      @map("created_by") @db.VarChar(36)
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+  deletedBy        String?      @map("deleted_by") @db.VarChar(36)
+
+  course             Course                   @relation(fields: [courseId], references: [courseId])
+  college            College?                 @relation(fields: [collegeId], references: [collegeId])
+  city               City?                    @relation(fields: [cityId], references: [cityId])
+  primaryTrainer     Trainer?                 @relation(fields: [primaryTrainerId], references: [trainerId])
+  sessions           BatchSession[]
+  trainerAssignments BatchTrainerAssignment[]
+  studentMappings    StudentBatchMapping[]
+  assignments        Assignment[]
+  contracts          CollegeContract[]
+  requirement        CollegeRequirement?
+  certificates       Certificate[]
+  ledgers            StudentFeeLedger[]
+  submissions        CertificateSubmission[]
+  audienceRules      JobAudienceRule[]
+
+  @@index([courseId, deletedAt])
+  @@index([collegeId, deletedAt])
+  @@index([status, deletedAt])
+  @@index([cityId, deletedAt])
+  @@map("batches")
+}
+
+/// Scheduled under a batch, each against a topic. A topic may need one
+/// session or several.
+model BatchSession {
+  sessionId        String        @id @default(uuid()) @map("session_id") @db.VarChar(36)
+  sessionCode      String        @unique @map("session_code") @db.VarChar(32)
+  batchId          String        @map("batch_id") @db.VarChar(36)
+  topicId          String?       @map("topic_id") @db.VarChar(36)
+  trainerId        String?       @map("trainer_id") @db.VarChar(36)
+  title            String        @db.VarChar(200)
+  sequence         Int
+  scheduledDate    DateTime      @map("scheduled_date") @db.Date
+  startTime        DateTime      @map("start_time") @db.Time(0)
+  endTime          DateTime      @map("end_time") @db.Time(0)
+  mode             DeliveryMode  @default(OFFLINE)
+  venue            String?       @db.VarChar(255)
+  meetingLink      String?       @map("meeting_link") @db.VarChar(500)
+  status           SessionStatus @default(SCHEDULED)
+  /// Completion is a deliberate act, not a date passing. It gates the
+  /// assignment tab and prompts for the recording (invariant 17).
+  completedAt      DateTime?     @map("completed_at")
+  completedBy      String?       @map("completed_by") @db.VarChar(36)
+  /// Reschedules update in place so attendance and recordings stay attached;
+  /// identity is preserved and the fan-out fires from the same write.
+  rescheduledFrom  DateTime?     @map("rescheduled_from")
+  rescheduleReason String?       @map("reschedule_reason") @db.VarChar(500)
+  cancelReason     String?       @map("cancel_reason") @db.VarChar(500)
+  createdAt        DateTime      @default(now()) @map("created_at")
+  createdBy        String?       @map("created_by") @db.VarChar(36)
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  deletedAt        DateTime?     @map("deleted_at")
+  deletedBy        String?       @map("deleted_by") @db.VarChar(36)
+
+  batch       Batch               @relation(fields: [batchId], references: [batchId])
+  topic       CourseTopic?        @relation(fields: [topicId], references: [topicId])
+  trainer     Trainer?            @relation(fields: [trainerId], references: [trainerId])
+  attendance  StudentAttendance[]
+  recording   SessionRecording?
+  assignments Assignment[]
+
+  @@index([batchId, sequence, deletedAt])
+  @@index([scheduledDate, deletedAt])
+  @@index([trainerId, scheduledDate])
+  @@index([status, deletedAt])
+  @@map("batch_sessions")
+}
+
+/// The two-step handshake. An admin proposes from the availability calendar;
+/// the trainer confirms. Only a CONFIRMED assignment is committed delivery
+/// (invariant 9). A decline returns the batch to unassigned and keeps its
+/// reason; nothing is auto-reassigned.
+model BatchTrainerAssignment {
+  assignmentId  String                  @id @default(uuid()) @map("batch_trainer_assignment_id") @db.VarChar(36)
+  batchId       String                  @map("batch_id") @db.VarChar(36)
+  trainerId     String                  @map("trainer_id") @db.VarChar(36)
+  status        TrainerAssignmentStatus @default(PROPOSED)
+  proposedBy    String?                 @map("proposed_by") @db.VarChar(36)
+  proposedAt    DateTime                @default(now()) @map("proposed_at")
+  respondedAt   DateTime?               @map("responded_at")
+  declineReason String?                 @map("decline_reason") @db.VarChar(500)
+  createdAt     DateTime                @default(now()) @map("created_at")
+  createdBy     String?                 @map("created_by") @db.VarChar(36)
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+  deletedAt     DateTime?               @map("deleted_at")
+  deletedBy     String?                 @map("deleted_by") @db.VarChar(36)
+
+  batch   Batch   @relation(fields: [batchId], references: [batchId])
+  trainer Trainer @relation(fields: [trainerId], references: [trainerId])
+
+  @@index([batchId, status, deletedAt])
+  @@index([trainerId, status, deletedAt])
+  @@map("batch_trainer_assignments")
+}
+
+/// UI deferred, schema present — so sessions do not need reshaping when
+/// attendance lands. Admin and trainer will write the same row.
+model StudentAttendance {
+  attendanceId   String           @id @default(uuid()) @map("attendance_id") @db.VarChar(36)
+  sessionId      String           @map("session_id") @db.VarChar(36)
+  studentId      String           @map("student_id") @db.VarChar(36)
+  status         AttendanceStatus @default(ABSENT)
+  minutesPresent Int?             @map("minutes_present")
+  remarks        String?          @db.VarChar(400)
+  markedBy       String?          @map("marked_by") @db.VarChar(36)
+  markedAt       DateTime?        @map("marked_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  createdBy      String?          @map("created_by") @db.VarChar(36)
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  deletedBy      String?          @map("deleted_by") @db.VarChar(36)
+
+  session BatchSession @relation(fields: [sessionId], references: [sessionId])
+  student Student      @relation(fields: [studentId], references: [studentId])
+
+  @@index([sessionId, deletedAt])
+  @@index([studentId, deletedAt])
+  @@map("student_attendance")
+}
+
+model SessionRecording {
+  recordingId     String    @id @default(uuid()) @map("recording_id") @db.VarChar(36)
+  sessionId       String    @unique @map("session_id") @db.VarChar(36)
+  title           String?   @db.VarChar(200)
+  provider        String    @default("YOUTUBE") @db.VarChar(40)
+  url             String    @db.VarChar(500)
+  durationSeconds Int?      @map("duration_seconds")
+  isPublished     Boolean   @default(true) @map("is_published")
+  publishedAt     DateTime? @map("published_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdBy       String?   @map("created_by") @db.VarChar(36)
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  deletedBy       String?   @map("deleted_by") @db.VarChar(36)
+
+  session BatchSession @relation(fields: [sessionId], references: [sessionId])
+
+  @@index([deletedAt])
+  @@map("session_recordings")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Enrolment
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Retail and college students in one register.
+///
+/// college_id is NULLABLE and always will be. The source spec had it
+/// NOT NULL REFERENCES colleges, which makes the entire retail segment
+/// unrepresentable — the single most important correction in this schema
+/// (invariant 1).
+model Student {
+  studentId   String    @id @default(uuid()) @map("student_id") @db.VarChar(36)
+  studentCode String    @unique @map("student_code") @db.VarChar(32) // STU-2026-0891
+  firstName   String    @map("first_name") @db.VarChar(120)
+  lastName    String?   @map("last_name") @db.VarChar(120)
+  email       String    @db.VarChar(255)
+  phone       String?   @db.VarChar(24)
+  altPhone    String?   @map("alt_phone") @db.VarChar(24)
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  gender      String?   @db.VarChar(24)
+
+  /// A retail walk-in has no college and never will.
+  collegeId          String?          @map("college_id") @db.VarChar(36)
+  /// Never inferred from college_id. An admin may attach a retail student to
+  /// a college later, and the acquisition channel is a reporting dimension in
+  /// its own right.
+  enrolmentChannel   EnrolmentChannel @default(RETAIL) @map("enrolment_channel")
+  /// Set when a college user onboarded this student — what makes
+  /// institutional intake auditable.
+  createdByCollegeId String?          @map("created_by_college_id") @db.VarChar(36)
+  createdByType      ActorType        @default(ADMIN_USER) @map("created_by_type")
+
+  /// Collected directly for retail; derived from the college for college
+  /// students. Needed either way — the onboarding form collects both.
+  countryId    String? @map("country_id") @db.VarChar(36)
+  cityId       String? @map("city_id") @db.VarChar(36)
+  addressLine1 String? @map("address_line1") @db.VarChar(255)
+  addressLine2 String? @map("address_line2") @db.VarChar(255)
+  postalCode   String? @map("postal_code") @db.VarChar(20)
+
+  discipline    String? @db.VarChar(120)
+  passoutYear   Int?    @map("passout_year")
+  qualification String? @db.VarChar(200)
+  photoUrl      String? @map("photo_url") @db.VarChar(500)
+
+  /// The spec gave students an account_status and no way to authenticate.
+  passwordHash        String?       @map("password_hash") @db.VarChar(255)
+  mustReset           Boolean       @default(true) @map("must_reset_password")
+  credentialsIssuedAt DateTime?     @map("credentials_issued_at")
+  lastLoginAt         DateTime?     @map("last_login_at")
+  accountStatus       AccountStatus @default(ACTIVE) @map("account_status")
+  suspendedAt         DateTime?     @map("suspended_at")
+  suspendedReason     String?       @map("suspended_reason") @db.VarChar(500)
+
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  createdBy String?   @map("created_by") @db.VarChar(36)
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(36)
+
+  college        College?                   @relation(fields: [collegeId], references: [collegeId])
+  country        Country?                   @relation(fields: [countryId], references: [countryId])
+  city           City?                      @relation(fields: [cityId], references: [cityId])
+  batchMappings  StudentBatchMapping[]
+  ledgers        StudentFeeLedger[]
+  attendance     StudentAttendance[]
+  submissions    AssignmentSubmission[]
+  certificates   Certificate[]
+  submissionRows CertificateSubmissionRow[]
+
+  @@index([collegeId, deletedAt])
+  @@index([enrolmentChannel, deletedAt])
+  @@index([cityId, deletedAt])
+  @@index([deletedAt])
+  @@map("students")
+}
+
+/// A student may only join a batch whose college_id matches their own — both
+/// null, or both equal (invariant 2). Enforced at the allocation service,
+/// which is the only writer.
+///
+/// Soft-deleted rather than removed: that a student was once on this roster
+/// is what makes an issued certificate explicable a year later.
+model StudentBatchMapping {
+  mappingId   String    @id @default(uuid()) @map("student_batch_mapping_id") @db.VarChar(36)
+  studentId   String    @map("student_id") @db.VarChar(36)
+  batchId     String    @map("batch_id") @db.VarChar(36)
+  enrolledAt  DateTime  @default(now()) @map("enrolled_at")
+  enrolledBy  String?   @map("enrolled_by") @db.VarChar(36)
+  completedAt DateTime? @map("completed_at")
+  isActive    Boolean   @default(true) @map("is_active")
+  exitReason  String?   @map("exit_reason") @db.VarChar(400)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by") @db.VarChar(36)
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by") @db.VarChar(36)
+
+  student Student @relation(fields: [studentId], references: [studentId])
+  batch   Batch   @relation(fields: [batchId], references: [batchId])
+
+  @@index([studentId, deletedAt])
+  @@index([batchId, deletedAt])
+  @@map("student_batch_mapping")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Money — two billing parents, one installment engine
+//
+//  Billing follows segment: retail bills the student, college bills the
+//  institution. A college student has NO individual ledger (invariant 3) —
+//  empty ones would leave a permanently wrong balance figure.
+//
+//  Every amount is integer minor units (paise). Never a float, at any layer,
+//  including display formatting (invariant 5).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Retail only. A college student never has one.
+model StudentFeeLedger {
+  ledgerId  String  @id @default(uuid()) @map("ledger_id") @db.VarChar(36)
+  studentId String  @map("student_id") @db.VarChar(36)
+  courseId  String  @map("course_id") @db.VarChar(36)
+  batchId   String? @map("batch_id") @db.VarChar(36)
+
+  /// The course's standard_market_value at the time of enrolment.
+  courseValueMinor    BigInt  @map("course_value_minor")
+  /// The pitched price actually agreed.
+  enrolmentValueMinor BigInt  @map("enrolment_value_minor")
+  /// GENERATED ALWAYS AS (course_value_minor - enrolment_value_minor) STORED.
+  /// Prisma cannot manage generated columns — this is created in hand-written
+  /// migration SQL and is read-only. Never write to it.
+  discountAmountMinor BigInt? @map("discount_amount_minor")
+
+  advancePaidMinor    BigInt       @default(0) @map("advance_paid_minor")
+  totalPaidMinor      BigInt       @default(0) @map("total_paid_minor")
+  balancePendingMinor BigInt       @default(0) @map("balance_pending_minor")
+  /// Derived from its installments, never set directly.
+  status              LedgerStatus @default(UNPAID)
+  notes               String?      @db.Text
+  createdAt           DateTime     @default(now()) @map("created_at")
+  createdBy           String?      @map("created_by") @db.VarChar(36)
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  deletedAt           DateTime?    @map("deleted_at")
+  deletedBy           String?      @map("deleted_by") @db.VarChar(36)
+
+  student      Student          @relation(fields: [studentId], references: [studentId])
+  course       Course           @relation(fields: [courseId], references: [courseId])
+  batch        Batch?           @relation(fields: [batchId], references: [batchId])
+  installments FeeInstallment[]
+
+  @@index([studentId, deletedAt])
+  @@index([status, deletedAt])
+  @@map("student_fee_ledger")
+}
+
+/// One schedule engine, one drawer, one overdue state machine — two parents.
+/// ledger_id and contract_id are both nullable with a CHECK that EXACTLY ONE
+/// is set (invariant 4), created in hand-written migration SQL.
+///
+/// A reminder's recipient resolves from whichever parent is set, never from a
+/// stored column (invariant 6) — which is what stops a college's students
+/// receiving an invoice reminder.
+model FeeInstallment {
+  installmentId String  @id @default(uuid()) @map("installment_id") @db.VarChar(36)
+  /// Exactly one of these two is set. Never both, never neither.
+  ledgerId      String? @map("ledger_id") @db.VarChar(36)
+  contractId    String? @map("contract_id") @db.VarChar(36)
+
+  installmentNumber   Int               @map("installment_number")
+  amountMinor         BigInt            @map("amount_minor")
+  paidAmountMinor     BigInt            @default(0) @map("paid_amount_minor")
+  dueDate             DateTime          @map("due_date") @db.Date
+  status              InstallmentStatus @default(PENDING)
+  paidAt              DateTime?         @map("paid_at")
+  /// Set by the nightly cron when the 3-day reminder goes out.
+  reminderSentFlag    Boolean           @default(false) @map("reminder_sent_flag")
+  reminderSentAt      DateTime?         @map("reminder_sent_at")
+  overdueNoticeSentAt DateTime?         @map("overdue_notice_sent_at")
+  notes               String?           @db.VarChar(400)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  createdBy           String?           @map("created_by") @db.VarChar(36)
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  deletedAt           DateTime?         @map("deleted_at")
+  deletedBy           String?           @map("deleted_by") @db.VarChar(36)
+
+  ledger       StudentFeeLedger?    @relation(fields: [ledgerId], references: [ledgerId])
+  contract     CollegeContract?     @relation(fields: [contractId], references: [contractId])
+  transactions PaymentTransaction[]
+
+  @@index([ledgerId, deletedAt])
+  @@index([contractId, deletedAt])
+  @@index([dueDate, status])
+  @@index([status, deletedAt])
+  @@map("fee_installments")
+}
+
+/// A receipt is a financial record. There is no delete — the correction is a
+/// reversing entry, which is why is_reversal and reverses_transaction_id
+/// exist. Overpayment is refused at write time, not corrected afterwards
+/// (invariant 13).
+model PaymentTransaction {
+  transactionId         String      @id @default(uuid()) @map("transaction_id") @db.VarChar(36)
+  transactionCode       String      @unique @map("transaction_code") @db.VarChar(32) // TXN-00981
+  installmentId         String      @map("installment_id") @db.VarChar(36)
+  amountMinor           BigInt      @map("amount_minor")
+  paymentMode           PaymentMode @map("payment_mode")
+  /// Required for every mode except CASH — enforced by CHECK in migration SQL.
+  externalTransactionId String?     @map("external_transaction_id") @db.VarChar(120)
+  paidAt                DateTime    @map("paid_at")
+  bankOrHandle          String?     @map("bank_or_handle") @db.VarChar(160)
+  receiptNumber         String?     @map("receipt_number") @db.VarChar(64)
+  receiptUrl            String?     @map("receipt_url") @db.VarChar(500)
+  isReversal            Boolean     @default(false) @map("is_reversal")
+  reversesTransactionId String?     @map("reverses_transaction_id") @db.VarChar(36)
+  reversalReason        String?     @map("reversal_reason") @db.VarChar(500)
+  notes                 String?     @db.VarChar(400)
+  recordedBy            String?     @map("recorded_by") @db.VarChar(36)
+  createdAt             DateTime    @default(now()) @map("created_at")
+  createdBy             String?     @map("created_by") @db.VarChar(36)
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+  deletedAt             DateTime?   @map("deleted_at")
+  deletedBy             String?     @map("deleted_by") @db.VarChar(36)
+
+  installment FeeInstallment @relation(fields: [installmentId], references: [installmentId])
+
+  @@index([installmentId, deletedAt])
+  @@index([paidAt])
+  @@map("payment_transactions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Learning — assignments hang off a session, not a batch
+//
+//  An assignment belongs to a batch; its session link is optional
+//  (invariant 16). A session can carry several, or none — most do not.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Assignment {
+  assignmentId   String           @id @default(uuid()) @map("assignment_id") @db.VarChar(36)
+  assignmentCode String           @unique @map("assignment_code") @db.VarChar(32) // ASG-0142
+  batchId        String           @map("batch_id") @db.VarChar(36)
+  /// Optional by design. A session must be marked complete before assignments
+  /// can be set against it (invariant 17).
+  sessionId      String?          @map("session_id") @db.VarChar(36)
+  title          String           @db.VarChar(200)
+  description    String?          @db.Text
+  instructions   String?          @db.Text
+  attachmentUrl  String?          @map("attachment_url") @db.VarChar(500)
+  maxMarks       Int?             @map("max_marks")
+  dueAt          DateTime?        @map("due_at")
+  status         AssignmentStatus @default(DRAFT)
+  publishedAt    DateTime?        @map("published_at")
+  closedAt       DateTime?        @map("closed_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  createdBy      String?          @map("created_by") @db.VarChar(36)
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  deletedBy      String?          @map("deleted_by") @db.VarChar(36)
+
+  batch       Batch                  @relation(fields: [batchId], references: [batchId])
+  session     BatchSession?          @relation(fields: [sessionId], references: [sessionId])
+  submissions AssignmentSubmission[]
+
+  @@index([batchId, deletedAt])
+  @@index([sessionId, deletedAt])
+  @@index([status, deletedAt])
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  submissionId String           @id @default(uuid()) @map("assignment_submission_id") @db.VarChar(36)
+  assignmentId String           @map("assignment_id") @db.VarChar(36)
+  studentId    String           @map("student_id") @db.VarChar(36)
+  status       SubmissionStatus @default(PENDING)
+  submittedAt  DateTime?        @map("submitted_at")
+  fileUrl      String?          @map("file_url") @db.VarChar(500)
+  contentText  String?          @map("content_text") @db.Text
+  marksAwarded Int?             @map("marks_awarded")
+  feedback     String?          @db.Text
+  gradedBy     String?          @map("graded_by") @db.VarChar(36)
+  gradedAt     DateTime?        @map("graded_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  createdBy    String?          @map("created_by") @db.VarChar(36)
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  deletedAt    DateTime?        @map("deleted_at")
+  deletedBy    String?          @map("deleted_by") @db.VarChar(36)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [assignmentId])
+  student    Student    @relation(fields: [studentId], references: [studentId])
+
+  @@index([assignmentId, deletedAt])
+  @@index([studentId, deletedAt])
+  @@map("assignment_submissions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Outcomes — certificates
+//
+//  Eligibility is identical across segments; ACCESS is not. Retail students
+//  download their own; colleges download their students' (invariant 7).
+//
+//  Certificates reach a college only through an approved submission. An
+//  uploaded name is not a certificate (invariant 18).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A college POC uploads a list of names against a completed training; an
+/// admin approves or rejects each row; only approved rows become certificates.
+model CertificateSubmission {
+  submissionId             String                      @id @default(uuid()) @map("certificate_submission_id") @db.VarChar(36)
+  collegeId                String                      @map("college_id") @db.VarChar(36)
+  batchId                  String                      @map("batch_id") @db.VarChar(36)
+  submittedByCollegeUserId String?                     @map("submitted_by_college_user_id") @db.VarChar(36)
+  status                   CertificateSubmissionStatus @default(SUBMITTED)
+  submittedAt              DateTime                    @default(now()) @map("submitted_at")
+  reviewedBy               String?                     @map("reviewed_by") @db.VarChar(36)
+  reviewedAt               DateTime?                   @map("reviewed_at")
+  releasedAt               DateTime?                   @map("released_at")
+  notes                    String?                     @db.Text
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  createdBy                String?                     @map("created_by") @db.VarChar(36)
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+  deletedAt                DateTime?                   @map("deleted_at")
+  deletedBy                String?                     @map("deleted_by") @db.VarChar(36)
+
+  college         College                    @relation(fields: [collegeId], references: [collegeId])
+  batch           Batch                      @relation(fields: [batchId], references: [batchId])
+  submittedByUser CollegeUser?               @relation(fields: [submittedByCollegeUserId], references: [collegeUserId])
+  rows            CertificateSubmissionRow[]
+
+  @@index([collegeId, status, deletedAt])
+  @@index([status, deletedAt])
+  @@map("certificate_submissions")
+}
+
+/// One uploaded name. The review table matches it against a student and shows
+/// attendance and assignment completion, so eligibility is visible before an
+/// admin decides.
+model CertificateSubmissionRow {
+  rowId           String              @id @default(uuid()) @map("certificate_submission_row_id") @db.VarChar(36)
+  submissionId    String              @map("certificate_submission_id") @db.VarChar(36)
+  /// The uploaded name, kept verbatim even after it is matched — it is what
+  /// the college actually sent.
+  uploadedName    String              @map("uploaded_name") @db.VarChar(200)
+  uploadedEmail   String?             @map("uploaded_email") @db.VarChar(255)
+  uploadedRef     String?             @map("uploaded_ref") @db.VarChar(80)
+  /// Null until an admin matches the row to a student record.
+  studentId       String?             @map("student_id") @db.VarChar(36)
+  status          SubmissionRowStatus @default(PENDING)
+  rejectionReason String?             @map("rejection_reason") @db.VarChar(500)
+  decidedBy       String?             @map("decided_by") @db.VarChar(36)
+  decidedAt       DateTime?           @map("decided_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  createdBy       String?             @map("created_by") @db.VarChar(36)
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  deletedAt       DateTime?           @map("deleted_at")
+  deletedBy       String?             @map("deleted_by") @db.VarChar(36)
+
+  submission  CertificateSubmission @relation(fields: [submissionId], references: [submissionId])
+  student     Student?              @relation(fields: [studentId], references: [studentId])
+  certificate Certificate?
+
+  @@index([submissionId, status])
+  @@index([studentId])
+  @@map("certificate_submission_rows")
+}
+
+model Certificate {
+  certificateId     String            @id @default(uuid()) @map("certificate_id") @db.VarChar(36)
+  /// GK-CERT-2026-00418. Unique forever — never reused, even after a soft
+  /// delete, because reports and the public verifier point at it.
+  certificateNumber String            @unique @map("certificate_number") @db.VarChar(40)
+  /// Distinct from the number: what the public verifier accepts.
+  verificationCode  String            @unique @map("verification_code") @db.VarChar(64)
+  studentId         String            @map("student_id") @db.VarChar(36)
+  courseId          String            @map("course_id") @db.VarChar(36)
+  batchId           String            @map("batch_id") @db.VarChar(36)
+  /// Set when the certificate came through a college's approved submission.
+  submissionRowId   String?           @unique @map("certificate_submission_row_id") @db.VarChar(36)
+  status            CertificateStatus @default(DRAFT)
+  issuedDate        DateTime?         @map("issued_date") @db.Date
+  issuedBy          String?           @map("issued_by") @db.VarChar(36)
+  pdfUrl            String?           @map("pdf_url") @db.VarChar(500)
+  /// Revocation takes effect on the public verifier immediately.
+  revokedAt         DateTime?         @map("revoked_at")
+  revokedBy         String?           @map("revoked_by") @db.VarChar(36)
+  revokedReason     String?           @map("revoked_reason") @db.VarChar(500)
+  createdAt         DateTime          @default(now()) @map("created_at")
+  createdBy         String?           @map("created_by") @db.VarChar(36)
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+  deletedBy         String?           @map("deleted_by") @db.VarChar(36)
+
+  student       Student                   @relation(fields: [studentId], references: [studentId])
+  course        Course                    @relation(fields: [courseId], references: [courseId])
+  batch         Batch                     @relation(fields: [batchId], references: [batchId])
+  submissionRow CertificateSubmissionRow? @relation(fields: [submissionRowId], references: [rowId])
+
+  @@index([studentId, deletedAt])
+  @@index([batchId, deletedAt])
+  @@index([status, deletedAt])
+  @@map("certificates")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Placement — hiring
+//
+//  Audience is evaluated at READ time, never materialised per student
+//  (invariant 10). Materialising it means students enrolled later silently
+//  miss postings, and batch transfers leave stale grants behind.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobPosting {
+  jobPostingId         String    @id @default(uuid()) @map("job_posting_id") @db.VarChar(36)
+  jobCode              String    @unique @map("job_code") @db.VarChar(32)
+  roleTitle            String    @map("role_title") @db.VarChar(200)
+  companyName          String    @map("company_name") @db.VarChar(200)
+  companyLogoUrl       String?   @map("company_logo_url") @db.VarChar(500)
+  location             String?   @db.VarChar(200)
+  workMode             WorkMode  @default(ONSITE) @map("work_mode")
+  experienceMinYears   Int?      @map("experience_min_years")
+  experienceMaxYears   Int?      @map("experience_max_years")
+  compensationMinMinor BigInt?   @map("compensation_min_minor")
+  compensationMaxMinor BigInt?   @map("compensation_max_minor")
+  compensationPeriod   String?   @map("compensation_period") @db.VarChar(20)
+  skills               String[]
+  description          String?   @db.Text
+  applyUrl             String?   @map("apply_url") @db.VarChar(500)
+  applyEmail           String?   @map("apply_email") @db.VarChar(255)
+  closingDate          DateTime? @map("closing_date") @db.Date
+  status               JobStatus @default(DRAFT)
+  publishedAt          DateTime? @map("published_at")
+  postedBy             String?   @map("posted_by") @db.VarChar(36)
+
+  /// Carried now so the deferred Naukri integration adds rows rather than
+  /// reshaping a live table.
+  source      JobSource @default(INTERNAL)
+  externalRef String?   @map("external_ref") @db.VarChar(160)
+  externalUrl String?   @map("external_url") @db.VarChar(500)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  createdBy String?   @map("created_by") @db.VarChar(36)
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(36)
+
+  audienceRules JobAudienceRule[]
+
+  @@index([status, deletedAt])
+  @@index([publishedAt])
+  @@map("job_postings")
+}
+
+/// The targeting predicate. Course is the primary axis, narrowed by batch,
+/// passout year, segment, college and city. Rows are OR-ed with each other and
+/// AND-ed within a row.
+model JobAudienceRule {
+  ruleId        String            @id @default(uuid()) @map("job_audience_rule_id") @db.VarChar(36)
+  jobPostingId  String            @map("job_posting_id") @db.VarChar(36)
+  /// The primary axis. Required — targeting always starts from a course.
+  courseId      String            @map("course_id") @db.VarChar(36)
+  batchId       String?           @map("batch_id") @db.VarChar(36)
+  collegeId     String?           @map("college_id") @db.VarChar(36)
+  cityId        String?           @map("city_id") @db.VarChar(36)
+  passoutYear   Int?              @map("passout_year")
+  segment       EnrolmentChannel?
+  /// Optional narrowing: only students who completed the course, rather than
+  /// anyone currently enrolled in it.
+  completedOnly Boolean           @default(false) @map("completed_only")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  createdBy     String?           @map("created_by") @db.VarChar(36)
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  deletedAt     DateTime?         @map("deleted_at")
+  deletedBy     String?           @map("deleted_by") @db.VarChar(36)
+
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [jobPostingId])
+  course     Course     @relation(fields: [courseId], references: [courseId])
+  batch      Batch?     @relation(fields: [batchId], references: [batchId])
+
+  @@index([jobPostingId, deletedAt])
+  @@index([courseId, deletedAt])
+  @@map("job_audience_rules")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Notifications — an admin work queue, not a news feed
+//
+//  If the bell cannot reach zero it will be ignored within a fortnight, and
+//  that constraint drives every decision here: ACTION_REQUIRED rows persist
+//  until their condition clears and auto-resolve when it does; FYI auto-reads
+//  and never badges. Grouped by situation, never by record.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  notificationId String            @id @default(uuid()) @map("notification_id") @db.VarChar(36)
+  /// A key from the catalogue, e.g. "installment.overdue".
+  type           String            @db.VarChar(80)
+  class          NotificationClass
+  title          String            @db.VarChar(255)
+  body           String?           @db.Text
+  ctaLabel       String?           @map("cta_label") @db.VarChar(80)
+  ctaHref        String?           @map("cta_href") @db.VarChar(500)
+
+  /// Who it is for. Null recipient = every operator whose scope matches.
+  recipientType ActorType? @map("recipient_type")
+  recipientId   String?    @map("recipient_id") @db.VarChar(36)
+  /// Notifications are scoped like any other query.
+  cityId        String?    @map("city_id") @db.VarChar(36)
+  collegeId     String?    @map("college_id") @db.VarChar(36)
+
+  /// What it is about, for grouping and auto-resolution.
+  subjectType String? @map("subject_type") @db.VarChar(60)
+  subjectId   String? @map("subject_id") @db.VarChar(36)
+  /// Rows sharing a group key collapse into one entry in the bell.
+  groupKey    String? @map("group_key") @db.VarChar(160)
+
+  status     NotificationStatus @default(OPEN)
+  readAt     DateTime?          @map("read_at")
+  /// Set when the underlying condition clears, not when someone dismisses it.
+  resolvedAt DateTime?          @map("resolved_at")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  @@index([recipientType, recipientId, status])
+  @@index([status, class, createdAt])
+  @@index([groupKey])
+  @@index([subjectType, subjectId])
+  @@map("notifications")
+}

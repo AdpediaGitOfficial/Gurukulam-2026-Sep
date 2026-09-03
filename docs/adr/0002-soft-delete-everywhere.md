@@ -33,9 +33,14 @@ Rules:
    `deletedAt: null` unless a caller explicitly opts in.
 3. **Financial and historical reports include them**, because the events they record still happened.
    A report that opts in shows the record as removed rather than hiding it.
-4. **Uniqueness is scoped to live rows** via partial unique indexes
-   (`WHERE deleted_at IS NULL`), so a business ID or email freed by a deletion can be reused, while
-   an issued ID stays permanently resolvable for the record that holds it.
+4. **Uniqueness splits in two.**
+   - **Login identities** — email addresses on `admin_users`, `college_users`, `trainers` and
+     `students`, and role names — get partial unique indexes scoped to live rows
+     (`WHERE deleted_at IS NULL`), so an address freed by a deletion can be used again.
+   - **Business IDs** — `STU-`, `BTC-`, `GK-CERT-`, `TXN-` and the rest — keep unconditional
+     unique constraints and are **never** reused, deleted or not. Receipts, reports and the public
+     certificate verifier all point at them; handing an issued number to a second record would
+     silently re-target every one of those references.
 5. **Restore is an admin action**, not a database repair.
 6. **Referential integrity is unaffected** — the row remains, so every FK stays valid, which is the
    property that removes the dangling-reference class of bug entirely.
