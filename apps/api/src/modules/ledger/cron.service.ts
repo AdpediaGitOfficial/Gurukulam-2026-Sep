@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { CronResult } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { LedgerService } from "./ledger.service";
+import { NotificationsService } from "../notifications/notifications.service";
 
 /**
  * The nightly reminder run (architecture.md §6.5). Driven by an EXTERNAL
@@ -25,12 +26,19 @@ export class ReminderCronService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async run(now = new Date()): Promise<CronResult> {
     const remindersDue = await this.sendUpcomingReminders(now);
     const markedOverdue = await this.markOverdue(now);
     const parentsRederived = await this.rederiveParents();
+
+    // Swept AFTER the overdue transition, so a newly overdue installment is
+    // counted by the notification raised in the same run rather than waiting
+    // a day. An action-required row exists exactly as long as its condition
+    // does, so this is also what RESOLVES the ones that cleared.
+    await this.notifications.sweep();
 
     this.logger.log(
       `Reminder run: ${remindersDue} reminders, ${markedOverdue} newly overdue, ` +

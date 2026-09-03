@@ -32,6 +32,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:dashboard` | That every aggregate is scoped, and the figures are true |
 | `pnpm --filter @gurukulam/api verify:completions` | Localisation, requirements, portal access and availability |
 | `pnpm --filter @gurukulam/api verify:access` | Roles, administrators, escalation guards and the account screen |
+| `pnpm --filter @gurukulam/api verify:reports` | Reports, the notification queue and login throttling |
 
 ## Shape
 
@@ -154,6 +155,23 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**Login is throttled per CALLER as well as per account.** Lockout stops many
+guesses at one account; the rate limit stops many accounts being tried from one
+source. An attacker spreading attempts across a thousand addresses never trips
+lockout at all, which is the gap it closes. The verification suites share one
+address, so each clears its own bucket at start — they are not the threat model.
+
+**An ACTION_REQUIRED notification is never dismissed by hand.** It exists
+exactly as long as its condition does, and the nightly sweep resolves it when
+that clears. A dismissable queue is one nobody trusts, because the absence of a
+row stops meaning the absence of a problem. Rows group by SITUATION: nine
+unallocated students are one row saying nine.
+
+**A report's CSV is rendered from the same rows as its JSON**, not a second
+query that drifts, and money stays in minor units — a spreadsheet reading
+"4500000" and one reading "45000.00" both open, but only one still reconciles
+after someone reformats the column.
 
 **Nobody grants permissions or region scope beyond their own.** Without that
 guard, `settings:edit` quietly means "become a Super Admin": an operator writes

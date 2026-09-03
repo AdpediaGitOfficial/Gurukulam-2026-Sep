@@ -9,6 +9,7 @@
  *     pnpm --filter @gurukulam/api verify
  */
 import { PrismaClient } from "@gurukulam/db";
+import { clearRateLimit } from "./_rate-limit";
 
 const BASE = process.env.API_URL ?? "http://127.0.0.1:4000/api/v1";
 const PASSWORD = "Gurukulam@2026";
@@ -86,6 +87,9 @@ const login = (email: string, password = PASSWORD, actor = "ADMIN_USER") =>
   call("/auth/login", { method: "POST", body: { email, password, actor, deviceLabel: "verify" } });
 
 async function main() {
+  // The suites share one address; the throttle is not aimed at them.
+  await clearRateLimit();
+
   console.log("\n\x1b[1mHealth\x1b[0m");
   expect("liveness responds", (await call("/health")).body.status, "ok");
   expect("readiness reaches the database", (await call("/health/ready")).body.status, "ready");

@@ -11,6 +11,7 @@
  *     pnpm --filter @gurukulam/api verify:dashboard
  */
 import { PrismaClient } from "@gurukulam/db";
+import { clearRateLimit } from "./_rate-limit";
 
 const BASE = process.env.API_URL ?? "http://127.0.0.1:4000/api/v1";
 const PASSWORD = "Gurukulam@2026";
@@ -76,6 +77,9 @@ async function tokenFor(email: string, actor = "ADMIN_USER"): Promise<string> {
 const stamp = Date.now();
 
 async function main() {
+  // The suites share one address; the throttle is not aimed at them.
+  await clearRateLimit();
+
   const admin = await tokenFor("priya@gurukulam.test");
   const regional = await tokenFor("arun@gurukulam.test");     // Bengaluru only
   const collegeUser = await tokenFor("tpo@snc.example.test", "COLLEGE_USER"); // SNC only

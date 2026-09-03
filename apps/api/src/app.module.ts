@@ -17,7 +17,10 @@ import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { LocalisationModule } from "./modules/localisation/localisation.module";
 import { RequirementsModule } from "./modules/requirements/requirements.module";
 import { AccessModule } from "./modules/access/access.module";
+import { ReportsModule } from "./modules/reports/reports.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { AuthGuard } from "./common/guards/auth.guard";
+import { RateLimitGuard } from "./common/guards/rate-limit.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
 import { ConfigModule } from "./config/config.module";
@@ -55,11 +58,19 @@ import { ConfigModule } from "./config/config.module";
     // M1's management half — roles, administrators and the account screen.
     // The module that can lock an organisation out of its own system.
     AccessModule,
+    // Reports — one grammar, four built. A report is the easiest place to leak
+    // another region's data, because it feels like just numbers.
+    ReportsModule,
+    // The bell — a work queue that reaches zero, swept by the nightly run.
+    NotificationsModule,
   ],
   controllers: [HealthController],
   providers: [
     // Authentication is global and opt-OUT. A new route is protected the
     // moment it exists; forgetting @Public() fails closed.
+    // Before AuthGuard: an unauthenticated flood should be turned away without
+    // costing a password hash or a database round trip.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: SerialiseInterceptor },

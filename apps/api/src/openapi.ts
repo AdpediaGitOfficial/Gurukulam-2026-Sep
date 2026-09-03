@@ -20,6 +20,16 @@ import {
   certificateSchema,
   dashboardSchema,
   roleSchema,
+  reportQuerySchema,
+  reportCatalogueEntrySchema,
+  outstandingRowSchema,
+  collectionRowSchema,
+  unallocatedRowSchema,
+  batchProgressRowSchema,
+  reportSchema,
+  bellSchema,
+  notificationSchema,
+  notificationTypeSchema,
   createRoleSchema,
   adminUserSchema,
   createAdminUserSchema,
@@ -165,6 +175,15 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const CreateAdminUser = register("CreateAdminUserInput", createAdminUserSchema);
   const IssuedAdminCredential = register("IssuedAdminCredential", issuedAdminCredentialSchema);
   const AccountDoc = register("Account", accountSchema);
+  const ReportCatalogue = register("ReportCatalogueEntry", reportCatalogueEntrySchema);
+  const OutstandingReport = register("OutstandingReport", reportSchema(outstandingRowSchema));
+  const CollectionsReport = register("CollectionsReport", reportSchema(collectionRowSchema));
+  const UnallocatedReport = register("UnallocatedReport", reportSchema(unallocatedRowSchema));
+  const BatchProgressReport = register("BatchProgressReport", reportSchema(batchProgressRowSchema));
+  const Bell = register("Bell", bellSchema);
+  const NotificationDoc = register("Notification", notificationSchema);
+  const NotificationType = register("NotificationType", notificationTypeSchema);
+  register("ReportQuery", reportQuerySchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -195,6 +214,22 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "Delivery. A batch is retail (collegeId null) or dedicated to one college — the two " +
           "rosters never mix. The trainer handshake lives here: an admin proposes, the trainer " +
           "confirms, and only a confirmed assignment is committed delivery.",
+      },
+      {
+        name: "Reports",
+        description:
+          "REPORT = MEASURES × DIMENSIONS × FILTERS. One request shape and one envelope for all " +
+          "of them, so the catalogued entries slot in rather than each inventing their own. Scope " +
+          "is applied to every measure — a report is the easiest place to leak another region's " +
+          "data, because it feels like just numbers.",
+      },
+      {
+        name: "Notifications",
+        description:
+          "The bell is an admin WORK QUEUE, not a news feed. If it cannot reach zero it will be " +
+          "ignored within a fortnight, so an action-required row is never dismissed by hand — it " +
+          "exists exactly as long as its condition does, and the nightly sweep resolves it when " +
+          "that clears. Grouped by situation: nine unallocated students are one row saying nine.",
       },
       {
         name: "Access",
@@ -249,6 +284,81 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/reports": {
+        get: {
+          tags: ["Reports"], summary: "The report library",
+          description: "Every entry names its measures and dimensions, so a SPECIFIED one is a query to fill in rather than a screen to redesign.",
+          responses: { "200": { description: "The catalogue", content: { "application/json": { schema: { type: "array", items: { $ref: ReportCatalogue.$ref } } } } } },
+        },
+      },
+      "/reports/outstanding": {
+        get: { tags: ["Reports"], summary: "Outstanding & ageing", description: "What is owed, by whom, and how long — across BOTH billing parents, aged into buckets.", parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "compare", in: "query", description: "Compare against the immediately preceding window of EQUAL length, so a change is like-for-like.", schema: { type: "boolean" } },
+          { name: "format", in: "query", description: "`csv` renders the same rows the JSON returns, so the two cannot diverge.", schema: { type: "string", enum: ["json", "csv"] } },
+          { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } },
+          { name: "cityId", in: "query", schema: { type: "string" } },
+          { name: "collegeId", in: "query", schema: { type: "string" } },
+          { name: "courseId", in: "query", schema: { type: "string" } },
+        ], responses: { "200": { description: "The report", content: json(OutstandingReport) } } },
+      },
+      "/reports/collections": {
+        get: { tags: ["Reports"], summary: "Daily collection register", description: "Every receipt in the window. Reversals are SUBTRACTED rather than listed as income — a register that counts a reversed receipt does not reconcile.", parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "compare", in: "query", description: "Compare against the immediately preceding window of EQUAL length, so a change is like-for-like.", schema: { type: "boolean" } },
+          { name: "format", in: "query", description: "`csv` renders the same rows the JSON returns, so the two cannot diverge.", schema: { type: "string", enum: ["json", "csv"] } },
+          { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } },
+          { name: "cityId", in: "query", schema: { type: "string" } },
+          { name: "collegeId", in: "query", schema: { type: "string" } },
+          { name: "courseId", in: "query", schema: { type: "string" } },
+        ], responses: { "200": { description: "The report", content: json(CollectionsReport) } } },
+      },
+      "/reports/unallocated": {
+        get: { tags: ["Reports"], summary: "Unallocated students ageing", description: "The gap between a record existing and revenue starting. Agrees with /students/unallocated by construction.", parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "compare", in: "query", description: "Compare against the immediately preceding window of EQUAL length, so a change is like-for-like.", schema: { type: "boolean" } },
+          { name: "format", in: "query", description: "`csv` renders the same rows the JSON returns, so the two cannot diverge.", schema: { type: "string", enum: ["json", "csv"] } },
+          { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } },
+          { name: "cityId", in: "query", schema: { type: "string" } },
+          { name: "collegeId", in: "query", schema: { type: "string" } },
+          { name: "courseId", in: "query", schema: { type: "string" } },
+        ], responses: { "200": { description: "The report", content: json(UnallocatedReport) } } },
+      },
+      "/reports/batch-progress": {
+        get: { tags: ["Reports"], summary: "Batch progress", description: "How far each batch has got, and what is outstanding on it. A batch with nothing scheduled is 0%, not NaN.", parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date" } },
+          { name: "compare", in: "query", description: "Compare against the immediately preceding window of EQUAL length, so a change is like-for-like.", schema: { type: "boolean" } },
+          { name: "format", in: "query", description: "`csv` renders the same rows the JSON returns, so the two cannot diverge.", schema: { type: "string", enum: ["json", "csv"] } },
+          { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } },
+          { name: "cityId", in: "query", schema: { type: "string" } },
+          { name: "collegeId", in: "query", schema: { type: "string" } },
+          { name: "courseId", in: "query", schema: { type: "string" } },
+        ], responses: { "200": { description: "The report", content: json(BatchProgressReport) } } },
+      },
+      "/notifications/bell": {
+        get: {
+          tags: ["Notifications"], summary: "What the bell renders",
+          description: "The badge counts ACTION_REQUIRED and ALERT only. FYI never badges — a badge that never clears trains people to ignore the badge.",
+          responses: { "200": { description: "The bell", content: json(Bell) } },
+        },
+      },
+      "/notifications": {
+        get: { tags: ["Notifications"], summary: "The queue", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of notifications", content: json(NotificationDoc) } } },
+      },
+      "/notifications/catalogue": {
+        get: { tags: ["Notifications"], summary: "Every notification type and what CLEARS it", description: "The clearing condition is the load-bearing part: a row nothing can clear never leaves, and a queue that cannot reach zero is ignored.", responses: { "200": { description: "The catalogue", content: json(NotificationType) } } },
+      },
+      "/notifications/read": {
+        post: {
+          tags: ["Notifications"], summary: "Mark FYI and alerts read",
+          description: "ACTION_REQUIRED is deliberately unaffected — those clear when their condition does, not when someone looks at them. A dismissable queue is one nobody trusts.",
+          responses: { "200": { description: "How many were marked" } },
+        },
+      },
       "/settings/roles": {
         get: { tags: ["Access"], summary: "List roles with their permission matrix", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of roles", content: json(RolePage) } } },
         post: {
@@ -695,8 +805,13 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
         post: {
           tags: ["Auth"], summary: "Exchange credentials for a token pair", security: [],
           description:
-            "Five failures inside fifteen minutes locks the account for thirty. The response is " +
-            "identical whether the address is unknown or the password is wrong.",
+            "Five failures inside fifteen minutes locks the ACCOUNT for thirty. Separately, 30 " +
+            "attempts a minute from one CALLER is throttled — lockout stops many guesses at one " +
+            "account, this stops many accounts being tried from one source, and an attacker " +
+            "spreading across a thousand addresses trips only the second.\n\n" +
+            "A college user signs in as `snc@gurukulam.com` and a student as " +
+            "`stu-2026-0891@gurukulam.com`; their real contact address works too.\n\n" +
+            "The response is identical whether the address is unknown or the password is wrong.",
           requestBody: { required: true, content: json(Login) },
           responses: {
             "200": { description: "Signed in", content: json(Session) },

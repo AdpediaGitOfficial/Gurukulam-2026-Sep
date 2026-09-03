@@ -10,6 +10,7 @@
  *     pnpm --filter @gurukulam/api verify:modules
  */
 import { PrismaClient } from "@gurukulam/db";
+import { clearRateLimit } from "./_rate-limit";
 import { MODULES } from "@gurukulam/contracts";
 
 const BASE = process.env.API_URL ?? "http://127.0.0.1:4000/api/v1";
@@ -81,6 +82,9 @@ async function tokenFor(email: string, actor = "ADMIN_USER"): Promise<string> {
 }
 
 async function main() {
+  // The suites share one address; the throttle is not aimed at them.
+  await clearRateLimit();
+
   const admin = await tokenFor("priya@gurukulam.test");          // global
   const regional = await tokenFor("arun@gurukulam.test");        // Bengaluru only
   const college = await tokenFor("tpo@snc.example.test", "COLLEGE_USER"); // SNC only

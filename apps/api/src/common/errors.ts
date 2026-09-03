@@ -34,6 +34,18 @@ export class ApiException extends HttpException {
     );
   }
 
+  /**
+   * Too many requests from one caller — distinct from accountLocked, which is
+   * about one ACCOUNT. Both can fire; this one comes first.
+   */
+  static rateLimited(retryAfterSeconds: number) {
+    return new ApiException(
+      ERROR_CODES.RATE_LIMITED,
+      `Too many requests. Try again in ${Math.max(1, retryAfterSeconds)} seconds.`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
   static accountLocked(retryAfterSeconds: number) {
     const minutes = Math.ceil(retryAfterSeconds / 60);
     return new ApiException(

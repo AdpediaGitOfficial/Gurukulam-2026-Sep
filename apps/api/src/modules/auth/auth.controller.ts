@@ -12,12 +12,26 @@ import {
 import { AuthService } from "./auth.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
 import { CurrentPrincipal, Public } from "../../common/decorators/principal.decorator";
+import { RateLimit } from "../../common/guards/rate-limit.guard";
 
 @Controller("auth")
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  /**
+   * Rate limited per caller, on top of the per-account lockout.
+   *
+   * Lockout stops many guesses against one account; this stops many accounts
+   * being tried from one source. An attacker spreading attempts across a
+   * thousand addresses never trips lockout at all, which is the gap this
+   * closes.
+   *
+   * 30 a minute is deliberately generous: a fifty-person office behind one
+   * NAT arriving at nine o'clock is well inside it, while credential spraying
+   * wants orders of magnitude more.
+   */
   @Public()
+  @RateLimit({ limit: 30, windowSeconds: 60 })
   @Post("login")
   @HttpCode(HttpStatus.OK)
   login(@Body(zodBody(loginSchema)) body: LoginInput, @Req() req: FastifyRequest) {
@@ -28,6 +42,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 60, windowSeconds: 60 })
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   refresh(@Body(zodBody(refreshSchema)) body: RefreshInput, @Req() req: FastifyRequest) {
