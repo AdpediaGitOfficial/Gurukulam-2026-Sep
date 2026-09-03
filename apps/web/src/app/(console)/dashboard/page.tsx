@@ -30,15 +30,15 @@ const ACTION_TILES = [
     key: "unallocatedStudents",
     label: "Unallocated students",
     caption: "Enrolled, not yet in a batch",
-    icon: "nav-students",
+    icon: "users",
     color: feedbackTokens.danger,
-    href: "/students?allocation=unallocated",
+    href: "/students/unallocated",
   },
   {
     key: "overdueInstallments",
     label: "Overdue installments",
     caption: "Past their due date",
-    icon: "nav-fee-ledger",
+    icon: "warn",
     color: feedbackTokens.danger,
     href: "/fee-ledger?status=overdue",
   },
@@ -46,7 +46,7 @@ const ACTION_TILES = [
     key: "certificatesAwaitingApproval",
     label: "Certificates to approve",
     caption: "Waiting on a decision",
-    icon: "nav-reports",
+    icon: "seal",
     color: feedbackTokens.warning,
     href: "/students/certificates?status=pending",
   },
@@ -54,7 +54,7 @@ const ACTION_TILES = [
     key: "sessionsMissingRecordings",
     label: "Missing recordings",
     caption: "Completed sessions with no upload",
-    icon: "nav-batches",
+    icon: "play",
     color: feedbackTokens.warning,
     href: "/batches?recordings=missing",
   },
@@ -148,7 +148,7 @@ export default async function DashboardPage() {
             label="Students"
             value={formatCount(headline.students.total)}
             caption={`${formatCount(headline.students.retail)} retail · ${formatCount(headline.students.college)} college`}
-            icon="nav-students"
+            icon="users"
             color={domainTokens.students}
             href="/students"
           />
@@ -156,7 +156,7 @@ export default async function DashboardPage() {
             label="Trainers"
             value={formatCount(headline.trainers)}
             caption="Active instructors"
-            icon="nav-trainers"
+            icon="trainer"
             color={domainTokens.trainers}
             href="/trainers"
           />
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
             label="Colleges"
             value={formatCount(headline.colleges)}
             caption="B2B partners"
-            icon="nav-colleges"
+            icon="college"
             color={domainTokens.colleges}
             href="/colleges"
           />
@@ -172,7 +172,7 @@ export default async function DashboardPage() {
             label="Question bank"
             value={formatCount(headline.questionBank)}
             caption="Questions available"
-            icon="nav-courses"
+            icon="brain"
             color={domainTokens["question-bank"]}
             href="/courses/question-bank"
           />

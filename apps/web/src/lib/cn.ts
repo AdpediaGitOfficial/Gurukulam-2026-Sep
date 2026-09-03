@@ -30,7 +30,7 @@ const twMerge = extendTailwindMerge({
       ],
       radius: ["chip", "control", "tile", "well", "card", "panel"],
       shadow: ["raised", "panel", "floating", "overlay"],
-      spacing: ["rail", "topbar", "content"],
+      spacing: ["rail", "rail-expanded", "topbar", "content"],
     },
   },
 });

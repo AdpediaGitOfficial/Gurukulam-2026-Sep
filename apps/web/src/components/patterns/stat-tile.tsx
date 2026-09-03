@@ -34,11 +34,16 @@ export function StatTile({ label, value, caption, icon, color, href, className }
       </span>
 
       <span className="min-w-0">
-        <span className="block truncate text-body" style={{ color }}>
+        {/*
+          Wraps rather than truncates. A four-tile row makes a label like
+          "Certificates to approve" narrow, and a clipped label is useless —
+          `balance` keeps the two lines even rather than leaving one word alone.
+        */}
+        <span className="block text-balance text-body" style={{ color }}>
           {label}
         </span>
         <span className="block text-h1 text-ink">{value}</span>
-        {caption ? <span className="block truncate text-caption text-ink-muted">{caption}</span> : null}
+        {caption ? <span className="block text-caption text-ink-muted">{caption}</span> : null}
       </span>
     </>
   );

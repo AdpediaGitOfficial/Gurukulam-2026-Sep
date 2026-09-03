@@ -336,7 +336,7 @@ export default function DesignSystemPage() {
           <Specimen name="<EmptyState> · <Skeleton> · <Spinner>">
             <div className="flex w-full flex-col gap-4">
               <EmptyState
-                icon="nav-students"
+                icon="users"
                 title="No students match those filters"
                 description="Try a broader search term."
                 action={<Button size="sm">Clear filters</Button>}
@@ -421,21 +421,21 @@ export default function DesignSystemPage() {
             label="Students"
             value="3,420"
             caption="Enrolled this term"
-            icon="kpi-students"
+            icon="users"
             color={domainTokens.students}
           />
           <StatTile
             label="Trainers"
             value="42"
             caption="Active instructors"
-            icon="kpi-trainers"
+            icon="trainer"
             color={domainTokens.trainers}
           />
           <StatTile
             label="Colleges"
             value="14"
             caption="B2B partners — links through"
-            icon="kpi-colleges"
+            icon="college"
             color={domainTokens.colleges}
             href="/colleges"
           />

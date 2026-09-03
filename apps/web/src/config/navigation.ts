@@ -3,6 +3,11 @@ import type { Route } from "next";
 import type { IconName } from "@/components/ui/icon";
 import type { ModuleName } from "@gurukulam/contracts";
 
+export interface SubNavItem {
+  href: Route;
+  label: string;
+}
+
 export interface NavItem {
   href: Route;
   /** Accessible name — surfaced as the tooltip and the screen-reader label. */
@@ -14,6 +19,14 @@ export interface NavItem {
    * entry rather than seeing it and being refused at the route.
    */
   module: ModuleName;
+  /** Route prefix that marks this entry active. Defaults to `href`. */
+  match?: string;
+  /**
+   * Pages inside the module. The rail only goes one level deep; collapsed it
+   * shows the count in the tooltip, expanded it discloses them, and the page
+   * carries the same list as its own tab strip.
+   */
+  children?: readonly SubNavItem[];
 }
 
 /**
@@ -29,54 +42,125 @@ export interface NavItem {
  * the question bank under Courses because assessment belongs to a course.
  */
 export const primaryNavItems: readonly NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "nav-dashboard", module: "dashboard" },
-  { href: "/colleges", label: "Colleges", icon: "nav-colleges", module: "colleges" },
-  { href: "/students", label: "Students", icon: "nav-students", module: "students" },
-  { href: "/courses", label: "Courses", icon: "nav-courses", module: "courses" },
-  { href: "/batches", label: "Batches", icon: "nav-batches", module: "batches" },
-  { href: "/trainers", label: "Trainers", icon: "nav-trainers", module: "trainers" },
-  { href: "/fee-ledger", label: "Fee Ledger", icon: "nav-fee-ledger", module: "feeLedger" },
-  { href: "/hiring", label: "Hiring", icon: "nav-hiring", module: "hiring" },
-  { href: "/reports", label: "Reports", icon: "nav-reports", module: "reports" },
+  { href: "/dashboard", label: "Dashboard", icon: "dash", module: "dashboard" },
+  {
+    href: "/colleges",
+    label: "Colleges",
+    icon: "college",
+    module: "colleges",
+    children: [
+      { href: "/colleges", label: "All colleges" },
+      { href: "/colleges/contacts", label: "Contacts" },
+      { href: "/colleges/requirements", label: "Requirements" },
+      { href: "/colleges/access", label: "Portal access" },
+    ],
+  },
+  {
+    href: "/students",
+    label: "Students",
+    icon: "users",
+    module: "students",
+    children: [
+      { href: "/students", label: "All students" },
+      { href: "/students/unallocated", label: "Unallocated" },
+      { href: "/students/certificates", label: "Certificates" },
+    ],
+  },
+  {
+    href: "/courses",
+    label: "Courses",
+    icon: "book",
+    module: "courses",
+    children: [
+      { href: "/courses", label: "All courses" },
+      { href: "/courses/question-bank", label: "Question bank" },
+    ],
+  },
+  {
+    href: "/batches",
+    label: "Batches",
+    icon: "batch",
+    module: "batches",
+    children: [
+      { href: "/batches", label: "All batches" },
+      { href: "/batches/sessions", label: "Sessions" },
+    ],
+  },
+  {
+    href: "/trainers",
+    label: "Trainers",
+    icon: "trainer",
+    module: "trainers",
+    children: [
+      { href: "/trainers", label: "All trainers" },
+      { href: "/trainers/calendar", label: "Availability" },
+    ],
+  },
+  {
+    href: "/fee-ledger",
+    label: "Fee Ledger",
+    icon: "rupee",
+    module: "feeLedger",
+    children: [
+      { href: "/fee-ledger", label: "All students" },
+      { href: "/fee-ledger/contracts", label: "Institutional contracts" },
+    ],
+  },
+  { href: "/hiring", label: "Hiring", icon: "brief", module: "hiring" },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: "chart",
+    module: "reports",
+    children: [
+      { href: "/reports", label: "Library" },
+      { href: "/reports/outstanding", label: "Outstanding & ageing" },
+      { href: "/reports/collections", label: "Collection register" },
+      { href: "/reports/unallocated", label: "Unallocated ageing" },
+      { href: "/reports/batch-progress", label: "Batch progress" },
+    ],
+  },
 ];
 
 /** Utility destinations, pinned to the bottom of the rail. */
 export const secondaryNavItems: readonly NavItem[] = [
-  { href: "/settings", label: "Settings", icon: "nav-settings", module: "settings" },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: "gear",
+    module: "settings",
+    children: [
+      { href: "/settings", label: "General" },
+      { href: "/settings/roles", label: "Roles" },
+      { href: "/settings/administrators", label: "Administrators" },
+      { href: "/settings/countries", label: "Countries" },
+      { href: "/settings/cities", label: "Cities" },
+    ],
+  },
   // Your own profile and password. Everyone has one, so it is not gated.
-  { href: "/account", label: "Account", icon: "nav-account", module: "dashboard" },
+  { href: "/account", label: "Account", icon: "acct", module: "dashboard" },
 ];
 
-export interface SubNavItem {
-  href: Route;
-  label: string;
-}
+export const navItems: readonly NavItem[] = [...primaryNavItems, ...secondaryNavItems];
 
 /**
- * Sub-navigation inside a module. The rail only goes one level deep, so a
- * module with more than one list needs its own tab strip.
+ * Which nav entry owns a path.
+ *
+ * Longest prefix wins, so `/students/certificates` resolves to Students rather
+ * than to whichever entry happens to be listed first.
  */
-export const collegeTabs: readonly SubNavItem[] = [
-  { href: "/colleges", label: "Colleges" },
-  { href: "/colleges/contacts", label: "Contacts" },
-  { href: "/colleges/requirements", label: "Requirements" },
-  { href: "/colleges/contracts", label: "Contracts" },
-];
+export function navItemFor(pathname: string): NavItem | undefined {
+  let best: NavItem | undefined;
+  for (const item of navItems) {
+    const prefix = item.match ?? item.href;
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      if (best === undefined || prefix.length > (best.match ?? best.href).length) best = item;
+    }
+  }
+  return best;
+}
 
-export const studentTabs: readonly SubNavItem[] = [
-  { href: "/students", label: "Students" },
-  { href: "/students/certificates", label: "Certificates" },
-];
-
-export const courseTabs: readonly SubNavItem[] = [
-  { href: "/courses", label: "Courses" },
-  { href: "/courses/question-bank", label: "Question Bank" },
-];
-
-export const settingsTabs: readonly SubNavItem[] = [
-  { href: "/settings", label: "General" },
-  { href: "/settings/roles", label: "Roles" },
-  { href: "/settings/administrators", label: "Administrators" },
-  { href: "/settings/countries", label: "Countries" },
-  { href: "/settings/cities", label: "Cities" },
-];
+/** Whether a sub-nav entry is the current page. */
+export function isCurrentPage(pathname: string, href: string): boolean {
+  return pathname === href;
+}

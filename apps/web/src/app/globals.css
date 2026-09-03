@@ -128,6 +128,8 @@
 
   /* ---- Layout --------------------------------------------------------- */
   --spacing-rail: 80px;
+  /* The rail expanded — wide enough for the wordmark, a label and a chevron. */
+  --spacing-rail-expanded: 252px;
   --spacing-topbar: 94px;
   --spacing-content: 1600px;
 

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { ModuleTabs } from "@/components/patterns/module-tabs";
 import { PageHeader, type PageHeaderProps } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { Card, CardFooter } from "@/components/ui/card";
@@ -27,6 +28,7 @@ export function ListPage({ summary, toolbar, children, pagination, ...header }: 
   return (
     <PageBody>
       <PageHeader {...header} />
+      <ModuleTabs />
       {summary}
       {toolbar}
       <Card padding="none" className="min-w-0 overflow-hidden">

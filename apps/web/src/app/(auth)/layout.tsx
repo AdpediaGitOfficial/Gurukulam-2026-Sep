@@ -14,7 +14,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         <div className="w-full max-w-[420px]">
           <div className="mb-8 flex flex-col items-center gap-3">
             <span className="flex size-12 items-center justify-center rounded-tile bg-rail text-white">
-              <Icon name="brand-mark" />
+              <Icon name="mark" />
             </span>
             <span className="text-center text-caption font-bold tracking-[1px] text-ink-muted uppercase">
               {site.shortName.join(" ")}
