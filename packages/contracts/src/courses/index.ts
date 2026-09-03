@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pageQuerySchema } from "../common/page.js";
+import { pageQuerySchema, queryBoolean } from "../common/page.js";
 import { moneyMinor } from "../common/money.js";
 
 /**
@@ -42,7 +42,7 @@ export type CourseTopic = z.infer<typeof courseTopicSchema>;
 
 export const courseQuerySchema = pageQuerySchema.extend({
   category: z.string().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBoolean.optional(),
 });
 
 export type CourseQuery = z.infer<typeof courseQuerySchema>;

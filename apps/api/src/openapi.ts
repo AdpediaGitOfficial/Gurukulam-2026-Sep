@@ -15,6 +15,11 @@ import {
   createBatchSchema,
   createSessionSchema,
   jobPostingSchema,
+  studentSchema,
+  createStudentSchema,
+  allocateStudentSchema,
+  allocationResultSchema,
+  unallocatedSummarySchema,
   loginSchema,
   pageOf,
   principalSchema,
@@ -95,6 +100,12 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const SessionPage = register("BatchSessionPage", pageOf(batchSessionSchema));
   const CreateSession = register("CreateSessionInput", createSessionSchema);
   const Assignment = register("Assignment", assignmentSchema);
+  const Student = register("Student", studentSchema);
+  const StudentPage = register("StudentPage", pageOf(studentSchema));
+  const CreateStudent = register("CreateStudentInput", createStudentSchema);
+  const Allocate = register("AllocateStudentInput", allocateStudentSchema);
+  const AllocationResult = register("AllocationResult", allocationResultSchema);
+  const UnallocatedSummary = register("UnallocatedSummary", unallocatedSummarySchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -127,6 +138,13 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "confirms, and only a confirmed assignment is committed delivery.",
       },
       {
+        name: "Students",
+        description:
+          "Retail and college students in one register. collegeId is nullable and always will be — " +
+          "a retail walk-in has no college and never will. Onboarding creates the record only; " +
+          "course, batch, price, schedule and credentials are decided at allocation.",
+      },
+      {
         name: "Sessions",
         description:
           "The unit that actually happens on a given day, which is why assignments and recordings " +
@@ -141,6 +159,59 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/students": {
+        get: {
+          tags: ["Students"], summary: "List students",
+          description: "`allocated=false` is the unallocated queue — computed from live roster rows, never a stored flag, so it cannot go stale when a mapping is removed.",
+          parameters: [...PAGE_PARAMS, { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } }, { name: "allocated", in: "query", schema: { type: "boolean" } }, { name: "batchId", in: "query", schema: { type: "string" } }, { name: "collegeId", in: "query", schema: { type: "string" } }],
+          responses: { "200": { description: "A page of students", content: json(StudentPage) } },
+        },
+        post: {
+          tags: ["Students"], summary: "Onboard a student",
+          description: "Creates the RECORD only. A college portal user can only onboard into their own college, and the record records which user did it — that is what makes institutional intake auditable.",
+          requestBody: { required: true, content: json(CreateStudent) },
+          responses: { "201": { description: "Created", content: json(Student) }, "409": errorResponse("Email already in use") },
+        },
+      },
+      "/students/unallocated": {
+        get: {
+          tags: ["Students"], summary: "The unallocated queue and its sibling hygiene queues",
+          description: "Ageing buckets over students with no live roster row, plus retail students on a roster with no ledger, ledgers with no schedule, and credentials issued but never used. Every count is a live query.",
+          responses: { "200": { description: "The summary", content: json(UnallocatedSummary) } },
+        },
+      },
+      "/students/{id}": {
+        get: { tags: ["Students"], summary: "One student with batches and ledgers", parameters: [ID_PARAM], responses: { "200": { description: "The student", content: json(Student) }, "404": errorResponse("Not found, or outside your scope") } },
+        patch: { tags: ["Students"], summary: "Update a student", description: "collegeId is not editable — moving a student between segments would strand their ledger or their institution's contract seat.", parameters: [ID_PARAM], responses: { "200": { description: "Updated", content: json(Student) } } },
+        delete: { tags: ["Students"], summary: "Soft-delete a student", parameters: [ID_PARAM], description: "Refused once payments are recorded — money received is a fact about when it was received. Suspend instead.", responses: { "204": { description: "Removed" }, "409": errorResponse("Payments are recorded") } },
+      },
+      "/students/{id}/allocate": {
+        post: {
+          tags: ["Students"], summary: "Allocate a student to a batch", parameters: [ID_PARAM],
+          description:
+            "ONE transaction: roster mapping, session access, ledger, installments and credentials — all of it or none.\n\n" +
+            "A student may only join a batch whose college matches their own: both null, or both equal. " +
+            "Retail creates a ledger and a hand-authored schedule that must total the agreed price exactly. " +
+            "College creates NO ledger — the institution is billed under its contract — and pricing on a " +
+            "college allocation is refused rather than ignored. Credentials are issued for both segments.",
+          requestBody: { required: true, content: json(Allocate) },
+          responses: {
+            "200": { description: "Allocated", content: json(AllocationResult) },
+            "400": errorResponse("The schedule does not total the agreed price, or a field is invalid"),
+            "409": errorResponse("Already on the roster, or the batch is full"),
+            "422": errorResponse("Rosters would mix, or a college student was priced"),
+          },
+        },
+      },
+      "/students/{id}/deallocate": {
+        post: { tags: ["Students"], summary: "Remove a student from a roster", parameters: [ID_PARAM], description: "The mapping is soft-deleted with its reason — that the student was once on this roster is what makes an issued certificate explicable a year later.", responses: { "204": { description: "Removed from the roster" } } },
+      },
+      "/students/{id}/suspend": {
+        post: { tags: ["Students"], summary: "Suspend a student's access", parameters: [ID_PARAM], description: "Does not touch enrolment, billing or history.", responses: { "200": { description: "Suspended", content: json(Student) } } },
+      },
+      "/students/{id}/reinstate": {
+        post: { tags: ["Students"], summary: "Reinstate a suspended student", parameters: [ID_PARAM], responses: { "200": { description: "Reinstated", content: json(Student) } } },
+      },
       "/batches": {
         get: {
           tags: ["Batches"], summary: "List batches",

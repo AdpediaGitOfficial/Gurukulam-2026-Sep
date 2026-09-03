@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pageQuerySchema } from "../common/page.js";
+import { pageQuerySchema, queryBoolean } from "../common/page.js";
 
 /**
  * A college is an ACTOR, not a directory row: it has users, contracts,
@@ -46,7 +46,7 @@ export type CollegePoc = z.infer<typeof collegePocSchema>;
 export const collegeQuerySchema = pageQuerySchema.extend({
   cityId: z.string().optional(),
   discipline: z.string().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: queryBoolean.optional(),
 });
 
 export type CollegeQuery = z.infer<typeof collegeQuerySchema>;

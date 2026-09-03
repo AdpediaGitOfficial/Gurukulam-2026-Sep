@@ -26,6 +26,7 @@ document.
 | `pnpm --filter @gurukulam/api verify` | Auth integration checks against a **running** API |
 | `pnpm --filter @gurukulam/api verify:modules` | Module and scope checks against a **running** API |
 | `pnpm --filter @gurukulam/api verify:delivery` | Batch, session and trainer-handshake checks |
+| `pnpm --filter @gurukulam/api verify:enrolment` | Allocation and segment checks, including the acceptance test |
 
 ## Shape
 
@@ -121,6 +122,12 @@ exists in another region, which is itself the leak.
 **Row mapping is explicit.** Every service ends with a `toX(row)` function
 listing fields one by one rather than spreading the record. That is what keeps
 `password_hash` off the wire when someone adds a column later.
+
+**Booleans from a query string use `queryBoolean`, never `z.coerce.boolean()`.**
+Coercion runs JavaScript's `Boolean()`, under which every non-empty string is
+true — so `?includeDeleted=false` parsed as TRUE and an operational read
+returned soft-deleted rows. A UI that always sends the parameter explicitly is
+exactly the case that hits it.
 
 **Money is parsed, never floated.** Operator input goes through `parseRupees`
 (integer arithmetic on the string) and leaves as a paise string.

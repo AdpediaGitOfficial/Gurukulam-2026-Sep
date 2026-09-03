@@ -5,6 +5,23 @@ import { z } from "zod";
  * filtering maps onto query params with nothing to reshape, and a mobile list
  * pages the same way a web table does.
  */
+/**
+ * A boolean from a query string.
+ *
+ * NOT `z.coerce.boolean()`: that runs JavaScript's `Boolean()`, and every
+ * non-empty string is truthy — so `?includeDeleted=false` parses as TRUE and
+ * an operational read starts returning soft-deleted rows. A UI that always
+ * sends the parameter explicitly is exactly the case that breaks.
+ */
+export const queryBoolean = z
+  .union([z.boolean(), z.string(), z.number()])
+  .transform((value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const text = value.trim().toLowerCase();
+    return text === "true" || text === "1" || text === "yes" || text === "on";
+  });
+
 export const pageQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(25),
@@ -17,7 +34,7 @@ export const pageQuerySchema = z.object({
    * financial and historical reports opt in, because the events they record
    * still happened. Requires the caller's permission on the module.
    */
-  includeDeleted: z.coerce.boolean().default(false),
+  includeDeleted: queryBoolean.default(false),
 });
 
 export type PageQuery = z.infer<typeof pageQuerySchema>;
