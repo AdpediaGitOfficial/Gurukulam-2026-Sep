@@ -22,9 +22,14 @@ export class IdService {
   /**
    * Atomically claims the next number for a key.
    *
-   * Pass `tx` when allocating inside a transaction, so an ID is not consumed
-   * by work that then rolls back. Gaps are harmless — an unused STU- number is
-   * not a problem — but consuming one per failed attempt is untidy.
+   * Call this OUTSIDE the transaction that inserts the row. Allocating inside
+   * one means a failed insert rolls the counter back too, so a retry asks for
+   * the same number and can never make progress — see
+   * `common/business-id-retry.ts`. Gaps are harmless: an unused STU- number
+   * costs nothing, while a collision loop costs the write.
+   *
+   * `tx` remains available for the rare case where an ID must not survive a
+   * rollback and no retry is wanted.
    */
   async next(key: string, tx?: Prisma.TransactionClient): Promise<number> {
     const client = tx ?? this.prisma;
@@ -54,11 +59,11 @@ export class IdService {
   }
 
   async collegeCode(name: string, tx?: Prisma.TransactionClient) {
-    // Scoped to the college's own initials, so the running number
-    // distinguishes two colleges that share them rather than counting all
-    // colleges ever created.
-    const stem = name.trim().toUpperCase();
-    return ids.collegeCode(name, await this.next(`college:${stem.slice(0, 40)}`, tx));
+    // Keyed on the INITIALS, not the name — those are what the code carries.
+    // Keying on the name would give "Sri Narayana College" and "Saraswati
+    // National College" separate counters and then the same CLG-SNC-01.
+    const stem = ids.codeInitials(name, 3);
+    return ids.collegeCode(name, await this.next(`college:${stem}`, tx));
   }
 
   async courseCode(name: string, tx?: Prisma.TransactionClient, year = new Date().getUTCFullYear()) {
@@ -72,9 +77,11 @@ export class IdService {
   async batchCode(courseName: string, startDate: Date, tx?: Prisma.TransactionClient) {
     const month = startDate.getUTCMonth();
     const year = startDate.getUTCFullYear();
-    // The cohort letter counts batches of THIS course starting in THIS month,
-    // which is what makes BTC-DA-SEP-A / -B readable.
-    const cohort = (await this.next(`batch:${courseName}:${year}-${month}`, tx)) - 1;
+    // Keyed on the initials the code actually carries, so two courses sharing
+    // them ("Data Analytics", "Digital Assurance") take successive cohort
+    // letters instead of both claiming BTC-DA-SEP-A.
+    const stem = ids.codeInitials(courseName, 2);
+    const cohort = (await this.next(`batch:${stem}:${year}-${month}`, tx)) - 1;
     return ids.batchCode(courseName, startDate, cohort);
   }
 

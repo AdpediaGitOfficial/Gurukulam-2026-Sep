@@ -6,6 +6,7 @@ import type {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
+import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
@@ -114,8 +115,9 @@ export class CollegesService {
       throw ApiException.validation({ pocs: "Only one contact can be the primary" });
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const collegeCode = await this.ids.collegeCode(input.name, tx);
+    return withBusinessIdRetry(async () => {
+      const collegeCode = await this.ids.collegeCode(input.name);
+      return this.prisma.$transaction(async (tx) => {
       const college = await tx.college.create({
         data: {
           collegeCode,
@@ -148,7 +150,8 @@ export class CollegesService {
           _count: { select: { pocs: true, students: true, batches: true } },
         },
       });
-      return toCollege(college);
+        return toCollege(college);
+      });
     });
   }
 

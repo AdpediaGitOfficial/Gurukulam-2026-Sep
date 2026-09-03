@@ -10,7 +10,8 @@
     "test": "vitest run",
     "openapi": "tsx scripts/emit-openapi.ts",
     "verify": "tsx scripts/verify-auth.ts",
-    "verify:modules": "tsx scripts/verify-modules.ts"
+    "verify:modules": "tsx scripts/verify-modules.ts",
+    "verify:delivery": "tsx scripts/verify-delivery.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

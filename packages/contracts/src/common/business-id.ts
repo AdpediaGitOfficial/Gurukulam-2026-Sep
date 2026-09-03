@@ -34,8 +34,15 @@ function slug(source: string, length: number): string {
   return cleaned.padEnd(length, "X");
 }
 
-/** Initials of a multi-word name, e.g. "Sri Narayana College" → "SNC". */
-function initials(source: string, length: number): string {
+/**
+ * Initials of a multi-word name, e.g. "Sri Narayana College" → "SNC".
+ *
+ * Exported because a sequence counter MUST be keyed on the same stem the code
+ * is built from. Keying on the full name instead lets two differently-named
+ * entities that share initials hold independent counters and then collide on
+ * the code itself.
+ */
+export function codeInitials(source: string, length: number): string {
   const words = source.trim().split(/\s+/).filter(Boolean);
   const letters = words
     .map((w) => w.charAt(0))
@@ -44,6 +51,8 @@ function initials(source: string, length: number): string {
     .toUpperCase();
   return letters.length >= length ? letters.slice(0, length) : slug(source, length);
 }
+
+const initials = codeInitials;
 
 const pad = (n: number, width: number) => String(n).padStart(width, "0");
 

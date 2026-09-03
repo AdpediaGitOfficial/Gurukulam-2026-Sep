@@ -25,6 +25,7 @@ document.
 | `pnpm --filter @gurukulam/api test` | Unit tests — pure logic, no server needed |
 | `pnpm --filter @gurukulam/api verify` | Auth integration checks against a **running** API |
 | `pnpm --filter @gurukulam/api verify:modules` | Module and scope checks against a **running** API |
+| `pnpm --filter @gurukulam/api verify:delivery` | Batch, session and trainer-handshake checks |
 
 ## Shape
 
@@ -123,6 +124,19 @@ listing fields one by one rather than spreading the record. That is what keeps
 
 **Money is parsed, never floated.** Operator input goes through `parseRupees`
 (integer arithmetic on the string) and leaves as a paise string.
+
+**Business IDs are allocated OUTSIDE the transaction that inserts the row.**
+Inside one, a failed insert rolls the counter back with it, so a retry asks for
+the same number and can never make progress. Burning a code on a failed attempt
+leaves a gap, which costs nothing. Creates that allocate a code are wrapped in
+`withBusinessIdRetry`, because a counter can fall behind the rows it names — a
+restored backup or a renumbered key — and the next number is free, so a
+collision should not be a 500.
+
+**A sequence key must be derived from the same stem the code carries.** Keying
+a counter on a full name while building the code from initials gives "Data
+Analytics" and "Digital Assurance" independent counters and then the same
+`BTC-DA-SEP-A`. Use `codeInitials()` for both.
 
 **Business IDs come from `IdService`.** Allocation is a single atomic
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators

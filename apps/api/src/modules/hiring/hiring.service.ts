@@ -7,6 +7,7 @@ import {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
+import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
@@ -86,8 +87,9 @@ export class HiringService {
   async create(principal: Principal, input: CreateJobInput) {
     await this.assertAudienceValid(input.audienceRules);
 
-    return this.prisma.$transaction(async (tx) => {
-      const jobCode = await this.ids.jobCode(tx);
+    return withBusinessIdRetry(async () => {
+      const jobCode = await this.ids.jobCode();
+      return this.prisma.$transaction(async (tx) => {
       const row = await tx.jobPosting.create({
         data: {
           jobCode,
@@ -113,7 +115,8 @@ export class HiringService {
         },
         include: { audienceRules: { where: { deletedAt: null } } },
       });
-      return toJob(row);
+        return toJob(row);
+      });
     });
   }
 

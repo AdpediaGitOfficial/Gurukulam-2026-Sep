@@ -17,3 +17,4 @@ export * from "./trainers/index.js";
 export * from "./colleges/index.js";
 export * from "./hiring/index.js";
 export * from "./questions/index.js";
+export * from "./batches/index.js";

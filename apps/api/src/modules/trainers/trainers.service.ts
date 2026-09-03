@@ -8,6 +8,7 @@ import {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
+import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { assertInScope, cityScope, liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
@@ -102,8 +103,9 @@ export class TrainersService {
 
     await this.assertEmailFree(input.email);
 
-    return this.prisma.$transaction(async (tx) => {
-      const trainerCode = await this.ids.trainerCode(tx);
+    return withBusinessIdRetry(async () => {
+      const trainerCode = await this.ids.trainerCode();
+      return this.prisma.$transaction(async (tx) => {
       const trainer = await tx.trainer.create({
         data: {
           trainerCode,
@@ -121,7 +123,8 @@ export class TrainersService {
         },
         include: { city: { select: { name: true } }, _count: { select: { courses: true } } },
       });
-      return toTrainer(trainer);
+        return toTrainer(trainer);
+      });
     });
   }
 

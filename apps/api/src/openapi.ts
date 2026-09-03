@@ -9,6 +9,11 @@ import {
   createJobSchema,
   createQuestionSchema,
   createTrainerSchema,
+  batchSchema,
+  batchSessionSchema,
+  assignmentSchema,
+  createBatchSchema,
+  createSessionSchema,
   jobPostingSchema,
   loginSchema,
   pageOf,
@@ -52,6 +57,8 @@ const PAGE_PARAMS = [
 ] as const;
 
 const ID_PARAM = { name: "id", in: "path", required: true, schema: { type: "string" } } as const;
+const SESSION_PARAM = { name: "sessionId", in: "path", required: true, schema: { type: "string" } } as const;
+const ASSIGNMENT_PARAM = { name: "assignmentId", in: "path", required: true, schema: { type: "string" } } as const;
 
 const errorResponse = (description: string) => ({
   description,
@@ -81,6 +88,13 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const Job = register("JobPosting", jobPostingSchema);
   const JobPage = register("JobPostingPage", pageOf(jobPostingSchema));
   const CreateJob = register("CreateJobInput", createJobSchema);
+  const Batch = register("Batch", batchSchema);
+  const BatchPage = register("BatchPage", pageOf(batchSchema));
+  const CreateBatch = register("CreateBatchInput", createBatchSchema);
+  const BatchSession = register("BatchSession", batchSessionSchema);
+  const SessionPage = register("BatchSessionPage", pageOf(batchSessionSchema));
+  const CreateSession = register("CreateSessionInput", createSessionSchema);
+  const Assignment = register("Assignment", assignmentSchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -105,6 +119,19 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
       { name: "Colleges", description: "Scoped on both axes: city for sub-admins, college for portal users." },
       { name: "Question bank", description: "Filed under courses; assessment belongs to a course." },
       { name: "Hiring", description: "Audience is resolved at read time, never materialised." },
+      {
+        name: "Batches",
+        description:
+          "Delivery. A batch is retail (collegeId null) or dedicated to one college — the two " +
+          "rosters never mix. The trainer handshake lives here: an admin proposes, the trainer " +
+          "confirms, and only a confirmed assignment is committed delivery.",
+      },
+      {
+        name: "Sessions",
+        description:
+          "The unit that actually happens on a given day, which is why assignments and recordings " +
+          "hang off it. A session must be marked complete before assignments can be set against it.",
+      },
     ],
     components: {
       schemas: components,
@@ -114,6 +141,86 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/batches": {
+        get: {
+          tags: ["Batches"], summary: "List batches",
+          description: "`segment=RETAIL` means collegeId IS NULL; `segment=COLLEGE` means it is set. The distinction is derived, never stored, so a filter cannot drift from reality.",
+          parameters: [...PAGE_PARAMS, { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } }, { name: "courseId", in: "query", schema: { type: "string" } }, { name: "status", in: "query", schema: { type: "string" } }],
+          responses: { "200": { description: "A page of batches", content: json(BatchPage) } },
+        },
+        post: {
+          tags: ["Batches"], summary: "Create a batch",
+          description: "Omit collegeId for a retail batch. Passing requirementId confirms that requirement and links it to the batch it produced.",
+          requestBody: { required: true, content: json(CreateBatch) },
+          responses: { "201": { description: "Created", content: json(Batch) }, "400": errorResponse("Validation failed") },
+        },
+      },
+      "/batches/{id}": {
+        get: { tags: ["Batches"], summary: "One batch with its trainer handshake history", parameters: [ID_PARAM], responses: { "200": { description: "The batch", content: json(Batch) }, "404": errorResponse("Not found, or outside your scope") } },
+        patch: { tags: ["Batches"], summary: "Update a batch", description: "courseId and collegeId are not editable — changing either would move a batch between segments or curricula under an existing roster.", parameters: [ID_PARAM], responses: { "200": { description: "Updated", content: json(Batch) } } },
+        delete: { tags: ["Batches"], summary: "Soft-delete a batch and its sessions", parameters: [ID_PARAM], responses: { "204": { description: "Removed" }, "409": errorResponse("Students are still enrolled") } },
+      },
+      "/batches/{id}/trainer/propose": {
+        post: {
+          tags: ["Batches"], summary: "Propose a trainer", parameters: [ID_PARAM],
+          description: "Refused unless the trainer is approved for this batch's course, and refused on a schedule clash — free/busy is computed from committed sessions plus declared leave, never stored.",
+          responses: { "200": { description: "Proposed" }, "409": errorResponse("A proposal is already open"), "422": errorResponse("Not approved for the course, or double-booked") },
+        },
+        delete: { tags: ["Batches"], summary: "Withdraw an open proposal", parameters: [ID_PARAM], responses: { "204": { description: "Withdrawn" } } },
+      },
+      "/batches/{id}/trainer/respond": {
+        post: {
+          tags: ["Batches"], summary: "Confirm or decline the open proposal", parameters: [ID_PARAM],
+          description: "Confirming sets the batch's primary trainer and back-fills unassigned sessions. Declining returns the batch to unassigned and keeps the reason; nothing is auto-reassigned.",
+          responses: { "200": { description: "Recorded" }, "400": errorResponse("A decline needs a reason") },
+        },
+      },
+      "/batches/sessions": {
+        get: { tags: ["Sessions"], summary: "List sessions", description: "Scope reaches a session through its batch.", parameters: [...PAGE_PARAMS, { name: "batchId", in: "query", schema: { type: "string" } }, { name: "from", in: "query", schema: { type: "string", format: "date" } }, { name: "to", in: "query", schema: { type: "string", format: "date" } }], responses: { "200": { description: "A page of sessions", content: json(SessionPage) } } },
+        post: { tags: ["Sessions"], summary: "Schedule a session", description: "The topic must belong to the batch's own course. Sequence is allocated, and the batch's confirmed trainer is inherited.", requestBody: { required: true, content: json(CreateSession) }, responses: { "201": { description: "Created", content: json(BatchSession) } } },
+      },
+      "/batches/sessions/{sessionId}": {
+        get: { tags: ["Sessions"], summary: "One session with its assignments and recording", parameters: [SESSION_PARAM], responses: { "200": { description: "The session", content: json(BatchSession) } } },
+        patch: { tags: ["Sessions"], summary: "Edit a scheduled session", parameters: [SESSION_PARAM], responses: { "200": { description: "Updated", content: json(BatchSession) }, "409": errorResponse("Completed — reopen or reschedule instead") } },
+        delete: { tags: ["Sessions"], summary: "Soft-delete a session", parameters: [SESSION_PARAM], responses: { "204": { description: "Removed" }, "409": errorResponse("Completed sessions are delivery history") } },
+      },
+      "/batches/sessions/{sessionId}/complete": {
+        post: {
+          tags: ["Sessions"], summary: "Mark a session complete", parameters: [SESSION_PARAM],
+          description: "The deliberate act that releases assignments and prompts for the recording. Not a date passing — a date-based rule would open assignments on a session cancelled at the last minute.",
+          responses: { "200": { description: "Completed", content: json(BatchSession) }, "409": errorResponse("Already complete, or cancelled") },
+        },
+      },
+      "/batches/sessions/{sessionId}/reopen": {
+        post: { tags: ["Sessions"], summary: "Reopen a completed session", parameters: [SESSION_PARAM], description: "Refused while published assignments hang off it.", responses: { "200": { description: "Reopened", content: json(BatchSession) }, "409": errorResponse("Published assignments attached") } },
+      },
+      "/batches/sessions/{sessionId}/reschedule": {
+        post: {
+          tags: ["Sessions"], summary: "Move a session", parameters: [SESSION_PARAM],
+          description: "Updates in place so attendance and the recording stay attached — a cancel-and-recreate would orphan both. The reason is required because the roster is told.",
+          responses: { "200": { description: "Moved", content: json(BatchSession) }, "400": errorResponse("A reason is required") },
+        },
+      },
+      "/batches/sessions/{sessionId}/cancel": {
+        post: { tags: ["Sessions"], summary: "Cancel a session", parameters: [SESSION_PARAM], responses: { "200": { description: "Cancelled", content: json(BatchSession) } } },
+      },
+      "/batches/sessions/{sessionId}/assignments": {
+        post: {
+          tags: ["Sessions"], summary: "Set an assignment against a session", parameters: [SESSION_PARAM],
+          description: "Refused until the session is marked complete. The assignment belongs to the batch; its session link is what this endpoint adds.",
+          responses: { "201": { description: "Created", content: json(Assignment) }, "422": errorResponse("The session is not complete") },
+        },
+      },
+      "/batches/assignments/{assignmentId}": {
+        patch: { tags: ["Sessions"], summary: "Update an assignment", parameters: [ASSIGNMENT_PARAM], responses: { "200": { description: "Updated", content: json(Assignment) } } },
+        delete: { tags: ["Sessions"], summary: "Soft-delete an assignment", parameters: [ASSIGNMENT_PARAM], responses: { "204": { description: "Removed" }, "409": errorResponse("Students have submitted") } },
+      },
+      "/batches/sessions/{sessionId}/recording": {
+        post: { tags: ["Sessions"], summary: "Link or replace the recording", parameters: [SESSION_PARAM], description: "One per session, replaced rather than duplicated. Refused until the session is complete.", responses: { "200": { description: "Linked" }, "422": errorResponse("The session is not complete") } },
+      },
+      "/batches/sessions/{sessionId}/recording/unpublish": {
+        post: { tags: ["Sessions"], summary: "Unpublish the recording", parameters: [SESSION_PARAM], responses: { "200": { description: "Unpublished" } } },
+      },
       "/courses": {
         get: {
           tags: ["Courses"], summary: "List courses",

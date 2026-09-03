@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  batchCode, certificateCode, collegeCode, sessionCode, studentCode, transactionCode,
+  batchCode, certificateCode, codeInitials, collegeCode, sessionCode, studentCode, transactionCode,
 } from "@gurukulam/contracts";
 import { parseDuration } from "../src/modules/auth/auth.service";
 
@@ -44,5 +44,26 @@ describe("duration parsing", () => {
 
   it("refuses a malformed duration rather than defaulting silently", () => {
     expect(() => parseDuration("forever")).toThrow();
+  });
+});
+
+describe("sequence keys must match the code stem", () => {
+  it("two courses sharing initials produce the same stem", () => {
+    // This is the bug the batch-code collision came from: keying a counter on
+    // the full name gives these two independent sequences, and then both
+    // claim BTC-DA-SEP-A.
+    expect(codeInitials("Data Analytics", 2)).toBe(codeInitials("Digital Assurance", 2));
+    expect(codeInitials("Data Analytics", 2)).toBe("DA");
+  });
+
+  it("two colleges sharing initials do too", () => {
+    expect(codeInitials("Sri Narayana College", 3)).toBe("SNC");
+    expect(codeInitials("Saraswati National College", 3)).toBe("SNC");
+  });
+
+  it("the stem is what the generated code carries", () => {
+    const start = new Date("2026-09-07T00:00:00Z");
+    expect(batchCode("Data Analytics", start, 0)).toContain(codeInitials("Data Analytics", 2));
+    expect(collegeCode("Sri Narayana College", 1)).toContain(codeInitials("Sri Narayana College", 3));
   });
 });

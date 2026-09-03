@@ -13,6 +13,7 @@ import {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
+import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
@@ -90,9 +91,10 @@ export class CoursesService {
   async create(principal: Principal, input: CreateCourseInput) {
     const standardMarketValueMinor = this.parseMoney(input.standardMarketValue, "standardMarketValue");
 
-    return this.prisma.$transaction(async (tx) => {
-      // Allocated inside the transaction so a rollback does not burn a code.
-      const courseCode = await this.ids.courseCode(input.name, tx);
+    return withBusinessIdRetry(async () => {
+      // Allocated OUTSIDE the transaction — see batches.service.ts.
+      const courseCode = await this.ids.courseCode(input.name);
+      return this.prisma.$transaction(async (tx) => {
 
       const course = await tx.course.create({
         data: {
@@ -122,7 +124,8 @@ export class CoursesService {
         include: { topics: { orderBy: { sequence: "asc" } }, _count: { select: { topics: true, batches: true, trainerCourses: true } } },
       });
 
-      return toCourse(course);
+        return toCourse(course);
+      });
     });
   }
 

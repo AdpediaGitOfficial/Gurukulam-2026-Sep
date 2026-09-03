@@ -9,6 +9,7 @@ import { TrainersModule } from "./modules/trainers/trainers.module";
 import { CollegesModule } from "./modules/colleges/colleges.module";
 import { QuestionsModule } from "./modules/questions/questions.module";
 import { HiringModule } from "./modules/hiring/hiring.module";
+import { BatchesModule } from "./modules/batches/batches.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
@@ -27,6 +28,9 @@ import { ConfigModule } from "./config/config.module";
     CollegesModule,
     QuestionsModule,
     HiringModule,
+    // M6 — delivery. Needs courses, trainers and (for college batches)
+    // colleges, so it sits downstream of the five parallel tracks.
+    BatchesModule,
   ],
   controllers: [HealthController],
   providers: [
