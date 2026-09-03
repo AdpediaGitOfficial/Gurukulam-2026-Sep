@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+ * Gurukulam TMS — Design tokens
+ * ---------------------------------------------------------------------------
+ * The single source of truth for the visual language. Components MUST consume
+ * these tokens (`bg-surface`, `text-ink-muted`, `rounded-card`, `text-h1`,
+ * `shadow-raised`) and MUST NOT contain raw hex values, px font sizes or
+ * one-off shadows. Re-theming is then a change to this file alone.
+ *
+ * See docs/design-system.md for the rules that govern additions here.
+ * ======================================================================== */
+@theme {
+  /* ---- Surfaces ------------------------------------------------------- */
+  --color-canvas: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f8f9fa;
+  /** Resting fill for unselected segmented controls. */
+  --color-surface-muted: #ebebeb;
+  /** Warm panel fill for module banners and callouts. */
+  --color-surface-soft: #fffbf2;
+
+  /* ---- Borders --------------------------------------------------------
+   * Two, and only two, and both on the same blue axis so the page reads as
+   * one system.
+   *
+   * `hairline` draws every container edge and separator. `hairline-strong`
+   * is reserved for form controls, where the border is the only thing
+   * showing an empty field exists — WCAG 1.4.11 puts a 3:1 floor on that,
+   * and this clears it at 3.35:1 on white / 3.18:1 on canvas without
+   * becoming the heaviest line on the page. It was previously a warm tan at
+   * 4.47:1, which cleared the bar but read as a different design language
+   * next to the cool container borders.
+   * -------------------------------------------------------------------- */
+  --color-hairline: #dfeeff;
+  --color-hairline-strong: #758fab;
+
+  /* ---- Text ----------------------------------------------------------- */
+  --color-ink: #191c1d;
+  --color-ink-muted: #524533;
+  --color-ink-subtle: #6b7280;
+  /* Darkened from the design's #664400 to clear 4.5:1 on `accent` (was 4.47:1). */
+  --color-on-accent: #5c3d00;
+
+  /* ---- Brand ---------------------------------------------------------- */
+  --color-brand: #0058bb;
+  --color-accent: #f9ab00;
+  --color-accent-glow: #ffddb0;
+  --color-gold: #805600;
+  --color-rail: #b63a13;
+  --color-rail-raised: #b53a13;
+
+  /* ---- Feedback intents -----------------------------------------------
+   * `*-strong` are the text-safe shades. The base colours are tuned for dots,
+   * fills and bars; several of them fall under 4.5:1 on white, so anything
+   * rendering an intent as *text* must use the strong variant.
+   * -------------------------------------------------------------------- */
+  --color-success: #16a34a;
+  --color-success-strong: #166534;
+  --color-warning: #ea580c;
+  --color-warning-strong: #9a3412;
+  --color-danger: #ba1a1a;
+  --color-info: #0058bb;
+  --color-neutral: #e1e3e4;
+
+  /* ---- Business domains ----------------------------------------------- */
+  --color-domain-students: #ba1a1a;
+  --color-domain-trainers: #0058bb;
+  --color-domain-colleges: #b12d00;
+  --color-domain-question-bank: #805600;
+  --color-domain-localisation: #b12d00;
+  --color-domain-courses: #805600;
+
+  /* ---- Type scale ------------------------------------------------------
+   * Semantic, not sized: use `text-h1`, never `text-[20px]`.
+   * -------------------------------------------------------------------- */
+  --text-display: 36px;
+  --text-display--line-height: 40px;
+  --text-display--font-weight: 700;
+
+  --text-metric: 30px;
+  --text-metric--line-height: 36px;
+  --text-metric--font-weight: 700;
+
+  --text-metric-sm: 25px;
+  --text-metric-sm--line-height: 32px;
+  --text-metric-sm--font-weight: 700;
+
+  --text-h1: 20px;
+  --text-h1--line-height: 28px;
+  --text-h1--font-weight: 600;
+
+  --text-h2: 18px;
+  --text-h2--line-height: 24px;
+  --text-h2--font-weight: 600;
+
+  --text-h3: 16px;
+  --text-h3--line-height: 24px;
+  --text-h3--font-weight: 600;
+
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 20px;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+
+  --text-overline: 10px;
+  --text-overline--line-height: 15px;
+  --text-overline--font-weight: 700;
+  --text-overline--letter-spacing: 0.5px;
+
+  /* ---- Radii ---------------------------------------------------------- */
+  --radius-chip: 4px;
+  --radius-control: 8px;
+  --radius-tile: 12px;
+  --radius-well: 16px;
+  --radius-card: 24px;
+  --radius-panel: 31px;
+
+  /* ---- Elevation ------------------------------------------------------ */
+  --shadow-raised: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-panel: 0 12px 24px 0 rgb(0 0 0 / 0.15);
+  --shadow-floating: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-overlay: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+  /* ---- Layout --------------------------------------------------------- */
+  --spacing-rail: 80px;
+  --spacing-topbar: 94px;
+  --spacing-content: 1600px;
+
+  /* ---- Motion --------------------------------------------------------- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Type families -------------------------------------------------- */
+  --font-sans: var(--font-plus-jakarta-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Keyboard-only focus ring, applied consistently to every interactive node. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility drawer-panel {
+  /* Slides in from the right. `allow-discrete` lets the native <dialog>'s
+     display flip participate in the transition, so it animates both ways.
+     The reduced-motion guard above collapses this to an instant swap. */
+  translate: 100% 0;
+  transition:
+    translate 220ms var(--ease-standard),
+    display 220ms allow-discrete,
+    overlay 220ms allow-discrete;
+
+  &[open] {
+    translate: 0 0;
+  }
+
+  @starting-style {
+    &[open] {
+      translate: 100% 0;
+    }
+  }
+}
+
+@utility tinted-surface {
+  /* 10%-opacity wash of the element's own colour — the design's chip and
+     icon-tile treatment. Pair with an inline `color`. */
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
