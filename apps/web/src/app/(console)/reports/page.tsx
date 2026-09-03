@@ -37,7 +37,12 @@ const GROUP_ORDER = ["Money", "Enrolment", "Delivery", "Outcomes", "Placement"] 
  * the same thing — linking on that alone sends the operator to a 404. A report
  * whose query is ready but whose screen is not says so.
  */
-const CONSOLE_SCREENS = new Set<string>([]);
+const CONSOLE_SCREENS = new Set<string>([
+  "/reports/outstanding",
+  "/reports/collections",
+  "/reports/unallocated",
+  "/reports/batch-progress",
+]);
 
 function ReportCard({ report }: { report: ReportCatalogueEntry }) {
   const group = GROUPS[report.group];

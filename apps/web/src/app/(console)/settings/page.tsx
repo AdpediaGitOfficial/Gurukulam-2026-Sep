@@ -47,7 +47,6 @@ const SECTIONS: ReadonlyArray<{
     description: "Operating countries, their currencies, dial codes and default timezones.",
     icon: "globe",
     color: domainTokens.localisation,
-    built: false,
   },
   {
     href: "/settings/cities",
@@ -55,7 +54,6 @@ const SECTIONS: ReadonlyArray<{
     description: "Operating cities mapped to their parent country. Cities scope sub-admin access.",
     icon: "college",
     color: domainTokens.colleges,
-    built: false,
   },
 ];
 

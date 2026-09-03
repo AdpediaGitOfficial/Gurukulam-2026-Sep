@@ -92,7 +92,7 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "batches",
     children: [
       { href: "/batches", label: "All batches" },
-      { href: "/batches/sessions", label: "Sessions" , built: false },
+      { href: "/batches/sessions", label: "Sessions" },
     ],
   },
   {
@@ -123,10 +123,10 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "reports",
     children: [
       { href: "/reports", label: "Library" },
-      { href: "/reports/outstanding", label: "Outstanding & ageing" , built: false },
-      { href: "/reports/collections", label: "Collection register" , built: false },
-      { href: "/reports/unallocated", label: "Unallocated ageing" , built: false },
-      { href: "/reports/batch-progress", label: "Batch progress" , built: false },
+      { href: "/reports/outstanding", label: "Outstanding & ageing" },
+      { href: "/reports/collections", label: "Collection register" },
+      { href: "/reports/unallocated", label: "Unallocated ageing" },
+      { href: "/reports/batch-progress", label: "Batch progress" },
     ],
   },
 ];
@@ -142,8 +142,8 @@ export const secondaryNavItems: readonly NavItem[] = [
       { href: "/settings", label: "General" },
       { href: "/settings/roles", label: "Roles" },
       { href: "/settings/administrators", label: "Administrators" },
-      { href: "/settings/countries", label: "Countries" , built: false },
-      { href: "/settings/cities", label: "Cities" , built: false },
+      { href: "/settings/countries", label: "Countries" },
+      { href: "/settings/cities", label: "Cities" },
     ],
   },
   // Your own profile and password. Everyone has one, so it is not gated.

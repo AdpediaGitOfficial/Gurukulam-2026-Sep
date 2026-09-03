@@ -19,7 +19,9 @@ export function SegmentTag({ segment, className }: SegmentTagProps) {
   return (
     <span
       className={cn(
-        "inline-flex h-[22px] items-center rounded-full px-2.5 text-overline font-bold",
+        // `w-fit` because a flex column stretches its children: without it the
+        // tag fills the whole table cell and reads as a coloured band.
+        "inline-flex h-[22px] w-fit items-center rounded-full px-2.5 text-overline font-bold",
         retail ? "bg-danger/10 text-danger" : "bg-brand/10 text-brand",
         className,
       )}
