@@ -170,7 +170,11 @@ async function main() {
   expect("…and stays locked", locked.body.error.code, "ACCOUNT_LOCKED");
 
   console.log("\n\x1b[1mOpenAPI document\x1b[0m");
-  const spec = await (await fetch(`${BASE}/openapi.json`)).json();
+  const spec = (await (await fetch(`${BASE}/openapi.json`)).json()) as {
+    openapi: string;
+    paths: Record<string, unknown>;
+    components: { schemas: Record<string, unknown> };
+  };
   expect("the spec is served", spec.openapi, "3.1.0");
   expect("…and describes the auth surface", Object.keys(spec.paths).includes("/auth/login"), true);
   expect("…with schemas generated from the contracts", Object.keys(spec.components.schemas).includes("Session"), true);
