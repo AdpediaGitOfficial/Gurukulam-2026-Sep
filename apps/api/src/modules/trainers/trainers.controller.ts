@@ -1,15 +1,36 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import {
-  approveCoursesSchema, createTrainerSchema, trainerQuerySchema, updateTrainerSchema,
-  type ApproveCoursesInput, type CreateTrainerInput, type Principal, type TrainerQuery, type UpdateTrainerInput,
+  approveCoursesSchema, calendarQuerySchema, createTrainerSchema, declareAvailabilitySchema,
+  trainerQuerySchema, updateTrainerSchema,
+  type ApproveCoursesInput, type CalendarQuery, type CreateTrainerInput,
+  type DeclareAvailabilityInput, type Principal, type TrainerQuery, type UpdateTrainerInput,
 } from "@gurukulam/contracts";
 import { TrainersService } from "./trainers.service";
+import { AvailabilityService } from "./availability.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
 import { CurrentPrincipal, RequirePermission } from "../../common/decorators/principal.decorator";
 
 @Controller("trainers")
 export class TrainersController {
-  constructor(private readonly trainers: TrainersService) {}
+  constructor(
+    private readonly trainers: TrainersService,
+    private readonly availability: AvailabilityService,
+  ) {}
+
+  /**
+   * The availability calendar — the ASSIGNMENT SURFACE, not a report. Declared
+   * before ":id" so it is never read as a trainer id.
+   *
+   * Free/busy is computed from committed sessions plus declared leave
+   * (invariant 8). Pass `courseId` and each entry also says whether the
+   * trainer is approved for it (invariant 15), which is the question the batch
+   * picker is really asking.
+   */
+  @Get("calendar")
+  @RequirePermission("trainers", "read")
+  calendar(@CurrentPrincipal() p: Principal, @Query(zodBody(calendarQuerySchema)) q: CalendarQuery) {
+    return this.availability.calendar(p, q);
+  }
 
   @Get()
   @RequirePermission("trainers", "read")
@@ -40,6 +61,26 @@ export class TrainersController {
   @RequirePermission("trainers", "edit")
   approveCourses(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(approveCoursesSchema)) body: ApproveCoursesInput) {
     return this.trainers.approveCourses(p, id, body);
+  }
+
+  @Get(":id/availability")
+  @RequirePermission("trainers", "read")
+  listAvailability(@CurrentPrincipal() p: Principal, @Param("id") id: string) {
+    return this.availability.list(p, id);
+  }
+
+  /** Refused when it would cover a session the trainer is committed to. */
+  @Post(":id/availability")
+  @RequirePermission("trainers", "edit")
+  declare(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(declareAvailabilitySchema)) body: DeclareAvailabilityInput) {
+    return this.availability.declare(p, id, body);
+  }
+
+  @Delete("availability/:availabilityId")
+  @RequirePermission("trainers", "edit")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async withdraw(@CurrentPrincipal() p: Principal, @Param("availabilityId") id: string): Promise<void> {
+    await this.availability.withdraw(p, id);
   }
 
   @Delete(":id")

@@ -6,6 +6,7 @@ import { ApiException } from "../../common/errors";
 import { assertInScope } from "../../common/scope/scope";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { hashPassword } from "../auth/password";
+import { studentLoginEmail } from "@gurukulam/contracts";
 import { parseMoneyField } from "./students.service";
 import { randomBytes } from "node:crypto";
 
@@ -191,6 +192,10 @@ export class AllocationService {
               // A temporary secret the student must replace. The welcome pack
               // carries it; nothing here logs it.
               passwordHash: hashPassword(randomBytes(18).toString("base64url")),
+              // The portal identity, derived from the immutable student code
+              // so it is unique by construction and never has to change. Their
+              // own email is left alone — receipts go there.
+              loginEmail: studentLoginEmail(student.studentCode),
               mustReset: true,
               credentialsIssuedAt: new Date(),
             },

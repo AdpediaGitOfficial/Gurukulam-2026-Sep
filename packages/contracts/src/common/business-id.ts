@@ -113,3 +113,39 @@ export const certificateCode = (year: number, sequence: number) =>
 
 export const jobCode = (year: number, sequence: number) =>
   `${ID_PREFIXES.job}-${year}-${pad(sequence, 4)}`;
+
+/**
+ * Portal LOGIN identities.
+ *
+ * Derived from the immutable business ID rather than a person's name, which
+ * gives three properties worth having:
+ *
+ *   · unique by construction — the business ID already is, so two students
+ *     with the same name cannot collide;
+ *   · stable — a marriage, a transfer or a corrected spelling never invalidates
+ *     a login;
+ *   · recognisable — an operator reading `stu-2026-0891@…` knows exactly which
+ *     record it is.
+ *
+ * These are NOT the contact address. Receipts, invoices and reminders go to
+ * the person's real email, which stays untouched — invariant 6 resolves an
+ * installment's recipient through it.
+ */
+export const DEFAULT_PORTAL_DOMAIN = "gurukulam.com";
+
+/** stu-2026-0891@gurukulam.com */
+export const studentLoginEmail = (studentCode: string, domain = DEFAULT_PORTAL_DOMAIN) =>
+  `${studentCode.toLowerCase()}@${domain}`;
+
+/**
+ * snc@gurukulam.com — from the college's code, dropping the CLG- prefix and
+ * the running number, so the identity reads as the institution.
+ */
+export function collegeLoginEmail(collegeCode: string, domain = DEFAULT_PORTAL_DOMAIN): string {
+  const stem = collegeCode.replace(/^CLG-/i, "").split("-")[0] ?? collegeCode;
+  return `${stem.toLowerCase()}@${domain}`;
+}
+
+/** trn-0042@gurukulam.com */
+export const trainerLoginEmail = (trainerCode: string, domain = DEFAULT_PORTAL_DOMAIN) =>
+  `${trainerCode.toLowerCase()}@${domain}`;

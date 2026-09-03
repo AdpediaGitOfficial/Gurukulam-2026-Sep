@@ -14,6 +14,8 @@ import { StudentsModule } from "./modules/students/students.module";
 import { LedgerModule } from "./modules/ledger/ledger.module";
 import { CertificatesModule } from "./modules/certificates/certificates.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
+import { LocalisationModule } from "./modules/localisation/localisation.module";
+import { RequirementsModule } from "./modules/requirements/requirements.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
@@ -44,6 +46,11 @@ import { ConfigModule } from "./config/config.module";
     // M11 — last, because it aggregates over everything above. Building it
     // earlier would mean computing every number twice.
     DashboardModule,
+    // M2 — set-up-once configuration. Cities are the unit operators scope to.
+    LocalisationModule,
+    // M3's remaining half — the college engagement's entry point, and the
+    // college portal's server side.
+    RequirementsModule,
   ],
   controllers: [HealthController],
   providers: [

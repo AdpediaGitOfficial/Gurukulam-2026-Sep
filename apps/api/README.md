@@ -30,6 +30,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:money` | Ledger, contract, payment and reminder-recipient checks |
 | `pnpm --filter @gurukulam/api verify:certificates` | Submission flow, eligibility and the access asymmetry |
 | `pnpm --filter @gurukulam/api verify:dashboard` | That every aggregate is scoped, and the figures are true |
+| `pnpm --filter @gurukulam/api verify:completions` | Localisation, requirements, portal access and availability |
 
 ## Shape
 
@@ -152,6 +153,20 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**A portal login identity is separate from the contact address.** A college
+user signs in as `snc@gurukulam.com` and a student as
+`stu-2026-0891@gurukulam.com`, both derived from an immutable business ID — so
+they are unique by construction, stable across a name change, and recognisable
+to an operator. The person's real `email` is untouched, because receipts,
+invoices and reminders go there and invariant 6 resolves an installment's
+recipient through it. Login accepts either.
+
+**A business ID is never reused, so re-adding an archived record must REVIVE
+it.** `country_code` is derived from the ISO-2 and carries an unconditional
+unique constraint; a plain insert made archiving India permanently block
+re-adding it, surfacing as a 500 after the retry exhausted itself. There is
+only one India — the archived row is the record being asked for.
 
 **Narrow a scoped `where` with `AND`, never a spread.**
 `{ ...batchScope, collegeId: null }` looks equivalent to AND-ing the two and is

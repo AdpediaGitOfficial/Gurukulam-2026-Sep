@@ -22,3 +22,6 @@ export * from "./students/index.js";
 export * from "./ledger/index.js";
 export * from "./certificates/index.js";
 export * from "./dashboard/index.js";
+export * from "./localisation/index.js";
+export * from "./requirements/index.js";
+export * from "./availability/index.js";

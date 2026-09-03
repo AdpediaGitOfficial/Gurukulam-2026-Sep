@@ -17,6 +17,16 @@
 import { randomBytes, scryptSync } from "node:crypto";
 import { PrismaClient, Prisma } from "@prisma/client";
 
+/**
+ * Portal login identities, derived from immutable business IDs. Kept in step
+ * with `@gurukulam/contracts` — the seed cannot import it, because db sits
+ * below contracts in the dependency order.
+ */
+const PORTAL_DOMAIN = "gurukulam.com";
+const studentLogin = (code: string) => `${code.toLowerCase()}@${PORTAL_DOMAIN}`;
+const collegeLogin = (code: string) =>
+  `${(code.replace(/^CLG-/i, "").split("-")[0] ?? code).toLowerCase()}@${PORTAL_DOMAIN}`;
+
 const prisma = new PrismaClient();
 
 /** Dev-only password for every seeded account. Real hashing lands with auth. */
@@ -44,7 +54,7 @@ const READ_ONLY = { read: true, edit: false, delete: false };
  */
 const MODULES = [
   "dashboard", "colleges", "students", "courses", "batches",
-  "trainers", "feeLedger", "hiring", "reports", "certificates",
+  "trainers", "feeLedger", "hiring", "reports", "requirements", "certificates",
   "notifications", "settings",
 ];
 
@@ -225,7 +235,9 @@ async function seedRetail(ctx: {
       collegeId: null, enrolmentChannel: "RETAIL", createdByType: "ADMIN_USER",
       countryId: country.countryId, cityId: city.cityId,
       discipline: "B.Com", passoutYear: 2024, qualification: "B.Com",
-      passwordHash: hashPassword(DEV_PASSWORD), credentialsIssuedAt: new Date(),
+      passwordHash: hashPassword(DEV_PASSWORD),
+      loginEmail: studentLogin("STU-2026-0891"),
+      credentialsIssuedAt: new Date(),
       batchMappings: { create: [{ ...by, batchId: batch.batchId, enrolledBy: superAdmin.adminUserId }] },
     },
   });
@@ -321,6 +333,9 @@ async function seedCollege(ctx: {
       collegeId: college.collegeId, pocId: college.pocs[0]!.pocId,
       name: "Dr. S. Ramakrishnan", email: "tpo@snc.example.test", phone: "+919845000111",
       passwordHash: hashPassword(DEV_PASSWORD),
+      // snc@gurukulam.com — the portal identity. `email` above stays the
+      // POC's real address, which is where invoices go (invariant 6).
+      loginEmail: collegeLogin(college.collegeCode),
       accessStatus: "GRANTED", grantedAt: new Date(),
       // A college portal user reads their OWN institution's profile, adds
       // their students, and reviews certificates. Scope narrows every one of
@@ -338,6 +353,10 @@ async function seedCollege(ctx: {
         dashboard: READ_ONLY,
         // Their own college profile and contacts, read-only.
         colleges: READ_ONLY,
+        // They raise their own requirements — the college engagement's entry
+        // point. A separate permission from `colleges` precisely so raising
+        // one does not also grant edit rights over the institution's record.
+        requirements: READ_EDIT,
         // They onboard their own students — the auditable intake path.
         students: READ_EDIT,
         // `edit` because a POC UPLOADS the list of names.
@@ -407,7 +426,9 @@ async function seedCollege(ctx: {
         createdBy: collegeUser.collegeUserId,
         countryId: country.countryId, cityId: city.cityId,
         discipline: "CSE", passoutYear: 2027,
-        passwordHash: hashPassword(DEV_PASSWORD), credentialsIssuedAt: new Date(),
+        passwordHash: hashPassword(DEV_PASSWORD),
+        loginEmail: studentLogin(s.code),
+        credentialsIssuedAt: new Date(),
         // Credentials are issued, session access granted — but NO fee ledger.
         // The college is billed under the contract below (invariant 3).
         batchMappings: { create: [{ createdBy: collegeUser.collegeUserId, batchId: batch.batchId, enrolledBy: collegeUser.collegeUserId }] },

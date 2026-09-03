@@ -40,6 +40,10 @@ export const MODULES = [
   "feeLedger",
   "hiring",
   "reports",
+  // Requirements sit under Colleges in the nav, but carry their OWN
+  // permission: a college portal user must be able to raise one without
+  // thereby gaining edit rights over their institution's record.
+  "requirements",
   "certificates",
   "notifications",
   "settings",

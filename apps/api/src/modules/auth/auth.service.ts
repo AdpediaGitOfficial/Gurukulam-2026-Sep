@@ -197,12 +197,32 @@ export class AuthService {
 
   // ── Per-actor credential lookup ─────────────────────────────────────────
 
+  /**
+   * Looks an actor up by EITHER identity.
+   *
+   * A portal account has two addresses that both belong to it: the derived
+   * login identity (snc@gurukulam.com, stu-2026-0891@gurukulam.com) and the
+   * person's real contact address, which stays untouched because receipts and
+   * invoices go there.
+   *
+   * Accepting both means an operator who knows only the contact address can
+   * still sign someone in, and a user who was told their portal identity does
+   * not have to remember which is which.
+   */
   private async findCredential(actor: LoginInput["actor"], email: string): Promise<Credential | null> {
-    const where = { email: { equals: email, mode: "insensitive" as const }, deletedAt: null };
+    const insensitive = { equals: email, mode: "insensitive" as const };
+    const where = {
+      deletedAt: null,
+      OR: [{ email: insensitive }, { loginEmail: insensitive }],
+    };
 
     switch (actor) {
       case "ADMIN_USER": {
-        const u = await this.prisma.adminUser.findFirst({ where });
+        // Admins have no derived portal identity — they are staff, and their
+        // work address is their login.
+        const u = await this.prisma.adminUser.findFirst({
+          where: { email: insensitive, deletedAt: null },
+        });
         return u && { id: u.adminUserId, passwordHash: u.passwordHash, mustReset: u.mustReset, active: u.accountStatus === "ACTIVE" };
       }
       case "COLLEGE_USER": {

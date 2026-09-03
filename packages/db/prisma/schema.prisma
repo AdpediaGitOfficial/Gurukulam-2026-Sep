@@ -361,6 +361,13 @@ model CollegeUser {
   email         String             @db.VarChar(255)
   phone         String?            @db.VarChar(24)
   passwordHash  String?            @map("password_hash") @db.VarChar(255)
+  /// The PORTAL LOGIN identity, e.g. snc@gurukulam.com. Derived from the
+  /// college's immutable code, so it is unique by construction.
+  ///
+  /// Deliberately separate from `email`, which stays the POC's real address —
+  /// invariant 6 resolves a contract installment's recipient through it, so
+  /// overwriting it would send invoices to a login identity nobody reads.
+  loginEmail    String?            @map("login_email") @db.VarChar(255)
   mustReset     Boolean            @default(true) @map("must_reset_password")
   permissions   Json               @default("{}")
   accessStatus  PortalAccessStatus @default(NONE) @map("access_status")
@@ -721,6 +728,14 @@ model Trainer {
   email               String        @db.VarChar(255)
   phone               String?       @db.VarChar(24)
   passwordHash        String?       @map("password_hash") @db.VarChar(255)
+  /// The PORTAL LOGIN identity, e.g. stu-2026-0891@gurukulam.com. Derived
+  /// from the immutable business ID, so it is unique by construction and
+  /// never has to change.
+  ///
+  /// Deliberately separate from `email`, which stays the person's real
+  /// address: receipts, invoices and reminders go there, and invariant 6
+  /// resolves an installment's recipient through it.
+  loginEmail          String?       @map("login_email") @db.VarChar(255)
   mustReset           Boolean       @default(true) @map("must_reset_password")
   credentialsIssuedAt DateTime?     @map("credentials_issued_at")
   qualification       String?       @db.VarChar(255)
@@ -996,6 +1011,14 @@ model Student {
 
   /// The spec gave students an account_status and no way to authenticate.
   passwordHash        String?       @map("password_hash") @db.VarChar(255)
+  /// The PORTAL LOGIN identity, e.g. stu-2026-0891@gurukulam.com. Derived
+  /// from the immutable business ID, so it is unique by construction and
+  /// never has to change.
+  ///
+  /// Deliberately separate from `email`, which stays the person's real
+  /// address: receipts, invoices and reminders go there, and invariant 6
+  /// resolves an installment's recipient through it.
+  loginEmail          String?       @map("login_email") @db.VarChar(255)
   mustReset           Boolean       @default(true) @map("must_reset_password")
   credentialsIssuedAt DateTime?     @map("credentials_issued_at")
   lastLoginAt         DateTime?     @map("last_login_at")
