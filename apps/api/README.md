@@ -31,6 +31,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:certificates` | Submission flow, eligibility and the access asymmetry |
 | `pnpm --filter @gurukulam/api verify:dashboard` | That every aggregate is scoped, and the figures are true |
 | `pnpm --filter @gurukulam/api verify:completions` | Localisation, requirements, portal access and availability |
+| `pnpm --filter @gurukulam/api verify:access` | Roles, administrators, escalation guards and the account screen |
 
 ## Shape
 
@@ -153,6 +154,22 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**Nobody grants permissions or region scope beyond their own.** Without that
+guard, `settings:edit` quietly means "become a Super Admin": an operator writes
+a role holding everything and assigns it to themselves, in one request, from a
+permission that sounds administrative rather than dangerous. Both the role
+matrix and role assignment are checked against the granting principal.
+
+**Nobody edits their own role, scope or account status** (invariant 19), and
+the account screen is photo-only for the same reason — letting an operator
+widen their own region would make the whole scope model advisory. That body is
+`.strict()`: sending `roleId` is refused, not silently dropped, because a 200
+would leave them believing it took effect.
+
+**The last active Super Admin cannot be removed or demoted.** Checked by
+capability (`settings:delete`) rather than by role name, so a renamed role that
+is still load-bearing is still protected.
 
 **A portal login identity is separate from the contact address.** A college
 user signs in as `snc@gurukulam.com` and a student as

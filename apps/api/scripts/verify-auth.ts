@@ -26,7 +26,20 @@ function bad(name: string, detail: string) {
   failed++;
   console.log(`  \x1b[31m✗\x1b[0m ${name}\n      \x1b[31m${detail}\x1b[0m`);
 }
-const show = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x));
+const show = (v: unknown) => JSON.stringify(canonical(v));
+
+/** Sorts object keys so a comparison does not depend on their order. */
+function canonical(v: unknown): unknown {
+  if (typeof v === "bigint") return `${v}n`;
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, x]) => [k, canonical(x)]),
+    );
+  }
+  return v;
+}
 
 function expect(name: string, actual: unknown, wanted: unknown) {
   const a = JSON.stringify(actual);

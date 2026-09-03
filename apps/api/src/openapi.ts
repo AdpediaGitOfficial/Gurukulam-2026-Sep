@@ -19,6 +19,12 @@ import {
   ledgerSummarySchema,
   certificateSchema,
   dashboardSchema,
+  roleSchema,
+  createRoleSchema,
+  adminUserSchema,
+  createAdminUserSchema,
+  issuedAdminCredentialSchema,
+  accountSchema,
   eligibilitySchema,
   issueCertificateSchema,
   submissionSchema,
@@ -78,6 +84,8 @@ const PAGE_PARAMS = [
 ] as const;
 
 const ID_PARAM = { name: "id", in: "path", required: true, schema: { type: "string" } } as const;
+const ROLE_PARAM = { name: "roleId", in: "path", required: true, schema: { type: "string" } } as const;
+const ADMIN_PARAM = { name: "adminUserId", in: "path", required: true, schema: { type: "string" } } as const;
 const CERTIFICATE_PARAM = { name: "certificateId", in: "path", required: true, schema: { type: "string" } } as const;
 const SUBMISSION_PARAM = { name: "submissionId", in: "path", required: true, schema: { type: "string" } } as const;
 const ROW_PARAM = { name: "rowId", in: "path", required: true, schema: { type: "string" } } as const;
@@ -149,6 +157,14 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const DecideRow = register("DecideRowInput", decideRowSchema);
   const Verification = register("Verification", verificationSchema);
   const DashboardDoc = register("Dashboard", dashboardSchema);
+  const RoleDoc = register("Role", roleSchema);
+  const RolePage = register("RolePage", pageOf(roleSchema));
+  const CreateRole = register("CreateRoleInput", createRoleSchema);
+  const AdminUser = register("AdminUser", adminUserSchema);
+  const AdminUserPage = register("AdminUserPage", pageOf(adminUserSchema));
+  const CreateAdminUser = register("CreateAdminUserInput", createAdminUserSchema);
+  const IssuedAdminCredential = register("IssuedAdminCredential", issuedAdminCredentialSchema);
+  const AccountDoc = register("Account", accountSchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -179,6 +195,14 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "Delivery. A batch is retail (collegeId null) or dedicated to one college — the two " +
           "rosters never mix. The trainer handshake lives here: an admin proposes, the trainer " +
           "confirms, and only a confirmed assignment is committed delivery.",
+      },
+      {
+        name: "Access",
+        description:
+          "Roles, administrators and the account screen — the module that can lock an " +
+          "organisation out of its own system. Nobody grants permissions or region scope beyond " +
+          "their own, nobody edits their own role or scope, and the last Super Admin cannot be " +
+          "removed or demoted.",
       },
       {
         name: "Dashboard",
@@ -225,6 +249,53 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/settings/roles": {
+        get: { tags: ["Access"], summary: "List roles with their permission matrix", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of roles", content: json(RolePage) } } },
+        post: {
+          tags: ["Access"], summary: "Create a role",
+          description: "Refused if it grants a permission you do not hold yourself — otherwise `settings:edit` quietly means `become a Super Admin`. An unrecognised module name is refused rather than dropped.",
+          requestBody: { required: true, content: json(CreateRole) },
+          responses: { "201": { description: "Created", content: json(RoleDoc) }, "400": errorResponse("Unknown module in the matrix"), "403": errorResponse("Grants more than you hold"), "409": errorResponse("Name already in use") },
+        },
+      },
+      "/settings/roles/{roleId}": {
+        get: { tags: ["Access"], summary: "One role", parameters: [ROLE_PARAM], responses: { "200": { description: "The role", content: json(RoleDoc) } } },
+        patch: { tags: ["Access"], summary: "Update a role", description: "You cannot change the permissions of the role you hold — that widens your own access without touching your own record.", parameters: [ROLE_PARAM], responses: { "200": { description: "Updated", content: json(RoleDoc) }, "403": errorResponse("Your own role, or grants more than you hold") } },
+        delete: { tags: ["Access"], summary: "Delete a role", description: "A SYSTEM role can be reshaped but never deleted; nobody would be able to restore it. A role someone holds is refused too.", parameters: [ROLE_PARAM], responses: { "204": { description: "Deleted" }, "409": errorResponse("System role, or still held") } },
+      },
+      "/settings/administrators": {
+        get: { tags: ["Access"], summary: "List operators", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of operators", content: json(AdminUserPage) } } },
+        post: {
+          tags: ["Access"], summary: "Create an operator",
+          description: "Returns a temporary password ONCE; only its hash is stored. An empty cityScope grants GLOBAL access, which a scoped operator is refused — nobody hands out reach they do not have.",
+          requestBody: { required: true, content: json(CreateAdminUser) },
+          responses: { "201": { description: "Created", content: json(IssuedAdminCredential) }, "403": errorResponse("Scope or role beyond your own"), "409": errorResponse("Email already in use") },
+        },
+      },
+      "/settings/administrators/{adminUserId}": {
+        get: { tags: ["Access"], summary: "One operator", parameters: [ADMIN_PARAM], responses: { "200": { description: "The operator", content: json(AdminUser) } } },
+        patch: {
+          tags: ["Access"], summary: "Update an operator", parameters: [ADMIN_PARAM],
+          description: "Invariant 19: you cannot change your OWN role, region scope or account status. Demoting or suspending the last active Super Admin is refused. Suspension revokes their sessions immediately.",
+          responses: { "200": { description: "Updated", content: json(AdminUser) }, "403": errorResponse("Your own privileges, or beyond your grant"), "409": errorResponse("Last Super Admin") },
+        },
+        delete: { tags: ["Access"], summary: "Soft-delete an operator", parameters: [ADMIN_PARAM], description: "You cannot delete your own account, nor the last active Super Admin.", responses: { "204": { description: "Removed" }, "403": errorResponse("Your own account"), "409": errorResponse("Last Super Admin") } },
+      },
+      "/settings/administrators/{adminUserId}/reset-password": {
+        post: { tags: ["Access"], summary: "Issue a fresh temporary password", parameters: [ADMIN_PARAM], description: "Revokes every existing session for that operator.", responses: { "200": { description: "Issued", content: json(IssuedAdminCredential) } } },
+      },
+      "/account": {
+        get: {
+          tags: ["Access"], summary: "Your own account",
+          description: "Every authenticated actor has one, and it only ever shows their own record. `editable` names what may be changed, so a UI does not have to infer why the rest is locked.",
+          responses: { "200": { description: "The account", content: json(AccountDoc) } },
+        },
+        put: {
+          tags: ["Access"], summary: "Change your photo — and only your photo",
+          description: "Invariant 19. The body is STRICT: sending roleId or cityScope is refused rather than silently ignored, which would leave an operator believing their own scope had changed.",
+          responses: { "200": { description: "Updated", content: json(AccountDoc) }, "400": errorResponse("A field that is not yours to set") },
+        },
+      },
       "/dashboard": {
         get: {
           tags: ["Dashboard"], summary: "The executive dashboard",

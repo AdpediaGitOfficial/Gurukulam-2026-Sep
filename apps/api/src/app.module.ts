@@ -16,6 +16,7 @@ import { CertificatesModule } from "./modules/certificates/certificates.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { LocalisationModule } from "./modules/localisation/localisation.module";
 import { RequirementsModule } from "./modules/requirements/requirements.module";
+import { AccessModule } from "./modules/access/access.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
@@ -51,6 +52,9 @@ import { ConfigModule } from "./config/config.module";
     // M3's remaining half — the college engagement's entry point, and the
     // college portal's server side.
     RequirementsModule,
+    // M1's management half — roles, administrators and the account screen.
+    // The module that can lock an organisation out of its own system.
+    AccessModule,
   ],
   controllers: [HealthController],
   providers: [

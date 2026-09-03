@@ -25,3 +25,4 @@ export * from "./dashboard/index.js";
 export * from "./localisation/index.js";
 export * from "./requirements/index.js";
 export * from "./availability/index.js";
+export * from "./access/index.js";
