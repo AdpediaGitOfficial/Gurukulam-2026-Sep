@@ -62,7 +62,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         status,
         body: {
           error: {
-            code: status === HttpStatus.NOT_FOUND ? ERROR_CODES.NOT_FOUND : ERROR_CODES.INTERNAL,
+            // Clients branch on the code, so a client-side failure must not
+            // arrive labelled INTERNAL — that reads as "retry later" for
+            // something that will never succeed as sent.
+            code: codeForStatus(status),
             message: exception.message,
             ...(requestId ? { requestId } : {}),
           },
@@ -80,5 +83,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
         },
       },
     };
+  }
+}
+
+/**
+ * Maps a framework-raised status to a stable code. Only reached for exceptions
+ * this API did not raise itself — an ApiException already carries its own.
+ */
+function codeForStatus(status: number): string {
+  switch (status) {
+    case HttpStatus.BAD_REQUEST:
+      return ERROR_CODES.VALIDATION_FAILED;
+    case HttpStatus.UNAUTHORIZED:
+      return ERROR_CODES.UNAUTHENTICATED;
+    case HttpStatus.FORBIDDEN:
+      return ERROR_CODES.FORBIDDEN;
+    case HttpStatus.NOT_FOUND:
+      return ERROR_CODES.NOT_FOUND;
+    case HttpStatus.CONFLICT:
+      return ERROR_CODES.CONFLICT;
+    case HttpStatus.UNPROCESSABLE_ENTITY:
+      return ERROR_CODES.INVARIANT_VIOLATION;
+    case HttpStatus.TOO_MANY_REQUESTS:
+      return ERROR_CODES.RATE_LIMITED;
+    default:
+      return ERROR_CODES.INTERNAL;
   }
 }

@@ -12,3 +12,8 @@ export * from "./common/page.js";
 export * from "./common/principal.js";
 export * from "./common/business-id.js";
 export * from "./auth/index.js";
+export * from "./courses/index.js";
+export * from "./trainers/index.js";
+export * from "./colleges/index.js";
+export * from "./hiring/index.js";
+export * from "./questions/index.js";

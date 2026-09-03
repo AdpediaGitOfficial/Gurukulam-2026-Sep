@@ -315,7 +315,15 @@ async function seedCollege(ctx: {
       name: "Dr. S. Ramakrishnan", email: "tpo@snc.example.test", phone: "+919845000111",
       passwordHash: hashPassword(DEV_PASSWORD),
       accessStatus: "GRANTED", grantedAt: new Date(),
-      permissions: { students: READ_EDIT, certificates: { read: true, edit: false, delete: false } },
+      // A college portal user reads their OWN institution's profile, adds
+      // their students, and reviews certificates. Scope narrows every one of
+      // those to their college; these flags decide which modules they reach
+      // at all.
+      permissions: {
+        colleges: { read: true, edit: false, delete: false },
+        students: READ_EDIT,
+        certificates: { read: true, edit: false, delete: false },
+      },
     },
   });
 

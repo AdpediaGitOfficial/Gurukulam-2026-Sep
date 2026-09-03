@@ -23,7 +23,8 @@ document.
 | `pnpm --filter @gurukulam/api dev` | Watch mode |
 | `pnpm --filter @gurukulam/api build` | Compile to `dist/` |
 | `pnpm --filter @gurukulam/api test` | Unit tests — pure logic, no server needed |
-| `pnpm --filter @gurukulam/api verify` | Integration checks against a **running** API |
+| `pnpm --filter @gurukulam/api verify` | Auth integration checks against a **running** API |
+| `pnpm --filter @gurukulam/api verify:modules` | Module and scope checks against a **running** API |
 
 ## Shape
 
@@ -77,9 +78,60 @@ another region, which is itself the leak.
 above 2^53 — reachable by a college contract's total in paise. The `SerialiseInterceptor` converts
 `bigint` to string on the way out; clients parse it as a big integer, never a float.
 
+**An empty body is accepted where the route takes no body.** Fastify's default
+JSON parser rejects an empty payload that declares `application/json`, and many
+HTTP clients set that header unconditionally — so `DELETE /courses/:id` would
+fail for a caller doing nothing wrong. Nest's own parser is disabled
+(`bodyParser: false`) and replaced with one that reads an empty body as `{}`.
+Malformed JSON is still a clean `VALIDATION_FAILED`.
+
 **Lockout needs Redis in production.** Five failures in fifteen minutes locks for thirty. Without
 `REDIS_URL` it falls back to a per-process counter and warns loudly at boot — which lets an attacker
 have five attempts *per replica*, so that fallback is for local development only.
+
+## Adding a module
+
+Six files, in this order. `courses/` is the worked example for an unscoped
+module, `colleges/` for one scoped on both axes.
+
+1. **Contract first** — `packages/contracts/src/<module>/index.ts`: the entity
+   schema, `<X>Query` extending `pageQuerySchema`, and the create/update inputs.
+2. **Service** — takes the `Principal` first, applies scope itself, holds every
+   rule.
+3. **Controller** — parse, delegate, serialise. `@RequirePermission(module, action)`
+   on each route.
+4. **Module** — register it in `app.module.ts`.
+5. **OpenAPI** — add the path entries in `src/openapi.ts`; the schemas come
+   from the contract automatically.
+6. **Verify** — extend `scripts/verify-modules.ts`, especially the scope
+   section.
+
+### Rules the modules already follow
+
+**Scope is applied in the service, never the controller.** `cityScope()` and
+`collegeScope()` produce Prisma `where` fragments; `assertInScope()` guards
+writes, where the caller already holds the id. A guard cannot see rows, so it
+cannot do this job.
+
+**Reads filter, writes assert.** An out-of-scope row simply does not appear in a
+list. Fetching one by id returns **404, not 403** — a 403 confirms that a record
+exists in another region, which is itself the leak.
+
+**Row mapping is explicit.** Every service ends with a `toX(row)` function
+listing fields one by one rather than spreading the record. That is what keeps
+`password_hash` off the wire when someone adds a column later.
+
+**Money is parsed, never floated.** Operator input goes through `parseRupees`
+(integer arithmetic on the string) and leaves as a paise string.
+
+**Business IDs come from `IdService`.** Allocation is a single atomic
+`INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
+creating a record in the same second cannot receive the same code. Update
+schemas never accept one — a business ID is immutable once issued.
+
+**Deletes are soft and guarded.** A course with running batches, a trainer
+confirmed on live delivery, and a college with students all refuse removal with
+a 409 rather than orphaning what points at them.
 
 ## The OpenAPI document is generated, not written
 

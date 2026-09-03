@@ -288,6 +288,7 @@ model City {
   colleges College[]
   students Student[]
   batches  Batch[]
+  trainers Trainer[]
 
   @@index([countryId, deletedAt])
   @@index([deletedAt])
@@ -737,6 +738,7 @@ model Trainer {
   deletedAt           DateTime?     @map("deleted_at")
   deletedBy           String?       @map("deleted_by") @db.VarChar(36)
 
+  city         City?                    @relation(fields: [cityId], references: [cityId])
   courses      TrainerCourse[]
   assignments  BatchTrainerAssignment[]
   availability TrainerAvailability[]
@@ -1475,4 +1477,25 @@ model Notification {
   @@index([groupKey])
   @@index([subjectType, subjectId])
   @@map("notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Business ID sequences
+//
+//  Business IDs are generated on save and never typed (architecture.md §8),
+//  so something has to allocate the running number without racing. Two
+//  operators onboarding a student at the same moment must not both get
+//  STU-2026-0891.
+//
+//  A counters table rather than native Postgres sequences: the keys are
+//  dynamic ("student:2026", "college:SNC"), and creating a sequence object
+//  per year per entity is a migration every January.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model IdSequence {
+  key       String   @id @db.VarChar(120)
+  nextValue BigInt   @default(1) @map("next_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("id_sequences")
 }

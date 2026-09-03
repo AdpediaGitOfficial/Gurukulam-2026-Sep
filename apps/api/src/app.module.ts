@@ -3,13 +3,31 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { AuthModule } from "./modules/auth/auth.module";
 import { HealthController } from "./modules/health/health.controller";
 import { PrismaModule } from "./modules/prisma/prisma.module";
+import { IdsModule } from "./modules/ids/ids.module";
+import { CoursesModule } from "./modules/courses/courses.module";
+import { TrainersModule } from "./modules/trainers/trainers.module";
+import { CollegesModule } from "./modules/colleges/colleges.module";
+import { QuestionsModule } from "./modules/questions/questions.module";
+import { HiringModule } from "./modules/hiring/hiring.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
 import { ConfigModule } from "./config/config.module";
 
 @Module({
-  imports: [ConfigModule, PrismaModule, AuthModule],
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    IdsModule,
+    AuthModule,
+    // The five independent tracks from admin-portal-plan.md §5 — the widest
+    // point in the build. None of them depends on another.
+    CoursesModule,
+    TrainersModule,
+    CollegesModule,
+    QuestionsModule,
+    HiringModule,
+  ],
   controllers: [HealthController],
   providers: [
     // Authentication is global and opt-OUT. A new route is protected the
