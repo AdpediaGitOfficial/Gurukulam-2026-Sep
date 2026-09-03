@@ -28,6 +28,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:delivery` | Batch, session and trainer-handshake checks |
 | `pnpm --filter @gurukulam/api verify:enrolment` | Allocation and segment checks, including the acceptance test |
 | `pnpm --filter @gurukulam/api verify:money` | Ledger, contract, payment and reminder-recipient checks |
+| `pnpm --filter @gurukulam/api verify:certificates` | Submission flow, eligibility and the access asymmetry |
 
 ## Shape
 
@@ -150,6 +151,18 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**Certificate ACCESS is not the same as eligibility.** A retail student
+downloads their own; a college student — who earned it on identical terms —
+downloads none, because their institution holds it. The rule lives in
+`certificateAccess()` as a pure function precisely so it can be asserted for
+the STUDENT actor, whose portal does not exist yet and therefore cannot be
+exercised over HTTP.
+
+**The seed's module list must match `MODULES` in the contracts package.** A
+module missing from a role's permissions is not a cosmetic gap: the guard
+denies it outright, so a Super Admin silently loses a whole surface. That is
+how `certificates` went missing until M12 exercised it.
 
 **Nothing in the fee ledger deletes.** A receipt is a financial record; the
 correction is a reversing entry that leaves the original in place. Overpayment

@@ -20,3 +20,4 @@ export * from "./questions/index.js";
 export * from "./batches/index.js";
 export * from "./students/index.js";
 export * from "./ledger/index.js";
+export * from "./certificates/index.js";

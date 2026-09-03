@@ -17,6 +17,13 @@ import {
   jobPostingSchema,
   studentSchema,
   ledgerSummarySchema,
+  certificateSchema,
+  eligibilitySchema,
+  issueCertificateSchema,
+  submissionSchema,
+  createSubmissionSchema,
+  decideRowSchema,
+  verificationSchema,
   contractSchema,
   createContractSchema,
   recordPaymentSchema,
@@ -70,6 +77,9 @@ const PAGE_PARAMS = [
 ] as const;
 
 const ID_PARAM = { name: "id", in: "path", required: true, schema: { type: "string" } } as const;
+const CERTIFICATE_PARAM = { name: "certificateId", in: "path", required: true, schema: { type: "string" } } as const;
+const SUBMISSION_PARAM = { name: "submissionId", in: "path", required: true, schema: { type: "string" } } as const;
+const ROW_PARAM = { name: "rowId", in: "path", required: true, schema: { type: "string" } } as const;
 const LEDGER_PARAM = { name: "ledgerId", in: "path", required: true, schema: { type: "string" } } as const;
 const CONTRACT_PARAM = { name: "contractId", in: "path", required: true, schema: { type: "string" } } as const;
 const TXN_PARAM = { name: "transactionId", in: "path", required: true, schema: { type: "string" } } as const;
@@ -128,6 +138,15 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const SetSchedule = register("SetScheduleInput", setScheduleSchema);
   const ReminderRecipient = register("ReminderRecipient", reminderRecipientSchema);
   const CronResult = register("CronResult", cronResultSchema);
+  const Certificate = register("Certificate", certificateSchema);
+  const CertificatePage = register("CertificatePage", pageOf(certificateSchema));
+  const Eligibility = register("Eligibility", eligibilitySchema);
+  const IssueCertificate = register("IssueCertificateInput", issueCertificateSchema);
+  const Submission = register("CertificateSubmission", submissionSchema);
+  const SubmissionPage = register("CertificateSubmissionPage", pageOf(submissionSchema));
+  const CreateSubmission = register("CreateSubmissionInput", createSubmissionSchema);
+  const DecideRow = register("DecideRowInput", decideRowSchema);
+  const Verification = register("Verification", verificationSchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -160,6 +179,14 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "confirms, and only a confirmed assignment is committed delivery.",
       },
       {
+        name: "Certificates",
+        description:
+          "Eligibility is IDENTICAL across segments; access is not. A retail student downloads " +
+          "their own certificate; a college student does not — their institution downloads it for " +
+          "them. Certificates reach a college only through an approved submission: an uploaded " +
+          "name is not a certificate.",
+      },
+      {
         name: "Fee ledger",
         description:
           "Two billing levels, ONE installment engine. Retail bills the student through a fee " +
@@ -189,6 +216,71 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/certificates": {
+        get: { tags: ["Certificates"], summary: "List certificates", parameters: [...PAGE_PARAMS, { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } }, { name: "status", in: "query", schema: { type: "string" } }], responses: { "200": { description: "A page of certificates", content: json(CertificatePage) } } },
+        post: {
+          tags: ["Certificates"], summary: "Issue a certificate directly",
+          description: "The retail path, and the admin override for any segment. Refused for an ineligible student unless overrideBlockers is set with a reason — completion is admin sign-off with an attendance floor, never automatic.",
+          requestBody: { required: true, content: json(IssueCertificate) },
+          responses: { "201": { description: "Issued", content: json(Certificate) }, "409": errorResponse("Already certified for that batch"), "422": errorResponse("Not eligible") },
+        },
+      },
+      "/certificates/eligibility": {
+        get: {
+          tags: ["Certificates"], summary: "What an operator needs to see before signing off",
+          description: "Roster membership, completed sessions, attendance against the course floor, and assignment completion. Attendance is deferred, so a batch may have no rows at all — that reports as NOT_EVALUATED rather than 0%, which would block every certificate in the system.",
+          parameters: [{ name: "studentId", in: "query", required: true, schema: { type: "string" } }, { name: "batchId", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "The evaluation", content: json(Eligibility) } },
+        },
+      },
+      "/certificates/verify/{code}": {
+        get: {
+          tags: ["Certificates"], summary: "The public verifier", security: [],
+          description: "Unauthenticated by design — anyone holding a certificate must be able to check it. Reads the row, so a revocation is visible the moment it happens. An unknown code and a withdrawn one are deliberately indistinguishable.",
+          parameters: [{ name: "code", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "The verdict", content: json(Verification) } },
+        },
+      },
+      "/certificates/{certificateId}": {
+        get: { tags: ["Certificates"], summary: "One certificate", parameters: [CERTIFICATE_PARAM], responses: { "200": { description: "The certificate", content: json(Certificate) }, "404": errorResponse("Not found, or not yours to see") } },
+      },
+      "/certificates/{certificateId}/download": {
+        get: {
+          tags: ["Certificates"], summary: "Fetch the certificate", parameters: [CERTIFICATE_PARAM],
+          description: "Where invariant 7 is enforced. An admin reaches any in scope; a college reaches its own students'; a RETAIL student reaches their own; a COLLEGE student reaches none — their institution holds it.",
+          responses: { "200": { description: "The document" }, "403": errorResponse("Your college holds it"), "404": errorResponse("Not yours to see"), "409": errorResponse("Revoked, or not yet issued") },
+        },
+      },
+      "/certificates/{certificateId}/revoke": {
+        post: { tags: ["Certificates"], summary: "Revoke a certificate", parameters: [CERTIFICATE_PARAM], description: "Takes effect on the public verifier immediately — there is no cached copy to expire.", responses: { "200": { description: "Revoked", content: json(Certificate) }, "409": errorResponse("Already revoked") } },
+      },
+      "/certificates/submissions": {
+        get: { tags: ["Certificates"], summary: "List certificate submissions", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of submissions", content: json(SubmissionPage) } } },
+        post: {
+          tags: ["Certificates"], summary: "A college uploads its list of names",
+          description: "Creates rows, and nothing else. An uploaded name is not a certificate. The text is kept verbatim even after matching, because it is what the college actually sent.",
+          requestBody: { required: true, content: json(CreateSubmission) },
+          responses: { "201": { description: "Submitted", content: json(Submission) }, "400": errorResponse("Not this college's dedicated training") },
+        },
+      },
+      "/certificates/submissions/{submissionId}": {
+        get: { tags: ["Certificates"], summary: "The review table", parameters: [SUBMISSION_PARAM], description: "Every row carries its eligibility, so nobody approves blind — that is the point of the screen.", responses: { "200": { description: "The submission with its rows", content: json(Submission) } } },
+      },
+      "/certificates/submissions/rows/{rowId}/decide": {
+        post: {
+          tags: ["Certificates"], summary: "Decide one uploaded name", parameters: [ROW_PARAM],
+          description: "Admins only — a college approving its own list would make the review meaningless. Approving requires matching the name to a student OF THAT COLLEGE; rejecting requires a reason so the list can be corrected. Neither mints a certificate.",
+          requestBody: { required: true, content: json(DecideRow) },
+          responses: { "200": { description: "Decided" }, "400": errorResponse("Unmatched, wrong college, or no reason"), "403": errorResponse("A college cannot decide its own"), "422": errorResponse("Not eligible") },
+        },
+      },
+      "/certificates/submissions/{submissionId}/release": {
+        post: {
+          tags: ["Certificates"], summary: "Release the submission", parameters: [SUBMISSION_PARAM],
+          description: "Every APPROVED row becomes a certificate, in one transaction. This is the ONLY way a college certificate comes into existence, and each one names the row that produced it.",
+          responses: { "200": { description: "Released" }, "409": errorResponse("Names still undecided, none approved, or already released") },
+        },
+      },
       "/fee-ledger": {
         get: {
           tags: ["Fee ledger"], summary: "The student fee register",

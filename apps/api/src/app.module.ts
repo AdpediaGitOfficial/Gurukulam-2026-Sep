@@ -12,6 +12,7 @@ import { HiringModule } from "./modules/hiring/hiring.module";
 import { BatchesModule } from "./modules/batches/batches.module";
 import { StudentsModule } from "./modules/students/students.module";
 import { LedgerModule } from "./modules/ledger/ledger.module";
+import { CertificatesModule } from "./modules/certificates/certificates.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
@@ -37,6 +38,8 @@ import { ConfigModule } from "./config/config.module";
     StudentsModule,
     // M8 — money. Needs M7's allocation seam and M4's standard market value.
     LedgerModule,
+    // M12 — outcomes. Needs M7 plus the attendance signal from M6.
+    CertificatesModule,
   ],
   controllers: [HealthController],
   providers: [

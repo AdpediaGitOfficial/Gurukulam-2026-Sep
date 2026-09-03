@@ -36,9 +36,15 @@ const time = (hhmm: string) => new Date(`1970-01-01T${hhmm}:00.000Z`);
 
 const FULL_ACCESS = { read: true, edit: true, delete: true };
 const READ_EDIT = { read: true, edit: true, delete: false };
+/**
+ * Must match MODULES in @gurukulam/contracts. A module missing here is not a
+ * cosmetic gap — the permission guard denies it outright, so a Super Admin
+ * silently loses a whole surface.
+ */
 const MODULES = [
   "dashboard", "colleges", "students", "courses", "batches",
-  "trainers", "feeLedger", "hiring", "reports", "settings",
+  "trainers", "feeLedger", "hiring", "reports", "certificates",
+  "notifications", "settings",
 ];
 
 async function main() {
@@ -322,7 +328,10 @@ async function seedCollege(ctx: {
       permissions: {
         colleges: { read: true, edit: false, delete: false },
         students: READ_EDIT,
-        certificates: { read: true, edit: false, delete: false },
+        // `edit` because a POC UPLOADS the list of names. It does not let them
+        // approve their own submission or release it — the module gate is
+        // coarse, and the service refuses both for a college-scoped principal.
+        certificates: READ_EDIT,
       },
     },
   });
