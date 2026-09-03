@@ -10,6 +10,7 @@
  *     pnpm --filter @gurukulam/api verify:modules
  */
 import { PrismaClient } from "@gurukulam/db";
+import { MODULES } from "@gurukulam/contracts";
 
 const BASE = process.env.API_URL ?? "http://127.0.0.1:4000/api/v1";
 const PASSWORD = "Gurukulam@2026";
@@ -20,9 +21,27 @@ let failed = 0;
 const ok = (n: string, d = "") => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${n}${d ? `  \x1b[90m${d}\x1b[0m` : ""}`); };
 const bad = (n: string, d: string) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${n}\n      \x1b[31m${d}\x1b[0m`); };
 
+const show = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x));
+
 function expect(name: string, actual: unknown, wanted: unknown) {
   const a = JSON.stringify(actual), w = JSON.stringify(wanted);
   if (a === w) ok(name, String(a)); else bad(name, `expected ${w}, got ${a}`);
+}
+
+/**
+ * Guards a response before its body is indexed into.
+ *
+ * Without this a bad response surfaces as "cannot read properties of
+ * undefined" several lines later, which says nothing about what actually went
+ * wrong. This reports the status and body at the point of failure.
+ */
+function assertOk<T>(name: string, res: Res<T>, wanted = 200): Res<T> {
+  if (res.status !== wanted) {
+    bad(name, `expected ${wanted}, got ${res.status}: ${show(res.body)}`);
+    throw new Error(`${name}: ${res.status} ${show(res.body)}`);
+  }
+  ok(name, String(wanted));
+  return res;
 }
 
 interface Res<T = any> { status: number; body: T }
@@ -57,6 +76,20 @@ async function main() {
   const hyderabad = await prisma.city.findFirstOrThrow({ where: { cityCode: "CITY-HYD" } });
   const india = await prisma.country.findFirstOrThrow({ where: { iso2: "IN" } });
   const snc = await prisma.college.findFirstOrThrow({ where: { collegeCode: "CLG-SNC-01" } });
+
+  // ── Permission coverage ─────────────────────────────────────────────────
+  console.log("\n\x1b[1mEvery module is reachable by the role that owns it\x1b[0m");
+
+  // A module missing from a role's permissions is not a cosmetic gap: the
+  // guard denies it outright, so an operator silently loses a whole surface
+  // and nothing errors. `certificates` and `notifications` went missing this
+  // way until M12 happened to exercise one of them.
+  for (const roleName of ["Super Admin", "Regional Sub-Admin"]) {
+    const role = await prisma.role.findFirstOrThrow({ where: { name: roleName } });
+    const perms = role.permissions as Record<string, unknown>;
+    const missing = MODULES.filter((m) => !(m in perms));
+    expect(`"${roleName}" carries every module in the contract`, missing, []);
+  }
 
   // ── Courses ─────────────────────────────────────────────────────────────
   console.log("\n\x1b[1mCourses — the catalogue\x1b[0m");

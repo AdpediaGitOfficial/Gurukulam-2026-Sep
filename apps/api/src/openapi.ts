@@ -18,6 +18,7 @@ import {
   studentSchema,
   ledgerSummarySchema,
   certificateSchema,
+  dashboardSchema,
   eligibilitySchema,
   issueCertificateSchema,
   submissionSchema,
@@ -147,6 +148,7 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const CreateSubmission = register("CreateSubmissionInput", createSubmissionSchema);
   const DecideRow = register("DecideRowInput", decideRowSchema);
   const Verification = register("Verification", verificationSchema);
+  const DashboardDoc = register("Dashboard", dashboardSchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -177,6 +179,13 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "Delivery. A batch is retail (collegeId null) or dedicated to one college — the two " +
           "rosters never mix. The trainer handshake lives here: an admin proposes, the trainer " +
           "confirms, and only a confirmed assignment is committed delivery.",
+      },
+      {
+        name: "Dashboard",
+        description:
+          "Aggregates over everything else, segmented retail vs college throughout because the " +
+          "two have different economics and a blended number hides both. Every figure is scoped " +
+          "to the caller, and the scope is echoed back so a total can never be read as global.",
       },
       {
         name: "Certificates",
@@ -216,6 +225,23 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/dashboard": {
+        get: {
+          tags: ["Dashboard"], summary: "The executive dashboard",
+          description:
+            "Four headline counts, four ACTION queues in alert colours, collections, delivery, " +
+            "course performance and trainer load.\n\n" +
+            "**Not cached.** A cached figure has to be keyed by scope, and getting that key wrong " +
+            "is invisible — the page renders plausible numbers belonging to another region. Until " +
+            "there is a measured reason to cache, computing per request is the safe default.\n\n" +
+            "The `scope` block echoes what the caller was allowed to see, so a figure cannot be " +
+            "mistaken for a global one.",
+          responses: {
+            "200": { description: "The dashboard", content: json(DashboardDoc) },
+            "403": errorResponse("No dashboard permission"),
+          },
+        },
+      },
       "/certificates": {
         get: { tags: ["Certificates"], summary: "List certificates", parameters: [...PAGE_PARAMS, { name: "segment", in: "query", schema: { type: "string", enum: ["RETAIL", "COLLEGE"] } }, { name: "status", in: "query", schema: { type: "string" } }], responses: { "200": { description: "A page of certificates", content: json(CertificatePage) } } },
         post: {

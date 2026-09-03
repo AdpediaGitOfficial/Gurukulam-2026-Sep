@@ -23,6 +23,22 @@ function expect(name: string, actual: unknown, wanted: unknown) {
   if (a === w) ok(name, String(a)); else bad(name, `expected ${w}, got ${a}`);
 }
 
+/**
+ * Guards a response before its body is indexed into.
+ *
+ * Without this a bad response surfaces as "cannot read properties of
+ * undefined" several lines later, which says nothing about what actually went
+ * wrong. This reports the status and body at the point of failure.
+ */
+function assertOk<T>(name: string, res: Res<T>, wanted = 200): Res<T> {
+  if (res.status !== wanted) {
+    bad(name, `expected ${wanted}, got ${res.status}: ${show(res.body)}`);
+    throw new Error(`${name}: ${res.status} ${show(res.body)}`);
+  }
+  ok(name, String(wanted));
+  return res;
+}
+
 interface Res<T = any> { status: number; body: T }
 async function call<T = any>(path: string, init: { method?: string; body?: unknown; token?: string; headers?: Record<string, string> } = {}): Promise<Res<T>> {
   const res = await fetch(`${BASE}${path}`, {
@@ -252,7 +268,7 @@ async function main() {
       ],
     },
   });
-  expect("a contract takes the same schedule shape", schedule.status, 200);
+  assertOk("a contract takes the same schedule shape", schedule);
   expect("…with three rows", schedule.body.length, 3);
   expect("…hanging off the contract", schedule.body[0].contractId, contractId);
   expect("…and NOT off a ledger", schedule.body[0].ledgerId, null);

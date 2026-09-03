@@ -26,11 +26,29 @@ function bad(name: string, detail: string) {
   failed++;
   console.log(`  \x1b[31m✗\x1b[0m ${name}\n      \x1b[31m${detail}\x1b[0m`);
 }
+const show = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x));
+
 function expect(name: string, actual: unknown, wanted: unknown) {
   const a = JSON.stringify(actual);
   const w = JSON.stringify(wanted);
   if (a === w) ok(name, a === undefined ? "" : String(a));
   else bad(name, `expected ${w}, got ${a}`);
+}
+
+/**
+ * Guards a response before its body is indexed into.
+ *
+ * Without this a bad response surfaces as "cannot read properties of
+ * undefined" several lines later, which says nothing about what actually went
+ * wrong. This reports the status and body at the point of failure.
+ */
+function assertOk<T>(name: string, res: Res<T>, wanted = 200): Res<T> {
+  if (res.status !== wanted) {
+    bad(name, `expected ${wanted}, got ${res.status}: ${show(res.body)}`);
+    throw new Error(`${name}: ${res.status} ${show(res.body)}`);
+  }
+  ok(name, String(wanted));
+  return res;
 }
 
 interface Res<T = any> { status: number; body: T }

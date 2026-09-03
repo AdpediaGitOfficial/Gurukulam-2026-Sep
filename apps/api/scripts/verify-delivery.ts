@@ -17,9 +17,27 @@ const prisma = new PrismaClient({ log: [] });
 let passed = 0, failed = 0;
 const ok = (n: string, d = "") => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${n}${d ? `  \x1b[90m${d}\x1b[0m` : ""}`); };
 const bad = (n: string, d: string) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${n}\n      \x1b[31m${d}\x1b[0m`); };
+const show = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x));
+
 function expect(name: string, actual: unknown, wanted: unknown) {
   const a = JSON.stringify(actual), w = JSON.stringify(wanted);
   if (a === w) ok(name, String(a)); else bad(name, `expected ${w}, got ${a}`);
+}
+
+/**
+ * Guards a response before its body is indexed into.
+ *
+ * Without this a bad response surfaces as "cannot read properties of
+ * undefined" several lines later, which says nothing about what actually went
+ * wrong. This reports the status and body at the point of failure.
+ */
+function assertOk<T>(name: string, res: Res<T>, wanted = 200): Res<T> {
+  if (res.status !== wanted) {
+    bad(name, `expected ${wanted}, got ${res.status}: ${show(res.body)}`);
+    throw new Error(`${name}: ${res.status} ${show(res.body)}`);
+  }
+  ok(name, String(wanted));
+  return res;
 }
 
 interface Res<T = any> { status: number; body: T }

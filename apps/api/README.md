@@ -29,6 +29,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:enrolment` | Allocation and segment checks, including the acceptance test |
 | `pnpm --filter @gurukulam/api verify:money` | Ledger, contract, payment and reminder-recipient checks |
 | `pnpm --filter @gurukulam/api verify:certificates` | Submission flow, eligibility and the access asymmetry |
+| `pnpm --filter @gurukulam/api verify:dashboard` | That every aggregate is scoped, and the figures are true |
 
 ## Shape
 
@@ -151,6 +152,19 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**Narrow a scoped `where` with `AND`, never a spread.**
+`{ ...batchScope, collegeId: null }` looks equivalent to AND-ing the two and is
+not: when the scope already sets `collegeId`, the later key silently REPLACES
+it. That handed a college user the count of every retail batch in the system —
+a leak a dashboard makes invisible, because the number simply looks large.
+Write `{ AND: [batchScope, { collegeId: null }] }`.
+
+**The dashboard is not cached.** A cached figure must be keyed by scope, and
+getting that key wrong is invisible: the page renders plausible numbers
+belonging to another region. Until there is a measured reason to cache,
+computing per request is the safe default. The response echoes the scope it was
+computed under so a total cannot be read as global.
 
 **Certificate ACCESS is not the same as eligibility.** A retail student
 downloads their own; a college student — who earned it on identical terms —

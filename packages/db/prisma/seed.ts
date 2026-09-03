@@ -36,6 +36,7 @@ const time = (hhmm: string) => new Date(`1970-01-01T${hhmm}:00.000Z`);
 
 const FULL_ACCESS = { read: true, edit: true, delete: true };
 const READ_EDIT = { read: true, edit: true, delete: false };
+const READ_ONLY = { read: true, edit: false, delete: false };
 /**
  * Must match MODULES in @gurukulam/contracts. A module missing here is not a
  * cosmetic gap — the permission guard denies it outright, so a Super Admin
@@ -325,12 +326,21 @@ async function seedCollege(ctx: {
       // their students, and reviews certificates. Scope narrows every one of
       // those to their college; these flags decide which modules they reach
       // at all.
+      // The college portal's surface, stated once and completely.
+      //
+      // These flags are the COARSE gate — may this actor touch the module at
+      // all. Which records they reach is collegeScope, and which *actions*
+      // they may take within a module is the service's business: a college can
+      // upload a certificate list but the service refuses to let them approve
+      // or release it.
       permissions: {
-        colleges: { read: true, edit: false, delete: false },
+        // Their own institution's summary, scoped to it.
+        dashboard: READ_ONLY,
+        // Their own college profile and contacts, read-only.
+        colleges: READ_ONLY,
+        // They onboard their own students — the auditable intake path.
         students: READ_EDIT,
-        // `edit` because a POC UPLOADS the list of names. It does not let them
-        // approve their own submission or release it — the module gate is
-        // coarse, and the service refuses both for a college-scoped principal.
+        // `edit` because a POC UPLOADS the list of names.
         certificates: READ_EDIT,
       },
     },
