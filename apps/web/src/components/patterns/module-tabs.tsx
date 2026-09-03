@@ -31,17 +31,28 @@ export function ModuleTabs({ className }: { className?: string }) {
     >
       {children.map((tab) => {
         const active = pathname === tab.href;
+        const shell = cn(
+          "rounded-full px-4.5 py-2 text-body-sm font-medium whitespace-nowrap transition-colors",
+          active ? "bg-surface text-ink shadow-raised" : "text-ink-muted",
+        );
+
+        // Not built yet: shown so the module's shape is legible, but inert
+        // rather than a link to a 404.
+        if (tab.built === false) {
+          return (
+            <span key={tab.href} className={cn(shell, "cursor-not-allowed opacity-50")}>
+              {tab.label}
+              <span className="sr-only"> — not built yet</span>
+            </span>
+          );
+        }
+
         return (
           <Link
             key={tab.href}
             href={tab.href}
             aria-current={active ? "page" : undefined}
-            className={cn(
-              "rounded-full px-4.5 py-2 text-body-sm font-medium whitespace-nowrap transition-colors",
-              active
-                ? "bg-surface text-ink shadow-raised"
-                : "text-ink-muted hover:text-ink",
-            )}
+            className={cn(shell, !active && "hover:text-ink")}
           >
             {tab.label}
           </Link>

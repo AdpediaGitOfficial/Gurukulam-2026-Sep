@@ -6,6 +6,15 @@ import type { ModuleName } from "@gurukulam/contracts";
 export interface SubNavItem {
   href: Route;
   label: string;
+  /**
+   * False while the route does not exist yet.
+   *
+   * The list stays complete because it documents the module's shape, but an
+   * entry with nowhere to go renders as text rather than as a link — a nav that
+   * advertises a 404 is worse than one that admits the page is not built, and
+   * Next would prefetch it on hover either way.
+   */
+  built?: boolean;
 }
 
 export interface NavItem {
@@ -50,9 +59,9 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "colleges",
     children: [
       { href: "/colleges", label: "All colleges" },
-      { href: "/colleges/contacts", label: "Contacts" },
+      { href: "/colleges/contacts", label: "Contacts" , built: false },
       { href: "/colleges/requirements", label: "Requirements" },
-      { href: "/colleges/access", label: "Portal access" },
+      { href: "/colleges/access", label: "Portal access" , built: false },
     ],
   },
   {
@@ -83,7 +92,7 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "batches",
     children: [
       { href: "/batches", label: "All batches" },
-      { href: "/batches/sessions", label: "Sessions" },
+      { href: "/batches/sessions", label: "Sessions" , built: false },
     ],
   },
   {
@@ -93,7 +102,7 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "trainers",
     children: [
       { href: "/trainers", label: "All trainers" },
-      { href: "/trainers/calendar", label: "Availability" },
+      { href: "/trainers/calendar", label: "Availability" , built: false },
     ],
   },
   {
@@ -114,10 +123,10 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "reports",
     children: [
       { href: "/reports", label: "Library" },
-      { href: "/reports/outstanding", label: "Outstanding & ageing" },
-      { href: "/reports/collections", label: "Collection register" },
-      { href: "/reports/unallocated", label: "Unallocated ageing" },
-      { href: "/reports/batch-progress", label: "Batch progress" },
+      { href: "/reports/outstanding", label: "Outstanding & ageing" , built: false },
+      { href: "/reports/collections", label: "Collection register" , built: false },
+      { href: "/reports/unallocated", label: "Unallocated ageing" , built: false },
+      { href: "/reports/batch-progress", label: "Batch progress" , built: false },
     ],
   },
 ];
@@ -133,8 +142,8 @@ export const secondaryNavItems: readonly NavItem[] = [
       { href: "/settings", label: "General" },
       { href: "/settings/roles", label: "Roles" },
       { href: "/settings/administrators", label: "Administrators" },
-      { href: "/settings/countries", label: "Countries" },
-      { href: "/settings/cities", label: "Cities" },
+      { href: "/settings/countries", label: "Countries" , built: false },
+      { href: "/settings/cities", label: "Cities" , built: false },
     ],
   },
   // Your own profile and password. Everyone has one, so it is not gated.
@@ -163,4 +172,32 @@ export function navItemFor(pathname: string): NavItem | undefined {
 /** Whether a sub-nav entry is the current page. */
 export function isCurrentPage(pathname: string, href: string): boolean {
   return pathname === href;
+}
+
+/**
+ * Console routes that actually exist.
+ *
+ * Derived from the nav rather than kept as a second list, so a page added to
+ * one is added to both. Routes outside the rail — the notification queue, the
+ * signed-out screens — are named here because nothing else declares them.
+ */
+const BUILT_ROUTES: ReadonlySet<string> = new Set<string>([
+  ...navItems.map((item) => item.href as string),
+  ...navItems.flatMap((item) =>
+    (item.children ?? []).filter((c) => c.built !== false).map((c) => c.href as string),
+  ),
+  "/notifications",
+]);
+
+/**
+ * Whether the console can actually serve this path.
+ *
+ * A destination that comes from data — a notification's call to action, a
+ * report's path — names where it *should* go, which is not the same as where
+ * the console can go today. Rendering it as a link anyway produces a 404 that
+ * looks like a bug in the notification rather than a screen not yet built.
+ */
+export function isBuiltRoute(path: string): boolean {
+  const [pathname] = path.split("?");
+  return pathname !== undefined && BUILT_ROUTES.has(pathname);
 }

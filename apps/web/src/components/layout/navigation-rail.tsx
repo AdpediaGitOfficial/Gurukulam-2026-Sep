@@ -222,21 +222,33 @@ function RailEntry({ item, pathname, expanded, open, onToggle }: RailEntryProps)
 
       {expanded && open ? (
         <div id={`sub-${item.module}`} className="flex flex-col gap-0.5 pt-0.5 pb-1.5 pl-[34px]">
-          {children.map((child) => (
-            <Link
-              key={child.href}
-              href={child.href}
-              aria-current={pathname === child.href ? "page" : undefined}
-              className={cn(
-                "block truncate rounded-control px-2.5 py-1.5 text-body-sm whitespace-nowrap",
-                pathname === child.href
-                  ? "bg-white/15 font-semibold text-white"
-                  : "text-white/70 hover:bg-white/10 hover:text-white",
-              )}
-            >
-              {child.label}
-            </Link>
-          ))}
+          {children.map((child) =>
+            child.built === false ? (
+              // Shown so the module's shape is legible, but inert rather than a
+              // link to a route that does not exist yet.
+              <span
+                key={child.href}
+                className="block truncate rounded-control px-2.5 py-1.5 text-body-sm whitespace-nowrap text-white/35"
+              >
+                {child.label}
+                <span className="sr-only"> — not built yet</span>
+              </span>
+            ) : (
+              <Link
+                key={child.href}
+                href={child.href}
+                aria-current={pathname === child.href ? "page" : undefined}
+                className={cn(
+                  "block truncate rounded-control px-2.5 py-1.5 text-body-sm whitespace-nowrap",
+                  pathname === child.href
+                    ? "bg-white/15 font-semibold text-white"
+                    : "text-white/70 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                {child.label}
+              </Link>
+            ),
+          )}
         </div>
       ) : null}
     </li>
