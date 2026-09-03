@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
+import type { Principal } from "@gurukulam/contracts";
 
 import { NavigationRail } from "@/components/layout/navigation-rail";
-import { TopBar, type TopBarUser } from "@/components/layout/top-bar";
+import { TopBar } from "@/components/layout/top-bar";
 
 export interface ConsoleShellProps {
-  user: TopBarUser;
+  principal: Principal;
   children: ReactNode;
 }
 
@@ -12,12 +13,12 @@ export interface ConsoleShellProps {
  * Chrome shared by every console route: the navigation rail and the top bar.
  * Pages only ever render their own content.
  */
-export function ConsoleShell({ user, children }: ConsoleShellProps) {
+export function ConsoleShell({ principal, children }: ConsoleShellProps) {
   return (
     <div className="min-h-dvh bg-canvas pl-rail">
-      <NavigationRail />
+      <NavigationRail principal={principal} />
       <div className="flex min-h-dvh flex-col">
-        <TopBar user={user} />
+        <TopBar principal={principal} />
         <main id="main" className="mx-auto w-full max-w-content flex-1 px-4 pt-8 pb-16 sm:px-8">
           {children}
         </main>

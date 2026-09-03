@@ -25,7 +25,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gurukulam TMS",
+  // A template so a page sets only its own name and still shows the product's.
+  title: { default: "Gurukulam TMS", template: "%s · Gurukulam TMS" },
   description: "Training management for retail and B2B college engagements.",
 };
 
