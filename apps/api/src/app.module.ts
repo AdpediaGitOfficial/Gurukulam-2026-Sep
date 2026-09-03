@@ -11,6 +11,7 @@ import { QuestionsModule } from "./modules/questions/questions.module";
 import { HiringModule } from "./modules/hiring/hiring.module";
 import { BatchesModule } from "./modules/batches/batches.module";
 import { StudentsModule } from "./modules/students/students.module";
+import { LedgerModule } from "./modules/ledger/ledger.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
@@ -34,6 +35,8 @@ import { ConfigModule } from "./config/config.module";
     BatchesModule,
     // M7 — enrolment. Needs M6, and carries the allocation transaction.
     StudentsModule,
+    // M8 — money. Needs M7's allocation seam and M4's standard market value.
+    LedgerModule,
   ],
   controllers: [HealthController],
   providers: [

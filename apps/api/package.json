@@ -12,7 +12,8 @@
     "verify": "tsx scripts/verify-auth.ts",
     "verify:modules": "tsx scripts/verify-modules.ts",
     "verify:delivery": "tsx scripts/verify-delivery.ts",
-    "verify:enrolment": "tsx scripts/verify-enrolment.ts"
+    "verify:enrolment": "tsx scripts/verify-enrolment.ts",
+    "verify:money": "tsx scripts/verify-money.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

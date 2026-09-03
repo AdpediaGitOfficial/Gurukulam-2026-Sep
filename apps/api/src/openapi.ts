@@ -16,6 +16,14 @@ import {
   createSessionSchema,
   jobPostingSchema,
   studentSchema,
+  ledgerSummarySchema,
+  contractSchema,
+  createContractSchema,
+  recordPaymentSchema,
+  paymentSchema,
+  setScheduleSchema,
+  reminderRecipientSchema,
+  cronResultSchema,
   createStudentSchema,
   allocateStudentSchema,
   allocationResultSchema,
@@ -62,6 +70,10 @@ const PAGE_PARAMS = [
 ] as const;
 
 const ID_PARAM = { name: "id", in: "path", required: true, schema: { type: "string" } } as const;
+const LEDGER_PARAM = { name: "ledgerId", in: "path", required: true, schema: { type: "string" } } as const;
+const CONTRACT_PARAM = { name: "contractId", in: "path", required: true, schema: { type: "string" } } as const;
+const TXN_PARAM = { name: "transactionId", in: "path", required: true, schema: { type: "string" } } as const;
+const INSTALLMENT_PARAM = { name: "installmentId", in: "path", required: true, schema: { type: "string" } } as const;
 const SESSION_PARAM = { name: "sessionId", in: "path", required: true, schema: { type: "string" } } as const;
 const ASSIGNMENT_PARAM = { name: "assignmentId", in: "path", required: true, schema: { type: "string" } } as const;
 
@@ -106,6 +118,16 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const Allocate = register("AllocateStudentInput", allocateStudentSchema);
   const AllocationResult = register("AllocationResult", allocationResultSchema);
   const UnallocatedSummary = register("UnallocatedSummary", unallocatedSummarySchema);
+  const LedgerSummary = register("LedgerSummary", ledgerSummarySchema);
+  const LedgerPage = register("LedgerPage", pageOf(ledgerSummarySchema));
+  const Contract = register("Contract", contractSchema);
+  const ContractPage = register("ContractPage", pageOf(contractSchema));
+  const CreateContract = register("CreateContractInput", createContractSchema);
+  const RecordPayment = register("RecordPaymentInput", recordPaymentSchema);
+  const Payment = register("Payment", paymentSchema);
+  const SetSchedule = register("SetScheduleInput", setScheduleSchema);
+  const ReminderRecipient = register("ReminderRecipient", reminderRecipientSchema);
+  const CronResult = register("CronResult", cronResultSchema);
 
   const json = (schema: { $ref: string }) => ({ "application/json": { schema } });
 
@@ -138,6 +160,14 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           "confirms, and only a confirmed assignment is committed delivery.",
       },
       {
+        name: "Fee ledger",
+        description:
+          "Two billing levels, ONE installment engine. Retail bills the student through a fee " +
+          "ledger; college bills the institution through a contract. An installment hangs off " +
+          "exactly one of them. There is no delete — a receipt is a financial record, and the " +
+          "correction is a reversing entry.",
+      },
+      {
         name: "Students",
         description:
           "Retail and college students in one register. collegeId is nullable and always will be — " +
@@ -159,6 +189,70 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
     },
     security: [{ bearerAuth: [] }],
     paths: {
+      "/fee-ledger": {
+        get: {
+          tags: ["Fee ledger"], summary: "The student fee register",
+          description: "A SUMMARY per student — installment counts run from one to a hundred, so the schedule lives in the student's own ledger rather than here.",
+          parameters: [...PAGE_PARAMS, { name: "status", in: "query", schema: { type: "string" } }, { name: "overdueOnly", in: "query", schema: { type: "boolean" } }],
+          responses: { "200": { description: "A page of ledgers", content: json(LedgerPage) } },
+        },
+      },
+      "/fee-ledger/{ledgerId}": {
+        get: { tags: ["Fee ledger"], summary: "One ledger with its full schedule and receipts", parameters: [LEDGER_PARAM], responses: { "200": { description: "The ledger", content: json(LedgerSummary) } } },
+      },
+      "/fee-ledger/{ledgerId}/schedule": {
+        put: { tags: ["Fee ledger"], summary: "Replace a student's schedule", description: "The rows must total the agreed price exactly. Refused once money has been collected against the plan.", parameters: [LEDGER_PARAM], requestBody: { required: true, content: json(SetSchedule) }, responses: { "200": { description: "The new schedule" }, "409": errorResponse("Money already collected") } },
+      },
+      "/fee-ledger/payments": {
+        post: {
+          tags: ["Fee ledger"], summary: "Record a payment",
+          description:
+            "ONE transaction: the receipt, the installment, the parent's recomputed totals and its " +
+            "re-derived status. Overpayment is REFUSED at write time, not accepted and corrected. " +
+            "A transaction ID is required for every mode except cash. Serves both parents.",
+          requestBody: { required: true, content: json(RecordPayment) },
+          responses: { "201": { description: "Recorded", content: json(Payment) }, "400": errorResponse("More than is due, or a missing transaction ID"), "409": errorResponse("Already settled, or the contract is cancelled") },
+        },
+      },
+      "/fee-ledger/payments/{transactionId}/reverse": {
+        post: { tags: ["Fee ledger"], summary: "Reverse a receipt", description: "The original stays — that is the point of a reversing entry. A reversal cannot itself be reversed, and a receipt cannot be reversed twice.", parameters: [TXN_PARAM], responses: { "201": { description: "Reversed", content: json(Payment) }, "409": errorResponse("Already reversed, or is itself a reversal") } },
+      },
+      "/fee-ledger/installments/{installmentId}/recipient": {
+        get: {
+          tags: ["Fee ledger"], summary: "Who a reminder for this installment reaches", parameters: [INSTALLMENT_PARAM],
+          description: "Resolved from the installment's PARENT, never a stored column — which is what stops a college's students receiving an invoice reminder that is not theirs.",
+          responses: { "200": { description: "The recipient", content: json(ReminderRecipient) } },
+        },
+      },
+      "/fee-ledger/contracts": {
+        get: { tags: ["Fee ledger"], summary: "Institutional contracts", parameters: PAGE_PARAMS, responses: { "200": { description: "A page of contracts", content: json(ContractPage) } } },
+        post: {
+          tags: ["Fee ledger"], summary: "Create a contract",
+          description: "Stores BOTH commercial bases and records which headcount figure it bills on, because headcount drifts between requirement and delivery. computedTotal and totalValue are database-generated; an override wins over the computed total and cannot be saved without its reason.",
+          requestBody: { required: true, content: json(CreateContract) },
+          responses: { "201": { description: "Created", content: json(Contract) }, "400": errorResponse("Missing the input its basis needs, or an unexplained override") },
+        },
+      },
+      "/fee-ledger/contracts/{contractId}": {
+        get: { tags: ["Fee ledger"], summary: "One contract with its schedule and live headcount", parameters: [CONTRACT_PARAM], responses: { "200": { description: "The contract", content: json(Contract) } } },
+        patch: { tags: ["Fee ledger"], summary: "Update a contract", description: "Commercial terms cannot be restated once money has been collected — that would silently change what the college already agreed to pay.", parameters: [CONTRACT_PARAM], responses: { "200": { description: "Updated", content: json(Contract) }, "409": errorResponse("Money already collected") } },
+        delete: { tags: ["Fee ledger"], summary: "Soft-delete a contract", parameters: [CONTRACT_PARAM], responses: { "204": { description: "Removed" }, "409": errorResponse("Money already collected — cancel instead") } },
+      },
+      "/fee-ledger/contracts/{contractId}/schedule": {
+        put: { tags: ["Fee ledger"], summary: "Replace a contract's schedule", description: "The same engine the student ledger uses. Rows must total the contract's billed value exactly.", parameters: [CONTRACT_PARAM], requestBody: { required: true, content: json(SetSchedule) }, responses: { "200": { description: "The new schedule" } } },
+      },
+      "/cron/fee-reminders": {
+        post: {
+          tags: ["Fee ledger"], summary: "The nightly reminder run", security: [],
+          description:
+            "Behind a shared secret in `x-cron-secret`, driven by an EXTERNAL scheduler — an " +
+            "in-process timer does not survive serverless and fires once per replica when it does " +
+            "run. Three steps: reminders for installments due in three days, the overdue " +
+            "transition for those past due, then every parent's status re-derived. Each recipient " +
+            "resolves from its installment's parent.",
+          responses: { "200": { description: "What it did", content: json(CronResult) }, "401": errorResponse("Missing or wrong secret"), "403": errorResponse("No secret configured on this deployment") },
+        },
+      },
       "/students": {
         get: {
           tags: ["Students"], summary: "List students",

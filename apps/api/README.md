@@ -27,6 +27,7 @@ document.
 | `pnpm --filter @gurukulam/api verify:modules` | Module and scope checks against a **running** API |
 | `pnpm --filter @gurukulam/api verify:delivery` | Batch, session and trainer-handshake checks |
 | `pnpm --filter @gurukulam/api verify:enrolment` | Allocation and segment checks, including the acceptance test |
+| `pnpm --filter @gurukulam/api verify:money` | Ledger, contract, payment and reminder-recipient checks |
 
 ## Shape
 
@@ -149,6 +150,17 @@ Analytics" and "Digital Assurance" independent counters and then the same
 `INSERT … ON CONFLICT DO UPDATE`, not a read-then-write, so two operators
 creating a record in the same second cannot receive the same code. Update
 schemas never accept one — a business ID is immutable once issued.
+
+**Nothing in the fee ledger deletes.** A receipt is a financial record; the
+correction is a reversing entry that leaves the original in place. Overpayment
+is refused at write time rather than accepted and corrected — a corrected
+overpayment leaves a reversal in the register that never had to exist.
+
+**A reminder's recipient is resolved from the installment's parent**, never a
+stored column. A stored recipient is written once at creation and is wrong the
+first time a student transfers or a contract changes hands. The specific
+failure this prevents: a college's student receiving an invoice that is not
+theirs.
 
 **Deletes are soft and guarded.** A course with running batches, a trainer
 confirmed on live delivery, and a college with students all refuse removal with

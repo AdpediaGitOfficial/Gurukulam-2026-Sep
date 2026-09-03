@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pageQuerySchema, queryBoolean } from "../common/page.js";
 import { moneyMinor } from "../common/money.js";
+import { paymentModeSchema } from "../ledger/index.js";
 
 /**
  * Retail and college students in one register.
@@ -95,8 +96,6 @@ export const suspendStudentSchema = z.object({
 export type SuspendStudentInput = z.infer<typeof suspendStudentSchema>;
 
 // ── Allocation ────────────────────────────────────────────────────────────
-
-export const paymentModeSchema = z.enum(["UPI", "CREDIT_CARD", "DEBIT_CARD", "CASH", "OTHER"]);
 
 const advanceSchema = z.object({
   amount: z.string().min(1, "Enter the advance amount"),
