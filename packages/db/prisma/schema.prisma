@@ -375,6 +375,9 @@ model CollegeUser {
   invitedAt     DateTime?          @map("invited_at")
   grantedAt     DateTime?          @map("granted_at")
   revokedAt     DateTime?          @map("revoked_at")
+  /// Why access was withdrawn. Kept after a later grant clears it, so the
+  /// reason always belongs to the revocation currently in force.
+  revokeReason  String?            @map("revoke_reason") @db.VarChar(500)
   lastLoginAt   DateTime?          @map("last_login_at")
   createdAt     DateTime           @default(now()) @map("created_at")
   createdBy     String?            @map("created_by") @db.VarChar(36)

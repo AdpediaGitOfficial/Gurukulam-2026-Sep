@@ -41,3 +41,45 @@ it explains how it was reached.
   discounting patterns across colleges without a separate discount field.
 - If a third basis ever appears (per-session, milestone), it is a new enum member plus its inputs —
   the total and everything downstream of it do not move.
+
+## Working with these columns in Prisma
+
+`computed_total_minor` and `total_value_minor` are **PostgreSQL generated columns**, created by raw
+SQL in `20260903075500_constraints`. Prisma has no way to express that, so its schema models them as
+ordinary nullable `BigInt`s.
+
+The consequence is a trap, and it is permanent rather than a bug to fix: `prisma migrate dev` diffs
+its own model against a shadow database built by replaying the migrations, sees a generated
+expression it cannot account for, and proposes
+
+```sql
+ALTER TABLE "college_contracts" ALTER COLUMN "computed_total_minor" DROP DEFAULT, …
+```
+
+which Postgres refuses outright — and would drop the expression if it did not. The same diff also
+proposes `DROP DEFAULT` on `student_fee_ledger.discount_amount_minor`, which the same migration set
+up in raw SQL.
+
+**So every migration on this schema is hand-written.** Generate it with `--create-only`, delete
+everything the diff proposed that you did not intend, keep only your own statement, and apply it
+with `migrate deploy`:
+
+```bash
+pnpm --filter @gurukulam/db exec prisma migrate dev --create-only --name your_change
+$EDITOR prisma/migrations/*_your_change/migration.sql   # keep only what you meant
+pnpm --filter @gurukulam/db exec prisma migrate deploy
+```
+
+If a migration has already failed halfway, mark it rolled back before re-applying the corrected SQL:
+`prisma migrate resolve --rolled-back <migration_name>`.
+
+Check afterwards that the expression survived:
+
+```sql
+SELECT column_name, is_generated FROM information_schema.columns
+WHERE table_name = 'college_contracts' AND column_name = 'computed_total_minor';
+-- is_generated must still be ALWAYS
+```
+
+`20260904111720_college_user_revoke_reason` is the worked example: one `ADD COLUMN`, with the two
+statements the diff wanted to add stripped out.

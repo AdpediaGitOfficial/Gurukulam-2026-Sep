@@ -323,6 +323,9 @@ export class PortalAccessService {
             accountStatus: "ACTIVE",
             grantedAt: new Date(),
             revokedAt: null,
+            // The reason belonged to a revocation that no longer applies.
+            // Leaving it would caption a live account with why it was once off.
+            revokeReason: null,
             permissions: DEFAULT_COLLEGE_PERMISSIONS,
           },
         })
@@ -375,6 +378,7 @@ export class PortalAccessService {
         data: {
           accessStatus: "REVOKED",
           revokedAt: new Date(),
+          revokeReason: input.reason || null,
           // The hash is cleared as well as the status: a revoked account that
           // still holds a working password is one configuration slip from
           // being live again.
@@ -393,7 +397,6 @@ export class PortalAccessService {
       return u;
     });
 
-    void input;
     return toCollegeUser(updated);
   }
 
@@ -470,7 +473,8 @@ function toCollegeUser(row: {
   collegeUserId: string; collegeId: string; pocId: string | null; name: string;
   email: string; loginEmail: string | null; phone: string | null;
   accessStatus: string; accountStatus: string; grantedAt: Date | null;
-  revokedAt: Date | null; lastLoginAt: Date | null; createdAt: Date;
+  revokedAt: Date | null; revokeReason: string | null;
+  lastLoginAt: Date | null; createdAt: Date;
   college?: { name: string } | null;
 }): CollegeUser {
   return {
@@ -486,6 +490,7 @@ function toCollegeUser(row: {
     accountStatus: row.accountStatus as CollegeUser["accountStatus"],
     grantedAt: row.grantedAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
+    revokeReason: row.revokeReason,
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };

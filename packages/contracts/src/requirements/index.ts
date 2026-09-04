@@ -121,6 +121,8 @@ export const collegeUserSchema = z.object({
   accountStatus: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
   grantedAt: z.string().nullable(),
   revokedAt: z.string().nullable(),
+  /** Why access was withdrawn. Cleared when access is granted again. */
+  revokeReason: z.string().nullable(),
   lastLoginAt: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -138,6 +140,10 @@ export const grantPortalAccessSchema = z.object({
 export type GrantPortalAccessInput = z.infer<typeof grantPortalAccessSchema>;
 
 export const revokePortalAccessSchema = z.object({
+  /**
+   * Why. Stored on the account and shown beside it — an operator looking at a
+   * revoked login should not have to ask someone why it was revoked.
+   */
   reason: z.string().trim().max(500).optional(),
 });
 

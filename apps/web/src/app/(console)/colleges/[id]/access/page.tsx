@@ -59,9 +59,18 @@ function Accounts({ collegeId, users }: { collegeId: string; users: readonly Col
             </span>
 
             <span className="text-body-sm text-ink-muted">
-              {user.lastLoginAt === null
-                ? "Never signed in"
-                : `Last seen ${user.lastLoginAt.slice(0, 10)}`}
+              {user.accessStatus === "REVOKED" && user.revokedAt !== null
+                ? `Revoked ${user.revokedAt.slice(0, 10)}`
+                : user.lastLoginAt === null
+                  ? "Never signed in"
+                  : `Last seen ${user.lastLoginAt.slice(0, 10)}`}
+              {/* Why, next to the account it applies to — so nobody has to ask
+                  around to find out why a login stopped working. */}
+              {user.revokeReason === null ? null : (
+                <span className="block text-caption text-ink-subtle">
+                  &ldquo;{user.revokeReason}&rdquo;
+                </span>
+              )}
             </span>
 
             <StatusPill

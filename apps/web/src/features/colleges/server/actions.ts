@@ -231,15 +231,23 @@ export async function grantAccess(
  * Immediate: the account's status stops it authenticating, its live sessions
  * are revoked in the same transaction, and its password hash is cleared — so
  * restoring access issues a NEW password rather than reviving the old one.
+ *
+ * The reason is stored on the account and shown beside it. Granting again
+ * clears it, because it described a revocation that no longer applies.
  */
 export async function revokeAccess(
   collegeId: string,
   collegeUserId: string,
   _previous: FormState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<FormState> {
+  const reason = text(formData, "reason");
+
   try {
-    await apiFetch(`/colleges/access/${collegeUserId}/revoke`, { method: "POST", body: {} });
+    await apiFetch(`/colleges/access/${collegeUserId}/revoke`, {
+      method: "POST",
+      body: reason === undefined ? {} : { reason },
+    });
   } catch (error) {
     return apiFormError(error);
   }
