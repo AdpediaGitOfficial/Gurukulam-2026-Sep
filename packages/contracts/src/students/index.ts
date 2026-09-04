@@ -46,6 +46,60 @@ export const studentSchema = z.object({
 
 export type Student = z.infer<typeof studentSchema>;
 
+/**
+ * One batch this student sits on, as the detail endpoint returns it.
+ *
+ * Enough to name the enrolment without a second request, and no more — the
+ * batch's own record is a link away.
+ */
+export const studentBatchSchema = z.object({
+  batchId: z.string(),
+  batchCode: z.string(),
+  name: z.string(),
+  status: z.string(),
+  segment: z.enum(["RETAIL", "COLLEGE"]),
+  courseId: z.string(),
+  courseName: z.string().nullable(),
+  enrolledAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+
+export type StudentBatch = z.infer<typeof studentBatchSchema>;
+
+/**
+ * One fee ledger. RETAIL ONLY, always — a college student is billed through
+ * their institution's contract and has no individual ledger (invariant 3), so
+ * this array is empty for them rather than absent.
+ */
+export const studentLedgerSchema = z.object({
+  ledgerId: z.string(),
+  courseId: z.string(),
+  courseValueMinor: moneyMinor,
+  enrolmentValueMinor: moneyMinor,
+  discountAmountMinor: moneyMinor.nullable(),
+  totalPaidMinor: moneyMinor,
+  balancePendingMinor: moneyMinor,
+  status: z.string(),
+  installmentCount: z.number().int(),
+});
+
+export type StudentLedger = z.infer<typeof studentLedgerSchema>;
+
+/**
+ * What `GET /students/:id` returns: the record plus the two things you always
+ * want beside it — where they are enrolled, and what they owe.
+ *
+ * Declared here rather than left implied. An undocumented field is invisible
+ * to the OpenAPI document, which means the mobile and third-party clients
+ * cannot see it at all.
+ */
+export const studentDetailSchema = studentSchema.extend({
+  batches: z.array(studentBatchSchema),
+  ledgers: z.array(studentLedgerSchema),
+});
+
+export type StudentDetail = z.infer<typeof studentDetailSchema>;
+
 export const studentQuerySchema = pageQuerySchema.extend({
   collegeId: z.string().optional(),
   cityId: z.string().optional(),

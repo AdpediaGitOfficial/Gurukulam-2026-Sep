@@ -5,6 +5,7 @@ import {
   type CreateStudentInput, type Page, type Principal, type Student,
   type StudentQuery, type SuspendStudentInput, type UnallocatedSummary,
   type UpdateStudentInput,
+  type StudentDetail,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -75,7 +76,7 @@ export class StudentsService {
     });
   }
 
-  async get(principal: Principal, studentId: string) {
+  async get(principal: Principal, studentId: string): Promise<StudentDetail> {
     const student = await this.prisma.student.findFirst({
       where: { studentId, deletedAt: null },
       include: {

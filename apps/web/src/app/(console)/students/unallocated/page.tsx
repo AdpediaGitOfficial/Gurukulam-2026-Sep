@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { Student, UnallocatedSummary } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -47,11 +48,11 @@ const COLUMNS: Column<Student>[] = [
     id: "student",
     header: "Student",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/students/${row.studentId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{fullName(row)}</span>
         <span className="text-caption text-ink-subtle">{row.email}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.studentCode}</span>
-      </div>
+      </Link>
     ),
   },
   { id: "segment", header: "Segment", cell: (row) => <SegmentTag segment={row.enrolmentChannel} /> },
