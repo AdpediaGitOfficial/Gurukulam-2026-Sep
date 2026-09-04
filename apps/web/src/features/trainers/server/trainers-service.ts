@@ -1,8 +1,11 @@
 import "server-only";
 
+import { z } from "zod";
 import {
+  availabilitySchema,
   trainerDetailSchema,
   trainerSchema,
+  type Availability,
   type Page,
   type Trainer,
   type TrainerDetail,
@@ -25,4 +28,20 @@ export async function listTrainers(params: SearchParams): Promise<Page<Trainer>>
 /** One trainer with the courses they are approved to deliver. */
 export async function getTrainer(trainerId: string): Promise<TrainerDetail> {
   return trainerDetailSchema.parse(await apiFetch(`/trainers/${trainerId}`));
+}
+
+/**
+ * Declared leave and blocked time for one trainer.
+ *
+ * A plain array, not a page: this is a person's diary, not a directory, and
+ * the endpoint returns the lot.
+ *
+ * Free/busy is COMPUTED from these entries plus committed sessions, never
+ * stored — so this list is one half of the answer, and the batch schedule is
+ * the other.
+ */
+export async function listAvailability(trainerId: string): Promise<Availability[]> {
+  return z
+    .array(availabilitySchema)
+    .parse(await apiFetch(`/trainers/${trainerId}/availability`));
 }

@@ -66,11 +66,18 @@ export function BatchHeader({
           </Link>
         )}
         {/* The CONFIRMED trainer only. A proposal is not delivery. */}
-        <Chip>
-          {batch.primaryTrainerName === null || batch.primaryTrainerName === undefined
-            ? "No trainer confirmed"
-            : batch.primaryTrainerName}
-        </Chip>
+        {batch.primaryTrainerId === null ||
+        batch.primaryTrainerName === null ||
+        batch.primaryTrainerName === undefined ? (
+          <Chip>No trainer confirmed</Chip>
+        ) : (
+          <Link
+            href={`/trainers/${batch.primaryTrainerId}`}
+            className="text-body-sm text-gold underline-offset-4 hover:underline"
+          >
+            {batch.primaryTrainerName}
+          </Link>
+        )}
         {batch.venue === null ? null : <Chip>{batch.venue}</Chip>}
       </div>
 

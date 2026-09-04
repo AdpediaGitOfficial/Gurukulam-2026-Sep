@@ -35,11 +35,11 @@ const COLUMNS: Column<Trainer>[] = [
     id: "trainer",
     header: "Trainer",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/trainers/${row.trainerId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="text-caption text-ink-subtle">{row.email}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.trainerCode}</span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -102,7 +102,10 @@ const COLUMNS: Column<Trainer>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  rowActions((row) => [{ label: "Edit", href: `/trainers/${row.trainerId}/edit` }]),
+  rowActions((row) => [
+    { label: "Open", href: `/trainers/${row.trainerId}` },
+    { label: "Edit", href: `/trainers/${row.trainerId}/edit` },
+  ]),
 ];
 
 export default async function TrainersPage({

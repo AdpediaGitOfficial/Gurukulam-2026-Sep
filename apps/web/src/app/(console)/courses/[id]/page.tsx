@@ -80,7 +80,7 @@ const TRAINER_COLUMNS: Column<Trainer>[] = [
     id: "trainer",
     header: "Trainer",
     cell: (row) => (
-      <Link href={`/trainers/${row.trainerId}/edit`} className="flex flex-col hover:underline">
+      <Link href={`/trainers/${row.trainerId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.trainerCode}</span>
       </Link>
