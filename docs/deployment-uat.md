@@ -355,10 +355,10 @@ a rolling restart, which is also the point at which Redis stops being optional.
 Email, WhatsApp and S3 are not integrated, by design. Certificate PDFs are not
 generated. Payments are recorded, never collected — there is no gateway.
 
-**College portal access cannot be granted from the console yet.** The endpoints
-exist and work; no screen calls them. When that screen is built it will have to
-show the temporary password once, on the page, because nothing emails it — and
-that is the open decision, not an oversight.
+**Granting a college portal login shows the temporary password once, on the
+page, and nothing emails it.** The API returns it a single time and stores only
+its hash, so nobody can retrieve it afterwards — losing it means issuing a new
+one, which invalidates the old. Whoever runs UAT needs a way to pass it on.
 
 The college, trainer and student portals themselves are deferred. The API
 accepts a `COLLEGE_USER` login today and the scope works, but there is no portal

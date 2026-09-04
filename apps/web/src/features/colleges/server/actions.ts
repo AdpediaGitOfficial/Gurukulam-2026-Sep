@@ -3,11 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { collegeSchema, createCollegeSchema, replacePocsSchema } from "@gurukulam/contracts";
+import {
+  collegeSchema,
+  createCollegeSchema,
+  grantPortalAccessSchema,
+  issuedCredentialSchema,
+  replacePocsSchema,
+  type IssuedCredential,
+} from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
 import { apiFormError, checked, clearable, fieldErrors, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
+import type { GrantState } from "@/features/colleges/types";
 
 /*
  * The edit schema is built here rather than reusing the contract's
@@ -171,4 +179,71 @@ export async function saveContacts(
 
   revalidatePath(`/colleges/${collegeId}`);
   redirect(`/colleges/${collegeId}?contacts=1`);
+}
+
+/**
+ * Grants portal access, or re-issues it.
+ *
+ * One endpoint does three jobs, because it matches on the contact's email
+ * within the college: a first grant creates the account, a second REPLACES the
+ * password of an existing one, and one against a revoked account restores it.
+ * The screen names which of the three it is about to do — the endpoint cannot
+ * be made to distinguish them without changing what it means.
+ *
+ * The temporary password comes back in the state rather than through a
+ * redirect. Putting it in a query string would write it into browser history,
+ * the proxy's access log and any onward `Referer`.
+ */
+export async function grantAccess(
+  collegeId: string,
+  _previous: GrantState,
+  formData: FormData,
+): Promise<GrantState> {
+  const pocId = text(formData, "pocId");
+
+  const parsed = grantPortalAccessSchema.safeParse({
+    // A contact, or details typed directly for someone who is not one.
+    ...(pocId === undefined ? {} : { pocId }),
+    name: text(formData, "name"),
+    email: text(formData, "email"),
+    phone: text(formData, "phone"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  let issued: IssuedCredential;
+  try {
+    issued = issuedCredentialSchema.parse(
+      await apiFetch(`/colleges/${collegeId}/access`, { method: "POST", body: parsed.data }),
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  // Revalidated but NOT redirected: the credential is on this page now, and a
+  // navigation would take it with it.
+  revalidatePath(`/colleges/${collegeId}/access`);
+  return { status: "idle", issued };
+}
+
+/**
+ * Revokes portal access.
+ *
+ * Immediate: the account's status stops it authenticating, its live sessions
+ * are revoked in the same transaction, and its password hash is cleared — so
+ * restoring access issues a NEW password rather than reviving the old one.
+ */
+export async function revokeAccess(
+  collegeId: string,
+  collegeUserId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/colleges/access/${collegeUserId}/revoke`, { method: "POST", body: {} });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/colleges/${collegeId}/access`);
+  redirect(`/colleges/${collegeId}/access?revoked=1`);
 }

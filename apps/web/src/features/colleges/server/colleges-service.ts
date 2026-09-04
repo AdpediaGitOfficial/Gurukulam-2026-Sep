@@ -1,13 +1,16 @@
 import "server-only";
 
+import { z } from "zod";
 import {
   batchSchema,
   collegeDetailSchema,
   collegeSchema,
+  collegeUserSchema,
   studentSchema,
   type Batch,
   type College,
   type CollegeDetail,
+  type CollegeUser,
   type Page,
   type Student,
 } from "@gurukulam/contracts";
@@ -60,4 +63,16 @@ export async function listCollegeStudents(
  */
 export async function listCollegeBatches(collegeId: string): Promise<Page<Batch>> {
   return fetchPage("/batches", batchSchema, { collegeId, pageSize: "10" }, BATCH_FILTERS);
+}
+
+/**
+ * The college's portal accounts.
+ *
+ * A plain array, not a page: a college has a handful of these, and the endpoint
+ * returns the lot.
+ */
+export async function listPortalAccess(collegeId: string): Promise<CollegeUser[]> {
+  return z
+    .array(collegeUserSchema)
+    .parse(await apiFetch(`/colleges/${collegeId}/access`));
 }

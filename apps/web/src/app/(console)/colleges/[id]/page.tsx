@@ -186,12 +186,20 @@ export default async function CollegeDetailPage({
         description={`${college.collegeCode}${college.cityName === null || college.cityName === undefined ? "" : ` · ${college.cityName}`}`}
         breadcrumbs={[{ label: "Colleges", href: "/colleges" }, { label: college.name }]}
         action={
-          <Link
-            href={`/colleges/${college.collegeId}/edit`}
-            className={buttonVariants({ variant: "secondary" })}
-          >
-            Edit college
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/colleges/${college.collegeId}/access`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Portal access
+            </Link>
+            <Link
+              href={`/colleges/${college.collegeId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Edit college
+            </Link>
+          </div>
         }
       />
 
