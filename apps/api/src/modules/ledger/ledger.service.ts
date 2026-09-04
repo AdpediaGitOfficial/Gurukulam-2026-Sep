@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
-  Installment, LedgerQuery, LedgerSummary, Page, Payment, Principal,
+  Installment, LedgerDetail, LedgerQuery, LedgerSummary, Page, Payment, Principal,
   RecordPaymentInput, ReminderRecipient, ReversePaymentInput, SetScheduleInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
@@ -67,7 +67,7 @@ export class LedgerService {
   }
 
   /** The schedule lives here rather than in the register — counts reach 100. */
-  async get(principal: Principal, ledgerId: string) {
+  async get(principal: Principal, ledgerId: string): Promise<LedgerDetail> {
     const ledger = await this.prisma.studentFeeLedger.findFirst({
       where: { ledgerId, deletedAt: null },
       include: {

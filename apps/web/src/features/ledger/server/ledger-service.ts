@@ -2,11 +2,15 @@ import "server-only";
 
 import {
   contractSchema,
+  ledgerDetailSchema,
   ledgerSummarySchema,
   type Contract,
+  type LedgerDetail,
   type LedgerSummary,
   type Page,
 } from "@gurukulam/contracts";
+
+import { apiFetch } from "@/server/api";
 
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
@@ -38,4 +42,9 @@ export const CONTRACT_FILTERS = [...PAGE_KEYS, "collegeId", "courseId", "status"
  */
 export async function listContracts(params: SearchParams): Promise<Page<Contract>> {
   return fetchPage("/fee-ledger/contracts", contractSchema, params, CONTRACT_FILTERS);
+}
+
+/** One student's ledger: the schedule, with the receipts posted against each row. */
+export async function getLedger(ledgerId: string): Promise<LedgerDetail> {
+  return ledgerDetailSchema.parse(await apiFetch(`/fee-ledger/${ledgerId}`));
 }

@@ -84,6 +84,32 @@ export const ledgerSummarySchema = z.object({
 
 export type LedgerSummary = z.infer<typeof ledgerSummarySchema>;
 
+/**
+ * One installment with the receipts posted against it.
+ *
+ * A payment is never an edit to the installment — it is its own row, and a
+ * reversal is another. That is what makes a ledger auditable: the balance is
+ * derived from the entries, not overwritten in place.
+ */
+export const installmentWithPaymentsSchema = installmentSchema.extend({
+  payments: z.array(paymentSchema),
+});
+
+export type InstallmentWithPayments = z.infer<typeof installmentWithPaymentsSchema>;
+
+/**
+ * What `GET /fee-ledger/:ledgerId` returns: the summary plus the schedule, each
+ * row carrying its own receipts.
+ *
+ * Declared here rather than left implied — an undocumented field is invisible
+ * to the OpenAPI document, so the mobile and third-party clients cannot see it.
+ */
+export const ledgerDetailSchema = ledgerSummarySchema.extend({
+  installments: z.array(installmentWithPaymentsSchema),
+});
+
+export type LedgerDetail = z.infer<typeof ledgerDetailSchema>;
+
 export const ledgerQuerySchema = pageQuerySchema.extend({
   studentId: z.string().optional(),
   courseId: z.string().optional(),
