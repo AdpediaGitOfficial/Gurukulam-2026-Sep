@@ -29,6 +29,35 @@ export const trainerSchema = z.object({
 
 export type Trainer = z.infer<typeof trainerSchema>;
 
+/**
+ * One course this trainer is approved to take, and when that was granted.
+ *
+ * `approvedAt` is nullable: an approval carried over from an import or granted
+ * before the column existed has no date, and claiming otherwise would make the
+ * contract lie about rows that are already in the database.
+ */
+export const approvedCourseSchema = z.object({
+  courseId: z.string(),
+  courseCode: z.string(),
+  name: z.string(),
+  approvedAt: z.string().nullable(),
+});
+
+export type ApprovedCourse = z.infer<typeof approvedCourseSchema>;
+
+/**
+ * What `GET /trainers/:id` returns: the trainer with the courses they may take.
+ *
+ * That mapping is not decoration — it is what filters the trainer picker when
+ * a batch is created, so a trainer can only be assigned to a course they are
+ * approved for.
+ */
+export const trainerDetailSchema = trainerSchema.extend({
+  approvedCourses: z.array(approvedCourseSchema),
+});
+
+export type TrainerDetail = z.infer<typeof trainerDetailSchema>;
+
 export const trainerQuerySchema = pageQuerySchema.extend({
   cityId: z.string().optional(),
   /** Only trainers approved for this course — the batch trainer picker. */

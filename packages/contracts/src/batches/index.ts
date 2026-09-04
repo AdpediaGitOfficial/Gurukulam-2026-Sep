@@ -119,6 +119,22 @@ export const trainerAssignmentSchema = z.object({
 });
 export type TrainerAssignment = z.infer<typeof trainerAssignmentSchema>;
 
+/**
+ * What `GET /batches/:id` returns: the batch with its trainer proposals.
+ *
+ * A proposal is not a commitment — the assignment carries its own status until
+ * the trainer confirms, which is why the history travels with the batch rather
+ * than collapsing to a single trainer name.
+ *
+ * `completedSessionCount` is present on the list and absent here; it is
+ * optional in the schema for exactly that reason.
+ */
+export const batchDetailSchema = batchSchema.extend({
+  trainerAssignments: z.array(trainerAssignmentSchema),
+});
+
+export type BatchDetail = z.infer<typeof batchDetailSchema>;
+
 // ── Sessions ──────────────────────────────────────────────────────────────
 
 /** Named BatchSession rather than Session: an auth Session is a login. */

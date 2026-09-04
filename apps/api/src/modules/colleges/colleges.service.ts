@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
   College, CollegeQuery, CreateCollegeInput, Page, Principal, ReplacePocsInput, UpdateCollegeInput,
+  CollegeDetail,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -68,7 +69,7 @@ export class CollegesService {
     });
   }
 
-  async get(principal: Principal, collegeId: string) {
+  async get(principal: Principal, collegeId: string): Promise<CollegeDetail> {
     const college = await this.prisma.college.findFirst({
       where: { collegeId, deletedAt: null },
       include: {

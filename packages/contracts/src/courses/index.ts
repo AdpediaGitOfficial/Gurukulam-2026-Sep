@@ -40,6 +40,18 @@ export const courseSchema = z.object({
 export type Course = z.infer<typeof courseSchema>;
 export type CourseTopic = z.infer<typeof courseTopicSchema>;
 
+/**
+ * What `GET /courses/:id` returns: the course with its topics, in sequence.
+ *
+ * A course holds topics and a topic carries sessions, so the topics are the
+ * course's actual structure rather than a detail of it.
+ */
+export const courseDetailSchema = courseSchema.extend({
+  topics: z.array(courseTopicSchema),
+});
+
+export type CourseDetail = z.infer<typeof courseDetailSchema>;
+
 export const courseQuerySchema = pageQuerySchema.extend({
   category: z.string().optional(),
   isActive: queryBoolean.optional(),

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -21,10 +22,10 @@ const COLUMNS: Column<College>[] = [
     id: "college",
     header: "College",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/colleges/${row.collegeId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.collegeCode}</span>
-      </div>
+      </Link>
     ),
   },
   {

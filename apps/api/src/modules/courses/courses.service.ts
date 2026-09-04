@@ -9,6 +9,7 @@ import {
   type Principal,
   type ReplaceTopicsInput,
   type UpdateCourseInput,
+  type CourseDetail,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -65,7 +66,7 @@ export class CoursesService {
     });
   }
 
-  async get(_principal: Principal, courseId: string) {
+  async get(_principal: Principal, courseId: string): Promise<CourseDetail> {
     const course = await this.prisma.course.findFirst({
       where: { courseId, deletedAt: null },
       include: {

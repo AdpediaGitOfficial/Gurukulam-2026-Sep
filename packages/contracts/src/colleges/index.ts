@@ -43,6 +43,18 @@ export const collegeSchema = z.object({
 export type College = z.infer<typeof collegeSchema>;
 export type CollegePoc = z.infer<typeof collegePocSchema>;
 
+/**
+ * What `GET /colleges/:id` returns: the college with its points of contact.
+ *
+ * Exactly one contact is primary — a college is an actor we deal with through
+ * people, not a directory row, so the contacts travel with the record.
+ */
+export const collegeDetailSchema = collegeSchema.extend({
+  pocs: z.array(collegePocSchema),
+});
+
+export type CollegeDetail = z.infer<typeof collegeDetailSchema>;
+
 export const collegeQuerySchema = pageQuerySchema.extend({
   cityId: z.string().optional(),
   discipline: z.string().optional(),

@@ -3,7 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import {
   parseRupees,
   type ApproveCoursesInput, type CreateTrainerInput, type Page, type Principal,
-  type Trainer, type TrainerQuery, type UpdateTrainerInput,
+  type Trainer, type TrainerDetail, type TrainerQuery, type UpdateTrainerInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -67,7 +67,7 @@ export class TrainersService {
     });
   }
 
-  async get(principal: Principal, trainerId: string) {
+  async get(principal: Principal, trainerId: string): Promise<TrainerDetail> {
     const trainer = await this.prisma.trainer.findFirst({
       where: { trainerId, deletedAt: null },
       include: {

@@ -3,6 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import type {
   Batch, BatchQuery, CreateBatchInput, Page, Principal,
   ProposeTrainerInput, RespondToProposalInput, UpdateBatchInput,
+  BatchDetail,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -70,7 +71,7 @@ export class BatchesService {
     });
   }
 
-  async get(principal: Principal, batchId: string) {
+  async get(principal: Principal, batchId: string): Promise<BatchDetail> {
     const batch = await this.prisma.batch.findFirst({
       where: { batchId, deletedAt: null },
       include: {
