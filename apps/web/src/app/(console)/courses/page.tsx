@@ -24,10 +24,10 @@ const COLUMNS: Column<Course>[] = [
     id: "course",
     header: "Course",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/courses/${row.courseId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.courseCode}</span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -85,7 +85,10 @@ const COLUMNS: Column<Course>[] = [
       </StatusPill>
     ),
   },
-  rowActions((row) => [{ label: "Edit", href: `/courses/${row.courseId}/edit` }]),
+  rowActions((row) => [
+    { label: "Open", href: `/courses/${row.courseId}` },
+    { label: "Edit", href: `/courses/${row.courseId}/edit` },
+  ]),
 ];
 
 export default async function CoursesPage({

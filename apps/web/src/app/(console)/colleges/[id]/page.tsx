@@ -71,10 +71,10 @@ const BATCH_COLUMNS: Column<Batch>[] = [
     id: "batch",
     header: "Batch",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/batches/${row.batchId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
-      </div>
+      </Link>
     ),
   },
   { id: "course", header: "Course", cell: (row) => row.courseName ?? <span className="text-ink-subtle">—</span> },

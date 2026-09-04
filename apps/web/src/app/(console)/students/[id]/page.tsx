@@ -167,12 +167,15 @@ export default async function StudentDetailPage({
                   key={batch.batchId}
                   className="flex flex-wrap items-center gap-4 border-b border-hairline p-4 last:border-b-0"
                 >
-                  <span className="min-w-0 flex-1">
+                  <Link
+                    href={`/batches/${batch.batchId}`}
+                    className="min-w-0 flex-1 hover:underline"
+                  >
                     <span className="block text-body font-semibold text-ink">{batch.name}</span>
                     <span className="block font-mono text-caption text-ink-subtle">
                       {batch.batchCode} · {batch.courseName ?? "—"}
                     </span>
-                  </span>
+                  </Link>
                   <SegmentTag segment={batch.segment} />
                   <span className="text-body-sm text-ink-muted">
                     enrolled {new Date(batch.enrolledAt).toLocaleDateString("en-IN")}

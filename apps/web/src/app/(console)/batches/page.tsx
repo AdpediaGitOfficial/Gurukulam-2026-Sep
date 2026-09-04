@@ -33,10 +33,10 @@ const COLUMNS: Column<Batch>[] = [
     id: "batch",
     header: "Batch",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/batches/${row.batchId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.name}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -110,7 +110,10 @@ const COLUMNS: Column<Batch>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  rowActions((row) => [{ label: "Edit", href: `/batches/${row.batchId}/edit` }]),
+  rowActions((row) => [
+    { label: "Open", href: `/batches/${row.batchId}` },
+    { label: "Edit", href: `/batches/${row.batchId}/edit` },
+  ]),
 ];
 
 export default async function BatchesPage({
