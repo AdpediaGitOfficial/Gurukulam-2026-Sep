@@ -4,6 +4,7 @@ import type { City } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -66,6 +67,7 @@ const COLUMNS: Column<City>[] = [
       </StatusPill>
     ),
   },
+  rowActions((row) => [{ label: "Edit", href: `/settings/cities/${row.cityId}/edit` }]),
 ];
 
 export default async function CitiesPage({
@@ -91,6 +93,10 @@ export default async function CitiesPage({
         params["created"] === "1" ? (
           <Alert intent="success" title="Added">
             City added.
+          </Alert>
+        ) : params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            City updated.
           </Alert>
         ) : null
       }
@@ -125,7 +131,7 @@ export default async function CitiesPage({
         rows={page.rows}
         getRowId={(row) => row.cityId}
         caption="Operating cities with their parent country and footprint"
-        minWidth="1050px"
+        minWidth="1150px"
         empty={<EmptyState title="No cities match those filters" />}
       />
     </ListPage>

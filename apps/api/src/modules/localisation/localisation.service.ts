@@ -55,6 +55,16 @@ export class LocalisationService {
     });
   }
 
+  /** One country, for the edit form. Reads are unscoped, as above. */
+  async getCountry(_p: Principal, countryId: string): Promise<Country> {
+    const row = await this.prisma.country.findFirst({
+      where: { countryId, deletedAt: null },
+      include: { _count: { select: { cities: { where: { deletedAt: null } } } } },
+    });
+    if (!row) throw ApiException.notFound("Country");
+    return toCountry(row);
+  }
+
   /**
    * Creating a country, or REVIVING one that was archived.
    *
@@ -172,6 +182,16 @@ export class LocalisationService {
       ]);
       return [rows.map(toCity), total];
     });
+  }
+
+  /** One city, for the edit form. */
+  async getCity(_p: Principal, cityId: string): Promise<City> {
+    const row = await this.prisma.city.findFirst({
+      where: { cityId, deletedAt: null },
+      include: CITY_INCLUDE,
+    });
+    if (!row) throw ApiException.notFound("City");
+    return toCity(row);
   }
 
   async createCity(principal: Principal, input: CreateCityInput): Promise<City> {

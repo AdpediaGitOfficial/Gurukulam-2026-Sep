@@ -13,6 +13,10 @@ export const sessionStatusSchema = z.enum(["SCHEDULED", "LIVE", "COMPLETED", "CA
 export const deliveryModeSchema = z.enum(["ONLINE", "OFFLINE", "HYBRID"]);
 export const assignmentStatusSchema = z.enum(["DRAFT", "OPEN", "CLOSED"]);
 
+export type BatchStatus = z.infer<typeof batchStatusSchema>;
+export type SessionStatus = z.infer<typeof sessionStatusSchema>;
+export type DeliveryMode = z.infer<typeof deliveryModeSchema>;
+
 export const batchSchema = z.object({
   batchId: z.string(),
   batchCode: z.string(),
@@ -38,6 +42,9 @@ export const batchSchema = z.object({
   maxCapacity: z.number().int().nullable(),
   venue: z.string().nullable(),
   meetingLink: z.string().nullable(),
+  /* Read back so the edit form can round-trip it — a write-only field is one
+     an operator erases every time they correct something else. */
+  notes: z.string().nullable(),
   status: batchStatusSchema,
   createdAt: z.string(),
   deletedAt: z.string().nullable(),

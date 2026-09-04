@@ -51,3 +51,16 @@ export function number(formData: FormData, key: string): number | undefined {
   const value = text(formData, key);
   return value === undefined ? undefined : Number(value);
 }
+
+/**
+ * Reads a field an operator is allowed to empty.
+ *
+ * `text` collapses a blank to `undefined`, which a PATCH reads as "leave it
+ * alone" — correct for a field the form did not render, wrong for one the
+ * operator deliberately cleared. This returns the empty string instead, which
+ * the API stores as null.
+ */
+export function clearable(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}

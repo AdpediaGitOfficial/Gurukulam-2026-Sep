@@ -467,6 +467,7 @@ function toBatch(row: BatchRow): Batch {
     maxCapacity: row.maxCapacity,
     venue: row.venue,
     meetingLink: row.meetingLink,
+    notes: row.notes,
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,

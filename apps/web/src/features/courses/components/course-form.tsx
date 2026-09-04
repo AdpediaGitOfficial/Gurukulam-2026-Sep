@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { formatRupees, fromWire, type CourseDetail } from "@gurukulam/contracts";
 
 import {
   FormSection,
   FormShell,
+  FormSwitch,
   FormText,
   FormTextarea,
   FullWidth,
 } from "@/components/patterns/form-shell";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { createCourse } from "@/features/courses/server/actions";
+import { saveCourse } from "@/features/courses/server/actions";
+import { serialiseTopics } from "@/features/courses/topics";
 import { TextField } from "@/components/ui/input";
 
 interface TopicRow {
@@ -20,25 +23,63 @@ interface TopicRow {
   hours: string;
 }
 
-export function CourseForm() {
-  const [nextId, setNextId] = useState(1);
-  const [topics, setTopics] = useState<TopicRow[]>([{ id: 0, title: "", hours: "" }]);
+export function CourseForm({ course }: { course?: CourseDetail }) {
+  const editing = course !== undefined;
+
+  const initial: TopicRow[] =
+    course === undefined || course.topics.length === 0
+      ? [{ id: 0, title: "", hours: "" }]
+      : course.topics.map((topic, index) => ({
+          id: index,
+          title: topic.title,
+          hours: topic.durationHours === null ? "" : String(topic.durationHours),
+        }));
+
+  const [nextId, setNextId] = useState(initial.length);
+  const [topics, setTopics] = useState<TopicRow[]>(initial);
 
   return (
     <FormShell
-      action={createCourse}
-      errorTitle="Could not add that course"
-      submitLabel="Add course"
+      action={saveCourse.bind(null, course?.courseId)}
+      errorTitle={editing ? "Could not save that course" : "Could not add that course"}
+      submitLabel={editing ? "Save changes" : "Add course"}
       secondary={
         <Link href="/courses" className={buttonVariants({ variant: "secondary" })}>
           Cancel
         </Link>
       }
     >
+      {/* The topic list as it was when this page loaded. The action compares
+          the submission against it and only replaces the topics when they
+          actually changed — replacement re-issues every topic id. */}
+      {editing ? (
+        <input
+          type="hidden"
+          name="topicsSnapshot"
+          value={serialiseTopics(course.topics)}
+        />
+      ) : null}
       <FormSection title="The course">
-        <FormText name="name" label="Course name" required placeholder="Data Analytics Masterclass" />
-        <FormText name="shortName" label="Short name" placeholder="DA" hint="Feeds the batch code." />
-        <FormText name="category" label="Category" placeholder="Data Science" />
+        <FormText
+          name="name"
+          label="Course name"
+          required
+          placeholder="Data Analytics Masterclass"
+          defaultValue={course?.name}
+        />
+        <FormText
+          name="shortName"
+          label="Short name"
+          placeholder="DA"
+          hint="Feeds the batch code."
+          defaultValue={course?.shortName ?? ""}
+        />
+        <FormText
+          name="category"
+          label="Category"
+          placeholder="Data Science"
+          defaultValue={course?.category ?? ""}
+        />
         <FormText
           name="standardMarketValue"
           label="Standard market value (₹)"
@@ -47,9 +88,28 @@ export function CourseForm() {
           placeholder="75000"
           hint="The catalogue price. A retail enrolment can be pitched below it."
           className="font-mono tabular-nums"
+          defaultValue={
+            course === undefined
+              ? undefined
+              : formatRupees(fromWire(course.standardMarketValueMinor), { symbol: false })
+          }
         />
-        <FormText name="durationWeeks" label="Duration (weeks)" type="number" min={0} placeholder="12" />
-        <FormText name="durationHours" label="Duration (hours)" type="number" min={0} placeholder="96" />
+        <FormText
+          name="durationWeeks"
+          label="Duration (weeks)"
+          type="number"
+          min={0}
+          placeholder="12"
+          defaultValue={course?.durationWeeks ?? ""}
+        />
+        <FormText
+          name="durationHours"
+          label="Duration (hours)"
+          type="number"
+          min={0}
+          placeholder="96"
+          defaultValue={course?.durationHours ?? ""}
+        />
         <FormText
           name="attendanceFloorPct"
           label="Attendance floor (%)"
@@ -58,16 +118,34 @@ export function CourseForm() {
           max={100}
           placeholder="75"
           hint="Below this, a student is not certificate-eligible."
+          defaultValue={course?.attendanceFloorPct ?? ""}
         />
-        <FormText name="syllabusUrl" label="Syllabus URL" type="url" placeholder="https://…" />
+        <FormText
+          name="syllabusUrl"
+          label="Syllabus URL"
+          type="url"
+          placeholder="https://…"
+          defaultValue={course?.syllabusUrl ?? ""}
+        />
         <FullWidth>
           <FormTextarea
             name="description"
             label="Description"
             rows={3}
             placeholder="What this course covers and who it is for…"
+            defaultValue={course?.description ?? ""}
           />
         </FullWidth>
+        {editing ? (
+          <FullWidth>
+            <FormSwitch
+              name="isActive"
+              label="Active"
+              hint="Archiving takes the course out of the pickers. Batches already running keep it."
+              defaultChecked={course.isActive}
+            />
+          </FullWidth>
+        ) : null}
       </FormSection>
 
       <section className="flex flex-col gap-4">
@@ -77,6 +155,9 @@ export function CourseForm() {
             <p className="mt-1 text-body-sm text-ink-muted">
               A course holds topics; each topic carries one or more sessions. Sessions are scheduled
               per batch, so only the structure is set here.
+              {editing
+                ? " Changing this list replaces it wholesale — sessions already scheduled against a topic keep the title they were given."
+                : ""}
             </p>
           </div>
           <Button

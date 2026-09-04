@@ -4,6 +4,7 @@ import type { Student } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -76,6 +77,7 @@ const COLUMNS: Column<Student>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
+  rowActions((row) => [{ label: "Edit", href: `/students/${row.studentId}/edit` }]),
 ];
 
 export default async function StudentsPage({
@@ -154,7 +156,7 @@ export default async function StudentsPage({
         rows={page.rows}
         getRowId={(row) => row.studentId}
         caption="Students by segment, college and allocation"
-        minWidth="1100px"
+        minWidth="1200px"
         empty={
           <EmptyState
             title="No students match those filters"

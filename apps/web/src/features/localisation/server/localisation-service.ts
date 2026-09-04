@@ -2,6 +2,7 @@ import "server-only";
 
 import { citySchema, countrySchema, type City, type Country, type Page } from "@gurukulam/contracts";
 
+import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
 export const COUNTRY_FILTERS = [...PAGE_KEYS, "isActive"] as const;
@@ -20,4 +21,19 @@ export async function listCountries(params: SearchParams): Promise<Page<Country>
 
 export async function listCities(params: SearchParams): Promise<Page<City>> {
   return fetchPage("/localisation/cities", citySchema, params, CITY_FILTERS);
+}
+
+/**
+ * One record, for the edit form.
+ *
+ * Reading the row through its own endpoint rather than hunting for it in a
+ * page of the list is the difference between an edit link that works and one
+ * that works only on page one.
+ */
+export async function getCountry(countryId: string): Promise<Country> {
+  return countrySchema.parse(await apiFetch(`/localisation/countries/${countryId}`));
+}
+
+export async function getCity(cityId: string): Promise<City> {
+  return citySchema.parse(await apiFetch(`/localisation/cities/${cityId}`));
 }

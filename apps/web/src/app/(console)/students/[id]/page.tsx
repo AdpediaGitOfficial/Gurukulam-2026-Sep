@@ -5,12 +5,14 @@ import { formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
+import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { getStudent } from "@/features/students/server/students-service";
 import { requireModule } from "@/server/principal";
+import type { SearchParams } from "@/server/list";
 import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Student" };
@@ -31,11 +33,14 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default async function StudentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   await requireModule("students");
   const { id } = await params;
+  const query = await searchParams;
   const student = await getStudent(id);
 
   const retail = student.enrolmentChannel === "RETAIL";
@@ -51,16 +56,34 @@ export default async function StudentDetailPage({
           { label: fullName(student) },
         ]}
         action={
-          student.isAllocated === true ? undefined : (
+          <div className="flex items-center gap-3">
             <Link
-              href={`/students/${student.studentId}/allocate`}
-              className={buttonVariants({ variant: "primary" })}
+              href={`/students/${student.studentId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
             >
-              Allocate to a batch
+              Edit
             </Link>
-          )
+            {student.isAllocated === true ? null : (
+              <Link
+                href={`/students/${student.studentId}/allocate`}
+                className={buttonVariants({ variant: "primary" })}
+              >
+                Allocate to a batch
+              </Link>
+            )}
+          </div>
         }
       />
+
+      {query["allocated"] === "1" ? (
+        <Alert intent="success" title="Allocated">
+          Batch mapping, session access, ledger and credentials were written together.
+        </Alert>
+      ) : query["saved"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          Student updated.
+        </Alert>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <SegmentTag segment={student.enrolmentChannel} />

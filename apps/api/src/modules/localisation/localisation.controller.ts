@@ -20,6 +20,12 @@ export class LocalisationController {
     return this.localisation.listCountries(p, q);
   }
 
+  @Get("countries/:countryId")
+  @RequirePermission("settings", "read")
+  getCountry(@CurrentPrincipal() p: Principal, @Param("countryId") id: string) {
+    return this.localisation.getCountry(p, id);
+  }
+
   @Post("countries")
   @RequirePermission("settings", "edit")
   createCountry(@CurrentPrincipal() p: Principal, @Body(zodBody(createCountrySchema)) body: CreateCountryInput) {
@@ -43,6 +49,12 @@ export class LocalisationController {
   @RequirePermission("settings", "read")
   listCities(@CurrentPrincipal() p: Principal, @Query(zodBody(cityQuerySchema)) q: CityQuery) {
     return this.localisation.listCities(p, q);
+  }
+
+  @Get("cities/:cityId")
+  @RequirePermission("settings", "read")
+  getCity(@CurrentPrincipal() p: Principal, @Param("cityId") id: string) {
+    return this.localisation.getCity(p, id);
   }
 
   @Post("cities")

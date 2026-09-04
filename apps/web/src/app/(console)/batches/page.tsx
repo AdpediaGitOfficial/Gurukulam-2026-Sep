@@ -4,6 +4,7 @@ import type { Batch } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -109,6 +110,7 @@ const COLUMNS: Column<Batch>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
+  rowActions((row) => [{ label: "Edit", href: `/batches/${row.batchId}/edit` }]),
 ];
 
 export default async function BatchesPage({
@@ -131,9 +133,21 @@ export default async function BatchesPage({
         </Link>
       }
       summary={
-        params["created"] === "1" ? (
+        /* The trainer warning outranks the success line: the batch exists
+           either way, but one with nobody proposed has no delivery behind it,
+           and that is the part an operator has to act on. */
+        params["trainer"] === "failed" ? (
+          <Alert intent="warning" title="Saved, but the trainer proposal did not">
+            The batch is on file with nobody proposed. Open it and propose a trainer — only someone
+            approved for its course can take it.
+          </Alert>
+        ) : params["created"] === "1" ? (
           <Alert intent="success" title="Created">
             Batch created.
+          </Alert>
+        ) : params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            Batch updated.
           </Alert>
         ) : null
       }
@@ -179,7 +193,7 @@ export default async function BatchesPage({
         rows={page.rows}
         getRowId={(row) => row.batchId}
         caption="Batches by course, trainer, segment and progress"
-        minWidth="1400px"
+        minWidth="1500px"
         empty={
           <EmptyState
             title="No batches match those filters"

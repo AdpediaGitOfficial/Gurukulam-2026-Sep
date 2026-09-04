@@ -4,6 +4,7 @@ import { formatRupees, fromWire, type Course } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -84,6 +85,7 @@ const COLUMNS: Column<Course>[] = [
       </StatusPill>
     ),
   },
+  rowActions((row) => [{ label: "Edit", href: `/courses/${row.courseId}/edit` }]),
 ];
 
 export default async function CoursesPage({
@@ -109,6 +111,10 @@ export default async function CoursesPage({
         params["created"] === "1" ? (
           <Alert intent="success" title="Added">
             Course added.
+          </Alert>
+        ) : params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            Course updated.
           </Alert>
         ) : null
       }
@@ -143,7 +149,7 @@ export default async function CoursesPage({
         rows={page.rows}
         getRowId={(row) => row.courseId}
         caption="Courses by category, duration and standard value"
-        minWidth="1200px"
+        minWidth="1300px"
         empty={
           <EmptyState
             title="No courses match those filters"

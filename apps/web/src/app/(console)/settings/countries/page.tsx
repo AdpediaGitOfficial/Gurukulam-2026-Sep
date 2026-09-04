@@ -4,6 +4,7 @@ import type { Country } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -61,6 +62,7 @@ const COLUMNS: Column<Country>[] = [
       </StatusPill>
     ),
   },
+  rowActions((row) => [{ label: "Edit", href: `/settings/countries/${row.countryId}/edit` }]),
 ];
 
 export default async function CountriesPage({
@@ -86,6 +88,10 @@ export default async function CountriesPage({
         params["created"] === "1" ? (
           <Alert intent="success" title="Added">
             Country added.
+          </Alert>
+        ) : params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            Country updated.
           </Alert>
         ) : null
       }
@@ -120,7 +126,7 @@ export default async function CountriesPage({
         rows={page.rows}
         getRowId={(row) => row.countryId}
         caption="Operating countries with their ISO codes, currencies and timezones"
-        minWidth="1000px"
+        minWidth="1100px"
         empty={<EmptyState title="No countries match those filters" />}
       />
     </ListPage>

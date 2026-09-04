@@ -4,6 +4,7 @@ import { formatRupees, fromWire, type Trainer } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -101,6 +102,7 @@ const COLUMNS: Column<Trainer>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
+  rowActions((row) => [{ label: "Edit", href: `/trainers/${row.trainerId}/edit` }]),
 ];
 
 export default async function TrainersPage({
@@ -123,9 +125,21 @@ export default async function TrainersPage({
         </Link>
       }
       summary={
-        params["created"] === "1" ? (
+        /* The approvals warning outranks the success line: the trainer exists
+           either way, but one that is approved for nothing cannot be assigned
+           to a batch, and that is the part an operator has to act on. */
+        params["approvals"] === "failed" ? (
+          <Alert intent="warning" title="Saved, but the course approvals did not">
+            The trainer is on file. Their approved courses could not be written, so they cannot be
+            assigned to a batch yet — open the trainer and set the approvals again.
+          </Alert>
+        ) : params["created"] === "1" ? (
           <Alert intent="success" title="Added">
             Trainer added.
+          </Alert>
+        ) : params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            Trainer updated.
           </Alert>
         ) : null
       }
@@ -161,7 +175,7 @@ export default async function TrainersPage({
         rows={page.rows}
         getRowId={(row) => row.trainerId}
         caption="Trainers by qualification, skills and approved courses"
-        minWidth="1250px"
+        minWidth="1350px"
         empty={
           <EmptyState
             title="No trainers match those filters"

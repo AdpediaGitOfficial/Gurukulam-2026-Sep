@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TextField, type TextFieldProps } from "@/components/ui/input";
+import { Switch, type SwitchProps } from "@/components/ui/switch";
 import { SelectField, type SelectFieldProps } from "@/components/ui/select";
 import { TextareaField, type TextareaFieldProps } from "@/components/ui/textarea";
 import { IDLE, type FormState } from "@/lib/form";
@@ -164,7 +165,52 @@ export function FormTextarea({
   );
 }
 
+/**
+ * A toggle bound to the form by name.
+ *
+ * Unchecked checkboxes are simply absent from a `FormData`, which is why the
+ * actions read them through `checked()` rather than `text()` — the absence IS
+ * the false.
+ */
+export function FormSwitch({
+  name,
+  ...props
+}: Omit<SwitchProps, "id" | "name"> & { name: string; id?: string }) {
+  return (
+    <div className="flex h-full items-center rounded-tile border border-hairline px-4 py-3">
+      <Switch {...props} id={props.id ?? name} name={name} className="w-full" />
+    </div>
+  );
+}
+
 /** Spans both columns of a `FormSection`'s grid. */
 export function FullWidth({ children }: { children: ReactNode }) {
   return <div className="sm:col-span-2">{children}</div>;
+}
+
+/**
+ * A value the record carries but nobody may change.
+ *
+ * Shown rather than hidden: an operator who cannot find a field assumes the
+ * screen is broken and goes looking. Saying what it is and why it is fixed
+ * answers the question the absence would raise.
+ */
+export function LockedField({
+  label,
+  value,
+  reason,
+}: {
+  label: string;
+  value: string;
+  reason: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-body-sm font-medium text-ink">{label}</span>
+      <span className="flex h-12 items-center rounded-tile border border-hairline bg-surface-sunken px-4 text-body text-ink-muted">
+        {value}
+      </span>
+      <span className="text-caption text-ink-subtle">{reason}</span>
+    </div>
+  );
 }

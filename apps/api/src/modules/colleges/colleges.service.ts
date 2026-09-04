@@ -165,9 +165,15 @@ export class CollegesService {
       // record somewhere they can no longer see or undo.
       assertInScope(principal, { cityId: input.cityId });
       const city = await this.prisma.city.findFirst({
-        where: { cityId: input.cityId, deletedAt: null }, select: { cityId: true },
+        where: { cityId: input.cityId, deletedAt: null },
+        select: { cityId: true, countryId: true },
       });
       if (!city) throw ApiException.validation({ cityId: "That city no longer exists" });
+      // Same pairing check as create: the two arrive together and a mismatched
+      // pair would leave the college in a country its city is not in.
+      if (input.countryId !== undefined && city.countryId !== input.countryId) {
+        throw ApiException.validation({ cityId: "That city is not in the selected country" });
+      }
     }
 
     const college = await this.prisma.college.update({
@@ -290,6 +296,7 @@ function toCollege(row: CollegeRow): College {
     website: row.website,
     affiliation: row.affiliation,
     disciplines: row.disciplines,
+    notes: row.notes,
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,

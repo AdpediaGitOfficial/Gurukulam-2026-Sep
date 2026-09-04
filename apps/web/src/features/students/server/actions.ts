@@ -9,8 +9,16 @@ import {
   studentSchema,
 } from "@gurukulam/contracts";
 
+/*
+ * Everything the create schema asks for except the college, which cannot
+ * change. Built here rather than reusing the contract's fully-partial update
+ * because this form posts every field, so a blank required one is a mistake to
+ * report rather than an omission to ignore.
+ */
+const editStudentSchema = createStudentSchema.omit({ collegeId: true });
+
 import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
-import { apiFormError, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, clearable, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -104,37 +112,64 @@ export async function allocateStudent(
  * which is why none of them are collected here. A student who exists but is not
  * in a batch is a real and expected state — it is what the unallocated queue
  * is for.
+ *
+ * `collegeId` is absent on the edit path, and the contract omits it too. It is
+ * what makes intake institutional (invariant 1), and changing it would move a
+ * student between segments — a retail student has an individual ledger a
+ * college student may not have, and a roster they may not sit on. Correcting
+ * it is a re-onboarding, not a field edit, so the form shows it locked.
  */
-export async function createStudent(_previous: FormState, formData: FormData): Promise<FormState> {
-  const collegeId = text(formData, "collegeId");
+export async function saveStudent(
+  studentId: string | undefined,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const editing = studentId !== undefined;
+  const optional = editing
+    ? (key: string) => clearable(formData, key)
+    : (key: string) => text(formData, key);
 
-  const parsed = createStudentSchema.safeParse({
+  const body = {
     firstName: text(formData, "firstName"),
-    lastName: text(formData, "lastName"),
+    lastName: optional("lastName"),
     email: text(formData, "email"),
-    phone: text(formData, "phone"),
-    // Setting a college is what makes this institutional intake; omitting it is
-    // what makes it a retail walk-in. The two are the same field.
-    collegeId,
+    phone: optional("phone"),
+    altPhone: optional("altPhone"),
     cityId: text(formData, "cityId"),
-    discipline: text(formData, "discipline"),
+    addressLine1: optional("addressLine1"),
+    addressLine2: optional("addressLine2"),
+    postalCode: optional("postalCode"),
+    discipline: optional("discipline"),
     passoutYear: number(formData, "passoutYear"),
-    qualification: text(formData, "qualification"),
-    notes: text(formData, "notes"),
-  });
+    qualification: optional("qualification"),
+    notes: optional("notes"),
+  };
+
+  const parsed = editing
+    ? editStudentSchema.safeParse(body)
+    : createStudentSchema.safeParse({
+        ...body,
+        // Setting a college is what makes this institutional intake; omitting
+        // it is what makes it a retail walk-in. The two are the same field.
+        collegeId: text(formData, "collegeId"),
+      });
 
   if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
 
   try {
     checkShape(
       studentSchema,
-      await apiFetch("/students", { method: "POST", body: parsed.data }),
-      "POST /students",
+      await apiFetch(editing ? `/students/${studentId}` : "/students", {
+        method: editing ? "PATCH" : "POST",
+        body: parsed.data,
+      }),
+      editing ? "PATCH /students/:id" : "POST /students",
     );
   } catch (error) {
     return apiFormError(error);
   }
 
   revalidatePath("/students");
-  redirect("/students?created=1");
+  if (editing) revalidatePath(`/students/${studentId}`);
+  redirect(editing ? `/students/${studentId}?saved=1` : "/students?created=1");
 }

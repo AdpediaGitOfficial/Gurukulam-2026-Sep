@@ -19,6 +19,7 @@ export const studentSchema = z.object({
   lastName: z.string().nullable(),
   email: z.string(),
   phone: z.string().nullable(),
+  altPhone: z.string().nullable(),
   dateOfBirth: z.string().nullable(),
   gender: z.string().nullable(),
   collegeId: z.string().nullable(),
@@ -27,9 +28,16 @@ export const studentSchema = z.object({
   countryId: z.string().nullable(),
   cityId: z.string().nullable(),
   cityName: z.string().nullable().optional(),
+  addressLine1: z.string().nullable(),
+  addressLine2: z.string().nullable(),
+  postalCode: z.string().nullable(),
   discipline: z.string().nullable(),
   passoutYear: z.number().int().nullable(),
   qualification: z.string().nullable(),
+  /* Read back so the edit form can round-trip them. A field that can be
+     written but not read is one an operator erases every time they correct
+     something else. */
+  notes: z.string().nullable(),
   accountStatus: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
   suspendedReason: z.string().nullable(),
   credentialsIssuedAt: z.string().nullable(),

@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -172,7 +174,21 @@ export default async function CollegeDetailPage({
         title={college.name}
         description={`${college.collegeCode}${college.cityName === null || college.cityName === undefined ? "" : ` · ${college.cityName}`}`}
         breadcrumbs={[{ label: "Colleges", href: "/colleges" }, { label: college.name }]}
+        action={
+          <Link
+            href={`/colleges/${college.collegeId}/edit`}
+            className={buttonVariants({ variant: "secondary" })}
+          >
+            Edit college
+          </Link>
+        }
       />
+
+      {query["saved"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          College updated.
+        </Alert>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill intent={college.isActive ? "success" : "neutral"}>

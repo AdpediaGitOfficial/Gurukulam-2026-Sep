@@ -31,6 +31,9 @@ export const collegeSchema = z.object({
   website: z.string().nullable(),
   affiliation: z.string().nullable(),
   disciplines: z.array(z.string()),
+  /** Read back so the edit form can round-trip it — a write-only field is one
+      an operator would silently erase every time they corrected an address. */
+  notes: z.string().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),

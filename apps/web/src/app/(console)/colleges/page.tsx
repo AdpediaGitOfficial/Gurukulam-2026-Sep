@@ -4,6 +4,7 @@ import type { College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -83,6 +84,7 @@ const COLUMNS: Column<College>[] = [
       </StatusPill>
     ),
   },
+  rowActions((row) => [{ label: "Edit", href: `/colleges/${row.collegeId}/edit` }]),
 ];
 
 export default async function CollegesPage({
@@ -142,7 +144,7 @@ export default async function CollegesPage({
         rows={page.rows}
         getRowId={(row) => row.collegeId}
         caption="Colleges by city, disciplines and engagement"
-        minWidth="1100px"
+        minWidth="1200px"
         empty={
           <EmptyState
             title="No colleges match those filters"
