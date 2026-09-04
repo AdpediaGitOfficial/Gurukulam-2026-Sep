@@ -22,6 +22,10 @@ export const trainerSchema = z.object({
   cityId: z.string().nullable(),
   cityName: z.string().nullable().optional(),
   accountStatus: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+  /* Why delivery was withdrawn, and when. Both cleared on reinstatement — the
+     same shape students and college portal accounts carry. */
+  suspendedAt: z.string().nullable(),
+  suspendedReason: z.string().nullable(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
   approvedCourseCount: z.number().int().optional(),
@@ -95,6 +99,20 @@ export const updateTrainerSchema = createTrainerSchema.partial().extend({
 });
 
 export type UpdateTrainerInput = z.infer<typeof updateTrainerSchema>;
+
+/**
+ * Suspending a trainer.
+ *
+ * The reason is REQUIRED, as it is for a student: an account that stopped
+ * working with no explanation is the thing whoever finds it has to go and ask
+ * about. Suspension withdraws them from being proposed for new batches; it
+ * does not touch the batches they are already confirmed on.
+ */
+export const suspendTrainerSchema = z.object({
+  reason: z.string().trim().min(1, "Say why this trainer is being suspended").max(500),
+});
+
+export type SuspendTrainerInput = z.infer<typeof suspendTrainerSchema>;
 
 export const approveCoursesSchema = z.object({
   /** The complete set of courses this trainer is approved for. */

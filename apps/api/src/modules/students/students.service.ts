@@ -392,6 +392,7 @@ export function toStudent(row: StudentRow): Student {
     qualification: row.qualification,
     notes: row.notes,
     accountStatus: row.accountStatus,
+    suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspendedReason: row.suspendedReason,
     credentialsIssuedAt: row.credentialsIssuedAt?.toISOString() ?? null,
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,

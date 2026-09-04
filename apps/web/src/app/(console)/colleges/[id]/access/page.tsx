@@ -9,7 +9,8 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { GrantAccessForm } from "@/features/colleges/components/grant-access-form";
-import { RevokeAccessForm } from "@/features/colleges/components/revoke-access-form";
+import { revokeAccess } from "@/features/colleges/server/actions";
+import { ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { getCollege, listPortalAccess } from "@/features/colleges/server/colleges-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -86,10 +87,20 @@ function Accounts({ collegeId, users }: { collegeId: string; users: readonly Col
             </StatusPill>
 
             {user.accessStatus === "GRANTED" ? (
-              <RevokeAccessForm
-                collegeId={collegeId}
-                collegeUserId={user.collegeUserId}
-                name={user.name}
+              <ConfirmWithReason
+                id={user.collegeUserId}
+                subject={user.name}
+                action={revokeAccess.bind(null, collegeId, user.collegeUserId)}
+                trigger="Revoke"
+                confirm="Revoke access"
+                pending="Revoking…"
+                reasonPlaceholder="Left the college"
+                description={
+                  <>
+                    Revoking signs {user.name} out immediately and clears their password. Restoring
+                    access later issues a new one — the old password does not come back.
+                  </>
+                }
               />
             ) : null}
           </li>

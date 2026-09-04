@@ -750,6 +750,11 @@ model Trainer {
   cityId              String?       @map("city_id") @db.VarChar(36)
   photoUrl            String?       @map("photo_url") @db.VarChar(500)
   accountStatus       AccountStatus @default(ACTIVE) @map("account_status")
+  /// Why delivery was withdrawn, and when. Both cleared on reinstatement, so
+  /// they always describe the suspension currently in force — the same shape
+  /// students and college portal accounts carry.
+  suspendedAt         DateTime?     @map("suspended_at")
+  suspendedReason     String?       @map("suspended_reason") @db.VarChar(500)
   createdAt           DateTime      @default(now()) @map("created_at")
   createdBy           String?       @map("created_by") @db.VarChar(36)
   updatedAt           DateTime      @updatedAt @map("updated_at")

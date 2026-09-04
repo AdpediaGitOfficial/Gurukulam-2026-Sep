@@ -39,6 +39,9 @@ export const studentSchema = z.object({
      something else. */
   notes: z.string().nullable(),
   accountStatus: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+  /* Both cleared on reinstatement, so they always describe the suspension
+     currently in force rather than the last one there ever was. */
+  suspendedAt: z.string().nullable(),
   suspendedReason: z.string().nullable(),
   credentialsIssuedAt: z.string().nullable(),
   lastLoginAt: z.string().nullable(),

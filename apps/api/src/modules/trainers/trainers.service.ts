@@ -3,6 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import {
   parseRupees,
   type ApproveCoursesInput, type CreateTrainerInput, type Page, type Principal,
+  type SuspendTrainerInput,
   type Trainer, type TrainerDetail, type TrainerQuery, type UpdateTrainerInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
@@ -164,8 +165,53 @@ export class TrainersService {
           : {}),
         ...(input.maxWeeklyHours !== undefined ? { maxWeeklyHours: input.maxWeeklyHours } : {}),
         ...(input.cityId !== undefined ? { cityId: input.cityId || null } : {}),
-        ...(input.accountStatus !== undefined ? { accountStatus: input.accountStatus } : {}),
+        ...(input.accountStatus !== undefined
+          ? {
+              accountStatus: input.accountStatus,
+              // A status set to anything but SUSPENDED ends the suspension, so
+              // the reason goes with it. Without this a trainer flipped back to
+              // ACTIVE here would keep a reason describing a state that no
+              // longer holds — the one thing the column must never do.
+              ...(input.accountStatus === "SUSPENDED"
+                ? {}
+                : { suspendedAt: null, suspendedReason: null }),
+            }
+          : {}),
       },
+      include: TRAINER_INCLUDE,
+    });
+    return toTrainer(trainer);
+  }
+
+  /**
+   * Suspends a trainer.
+   *
+   * Withdraws them from the pickers — the calendar lists only ACTIVE trainers,
+   * and a proposal is refused for anyone else — WITHOUT touching the batches
+   * they are already confirmed on. Pulling someone off live delivery as a side
+   * effect of a status change would strand those cohorts, and the same
+   * reasoning governs revoking a course approval.
+   */
+  async suspend(principal: Principal, trainerId: string, input: SuspendTrainerInput) {
+    await this.mustExist(principal, trainerId);
+    const trainer = await this.prisma.trainer.update({
+      where: { trainerId },
+      data: {
+        accountStatus: "SUSPENDED",
+        suspendedAt: new Date(),
+        suspendedReason: input.reason,
+      },
+      include: TRAINER_INCLUDE,
+    });
+    return toTrainer(trainer);
+  }
+
+  /** Both suspension columns are cleared, so neither outlives what it describes. */
+  async reinstate(principal: Principal, trainerId: string) {
+    await this.mustExist(principal, trainerId);
+    const trainer = await this.prisma.trainer.update({
+      where: { trainerId },
+      data: { accountStatus: "ACTIVE", suspendedAt: null, suspendedReason: null },
       include: TRAINER_INCLUDE,
     });
     return toTrainer(trainer);
@@ -314,6 +360,8 @@ function toTrainer(row: TrainerRow): Trainer {
     cityId: row.cityId,
     cityName: row.city?.name ?? null,
     accountStatus: row.accountStatus,
+    suspendedAt: row.suspendedAt?.toISOString() ?? null,
+    suspendedReason: row.suspendedReason,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     approvedCourseCount: row._count.courses,

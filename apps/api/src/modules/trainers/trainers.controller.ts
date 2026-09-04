@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import {
   approveCoursesSchema, calendarQuerySchema, createTrainerSchema, declareAvailabilitySchema,
+  suspendTrainerSchema, type SuspendTrainerInput,
   trainerQuerySchema, updateTrainerSchema,
   type ApproveCoursesInput, type CalendarQuery, type CreateTrainerInput,
   type DeclareAvailabilityInput, type Principal, type TrainerQuery, type UpdateTrainerInput,
@@ -61,6 +62,21 @@ export class TrainersController {
   @RequirePermission("trainers", "edit")
   approveCourses(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(approveCoursesSchema)) body: ApproveCoursesInput) {
     return this.trainers.approveCourses(p, id, body);
+  }
+
+  /** Suspension carries a reason, so an account that stopped working explains itself. */
+  @Post(":id/suspend")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("trainers", "edit")
+  suspend(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(suspendTrainerSchema)) body: SuspendTrainerInput) {
+    return this.trainers.suspend(p, id, body);
+  }
+
+  @Post(":id/reinstate")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("trainers", "edit")
+  reinstate(@CurrentPrincipal() p: Principal, @Param("id") id: string) {
+    return this.trainers.reinstate(p, id);
   }
 
   @Get(":id/availability")

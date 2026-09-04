@@ -9,11 +9,13 @@ import {
   type BatchSession,
 } from "@gurukulam/contracts";
 
+import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { buttonVariants } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
@@ -21,7 +23,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { listBatches, listSessions } from "@/features/batches/server/batches-service";
 import { getTrainer, listAvailability } from "@/features/trainers/server/trainers-service";
+import { reinstateTrainer, suspendTrainer } from "@/features/trainers/server/actions";
 import { requireModule } from "@/server/principal";
+import type { SearchParams } from "@/server/list";
 import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
 import { formatCount } from "@/lib/format";
 
@@ -230,11 +234,14 @@ function Away({ entries }: { entries: readonly Availability[] }) {
 
 export default async function TrainerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   await requireModule("trainers");
   const { id } = await params;
+  const query = await searchParams;
   const trainer = await getTrainer(id);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -267,10 +274,39 @@ export default async function TrainerDetailPage({
         }
       />
 
+      {query["suspended"] === "1" ? (
+        <Alert intent="warning" title="Trainer suspended">
+          They will not be offered for new batches. The batches they are already confirmed on are
+          untouched — reassigning those is a deliberate act, not a side effect.
+        </Alert>
+      ) : query["reinstated"] === "1" ? (
+        <Alert intent="success" title="Trainer reinstated">
+          They can be proposed again, and the suspension reason has been cleared.
+        </Alert>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3">
-        <StatusPill intent={trainer.accountStatus === "ACTIVE" ? "success" : "neutral"}>
+        <StatusPill
+          intent={
+            trainer.accountStatus === "ACTIVE"
+              ? "success"
+              : trainer.accountStatus === "SUSPENDED"
+                ? "danger"
+                : "neutral"
+          }
+        >
           {trainer.accountStatus.toLowerCase()}
         </StatusPill>
+
+        {/* Beside the status it explains. */}
+        {trainer.accountStatus === "SUSPENDED" ? (
+          <span className="text-body-sm text-ink-muted">
+            {trainer.suspendedAt === null ? null : `Suspended ${trainer.suspendedAt.slice(0, 10)}`}
+            {trainer.suspendedReason === null ? null : (
+              <span className="text-ink-subtle"> · &ldquo;{trainer.suspendedReason}&rdquo;</span>
+            )}
+          </span>
+        ) : null}
         {trainer.qualification === null ? null : <Chip>{trainer.qualification}</Chip>}
         {trainer.experienceYears === null ? null : (
           <Chip>{trainer.experienceYears} years experience</Chip>
@@ -287,6 +323,34 @@ export default async function TrainerDetailPage({
         {trainer.phone === null ? null : (
           <span className="font-mono text-body-sm text-ink-muted">{trainer.phone}</span>
         )}
+
+        <span className="ml-auto">
+          {trainer.accountStatus === "SUSPENDED" ? (
+            <ConfirmAction
+              action={reinstateTrainer.bind(null, trainer.trainerId)}
+              label="Reinstate"
+              pending="Reinstating…"
+              subject={trainer.name}
+            />
+          ) : (
+            <ConfirmWithReason
+              id={trainer.trainerId}
+              subject={trainer.name}
+              action={suspendTrainer.bind(null, trainer.trainerId)}
+              trigger="Suspend"
+              confirm="Suspend trainer"
+              pending="Suspending…"
+              required
+              reasonPlaceholder="On extended leave"
+              description={
+                <>
+                  Suspending withdraws {trainer.name} from the pickers — they cannot be proposed for
+                  a new batch. The batches they are already confirmed on are untouched.
+                </>
+              }
+            />
+          )}
+        </span>
       </div>
 
       {trainer.skillTags.length === 0 ? null : (

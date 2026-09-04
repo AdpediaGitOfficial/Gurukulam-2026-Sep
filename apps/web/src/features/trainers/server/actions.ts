@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createTrainerSchema, trainerSchema } from "@gurukulam/contracts";
+import { createTrainerSchema, suspendTrainerSchema, trainerSchema } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
 import { apiFormError, clearable, fieldErrors, number, text } from "@/lib/action";
@@ -87,4 +87,54 @@ export async function saveTrainer(
 
   revalidatePath("/trainers");
   redirect(`/trainers?${editing ? "saved" : "created"}=1`);
+}
+
+/**
+ * Suspends a trainer.
+ *
+ * Withdraws them from the pickers — the calendar lists only active trainers,
+ * and a proposal is refused for anyone else — without touching the batches
+ * they are already confirmed on. Pulling someone off live delivery as a side
+ * effect of a status change would strand those cohorts.
+ */
+export async function suspendTrainer(
+  trainerId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = suspendTrainerSchema.safeParse({ reason: text(formData, "reason") });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      trainerSchema,
+      await apiFetch(`/trainers/${trainerId}/suspend`, { method: "POST", body: parsed.data }),
+      "POST /trainers/:id/suspend",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/trainers/${trainerId}`);
+  redirect(`/trainers/${trainerId}?suspended=1`);
+}
+
+/** Clears the suspension and the reason with it. */
+export async function reinstateTrainer(
+  trainerId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    checkShape(
+      trainerSchema,
+      await apiFetch(`/trainers/${trainerId}/reinstate`, { method: "POST", body: {} }),
+      "POST /trainers/:id/reinstate",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/trainers/${trainerId}`);
+  redirect(`/trainers/${trainerId}?reinstated=1`);
 }

@@ -5,12 +5,17 @@ import { formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
+import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { getStudent } from "@/features/students/server/students-service";
+import {
+  reinstateStudent,
+  suspendStudent,
+} from "@/features/students/server/actions";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { formatCount } from "@/lib/format";
@@ -75,7 +80,16 @@ export default async function StudentDetailPage({
         }
       />
 
-      {query["allocated"] === "1" ? (
+      {query["suspended"] === "1" ? (
+        <Alert intent="warning" title="Account suspended">
+          They can no longer sign in. Their enrolment, ledger and history are untouched — this is
+          access only.
+        </Alert>
+      ) : query["reinstated"] === "1" ? (
+        <Alert intent="success" title="Account reinstated">
+          They can sign in again, and the suspension reason has been cleared.
+        </Alert>
+      ) : query["allocated"] === "1" ? (
         <Alert intent="success" title="Allocated">
           Batch mapping, session access, ledger and credentials were written together.
         </Alert>
@@ -87,12 +101,61 @@ export default async function StudentDetailPage({
 
       <div className="flex flex-wrap items-center gap-3">
         <SegmentTag segment={student.enrolmentChannel} />
-        <StatusPill intent={student.accountStatus === "ACTIVE" ? "success" : "neutral"}>
+        <StatusPill
+          intent={
+            student.accountStatus === "ACTIVE"
+              ? "success"
+              : student.accountStatus === "SUSPENDED"
+                ? "danger"
+                : "neutral"
+          }
+        >
           {student.accountStatus.toLowerCase()}
         </StatusPill>
         {student.isAllocated === false ? (
           <StatusPill intent="warning">Unallocated</StatusPill>
         ) : null}
+
+        {/* The reason sits beside the status it explains, not in a tab
+            somewhere — whoever finds a suspended account is asking why. */}
+        {student.accountStatus === "SUSPENDED" ? (
+          <span className="text-body-sm text-ink-muted">
+            {student.suspendedAt === null
+              ? null
+              : `Suspended ${student.suspendedAt.slice(0, 10)}`}
+            {student.suspendedReason === null ? null : (
+              <span className="text-ink-subtle"> · &ldquo;{student.suspendedReason}&rdquo;</span>
+            )}
+          </span>
+        ) : null}
+
+        <span className="ml-auto">
+          {student.accountStatus === "SUSPENDED" ? (
+            <ConfirmAction
+              action={reinstateStudent.bind(null, student.studentId)}
+              label="Reinstate"
+              pending="Reinstating…"
+              subject={fullName(student)}
+            />
+          ) : (
+            <ConfirmWithReason
+              id={student.studentId}
+              subject={fullName(student)}
+              action={suspendStudent.bind(null, student.studentId)}
+              trigger="Suspend"
+              confirm="Suspend account"
+              pending="Suspending…"
+              required
+              reasonPlaceholder="Fees outstanding since August"
+              description={
+                <>
+                  Suspending stops {fullName(student)} signing in. Their enrolment, ledger and
+                  history are untouched — reinstating restores access and clears this reason.
+                </>
+              }
+            />
+          )}
+        </span>
       </div>
 
       <div className="grid gap-8 xl:grid-cols-3">

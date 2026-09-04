@@ -7,6 +7,7 @@ import {
   allocationResultSchema,
   createStudentSchema,
   studentSchema,
+  suspendStudentSchema,
 } from "@gurukulam/contracts";
 
 /*
@@ -172,4 +173,54 @@ export async function saveStudent(
   revalidatePath("/students");
   if (editing) revalidatePath(`/students/${studentId}`);
   redirect(editing ? `/students/${studentId}?saved=1` : "/students?created=1");
+}
+
+/**
+ * Suspends a student's account.
+ *
+ * Access only: enrolment, billing and history are untouched, so a suspended
+ * student keeps their roster place and their ledger keeps accruing. The reason
+ * is required and stored — an account that stopped working with no explanation
+ * is the thing whoever finds it has to go and ask about.
+ */
+export async function suspendStudent(
+  studentId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = suspendStudentSchema.safeParse({ reason: text(formData, "reason") });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      studentSchema,
+      await apiFetch(`/students/${studentId}/suspend`, { method: "POST", body: parsed.data }),
+      "POST /students/:id/suspend",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/students/${studentId}`);
+  redirect(`/students/${studentId}?suspended=1`);
+}
+
+/** Clears the suspension and the reason with it — it described a state that has ended. */
+export async function reinstateStudent(
+  studentId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    checkShape(
+      studentSchema,
+      await apiFetch(`/students/${studentId}/reinstate`, { method: "POST", body: {} }),
+      "POST /students/:id/reinstate",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/students/${studentId}`);
+  redirect(`/students/${studentId}?reinstated=1`);
 }

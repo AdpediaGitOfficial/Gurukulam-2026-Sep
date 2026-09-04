@@ -15,6 +15,7 @@ import {
   FormShell,
   FormText,
   FullWidth,
+  LockedField,
 } from "@/components/patterns/form-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -86,17 +87,33 @@ export function TrainerForm({
           defaultValue={trainer?.cityId ?? ""}
           options={cities.map((city) => ({ value: city.cityId, label: city.name }))}
         />
-        {editing ? (
+        {/*
+          Suspension is not a value in this list.
+          It carries a required reason and is done from the trainer's own page;
+          offering it here would be a second way to suspend that records no
+          reason, which is exactly the hole the reason column was added to
+          close. A trainer already suspended shows as locked and round-trips
+          their status untouched.
+        */}
+        {editing && trainer.accountStatus === "SUSPENDED" ? (
+          <>
+            <input type="hidden" name="accountStatus" value="SUSPENDED" />
+            <LockedField
+              label="Account status"
+              value="Suspended"
+              reason="Reinstate from the trainer's page — suspension carries a reason, and this form does not collect one."
+            />
+          </>
+        ) : editing ? (
           <FormSelect
             name="accountStatus"
             label="Account status"
             required
             defaultValue={trainer.accountStatus}
-            hint="Only an active trainer appears in the batch picker."
+            hint="Only an active trainer is offered for a batch. Suspending is done from the trainer's page."
             options={[
               { value: "ACTIVE", label: "Active" },
               { value: "INACTIVE", label: "Inactive" },
-              { value: "SUSPENDED", label: "Suspended" },
             ]}
           />
         ) : null}
