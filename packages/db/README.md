@@ -9,11 +9,11 @@ Run from the repo root:
 
 | Command | What it does |
 | --- | --- |
-| `pnpm db:migrate` | Create and apply a migration (dev) |
-| `pnpm db:generate` | Regenerate the Prisma client |
-| `pnpm db:seed` | Load seed data — retail and college paths both represented |
-| `pnpm db:reset` | Drop, re-migrate and re-seed |
-| `pnpm --filter @gurukulam/db verify` | Assert the invariants the database enforces |
+| `npm run db:migrate` | Create and apply a migration (dev) |
+| `npm run db:generate` | Regenerate the Prisma client |
+| `npm run db:seed` | Load seed data — retail and college paths both represented |
+| `npm run db:reset` | Drop, re-migrate and re-seed |
+| `npm run verify -w @gurukulam/db` | Assert the invariants the database enforces |
 
 ## What the schema is shaped by
 
@@ -68,7 +68,7 @@ that one succeeds.
 After any migration touching these objects, run the invariant check:
 
 ```bash
-pnpm --filter @gurukulam/db verify
+npm run verify -w @gurukulam/db
 ```
 
 It asserts that the generated columns still compute, and that each CHECK still refuses the write it

@@ -26,24 +26,24 @@ docs/           the specification set
 
 ## Prerequisites
 
-- **Node 22 LTS** and **pnpm 10**
+- **Node 22 LTS** and **npm 10** (npm workspaces — no separate package manager to install)
 - **PostgreSQL 16** running locally, or `docker compose up -d`
 
 ## Getting started
 
 ```bash
-pnpm install
+npm install
 cp .env.example .env          # then edit DATABASE_URL if yours differs
-pnpm db:migrate               # apply migrations
-pnpm db:seed                  # both segments: retail + college
+npm run db:migrate               # apply migrations
+npm run db:seed                  # both segments: retail + college
 ```
 
 ## Database commands
 
 | Command | What it does |
 | --- | --- |
-| `pnpm db:migrate` | Apply pending migrations (dev) |
-| `pnpm db:generate` | Regenerate the Prisma client |
-| `pnpm db:seed` | Load seed data — retail and college paths both represented |
-| `pnpm db:reset` | Drop, re-migrate and re-seed |
-| `pnpm db:studio` | Open Prisma Studio |
+| `npm run db:migrate` | Apply pending migrations (dev) |
+| `npm run db:generate` | Regenerate the Prisma client |
+| `npm run db:seed` | Load seed data — retail and college paths both represented |
+| `npm run db:reset` | Drop, re-migrate and re-seed |
+| `npm run db:studio` | Open Prisma Studio |

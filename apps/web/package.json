@@ -9,11 +9,11 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "verify:cn": "tsx scripts/verify-cn.ts",
-    "verify": "pnpm typecheck && pnpm verify:cn",
+    "verify": "npm run typecheck && npm run verify:cn",
     "verify:render": "tsx scripts/verify-render.ts"
   },
   "dependencies": {
-    "@gurukulam/contracts": "workspace:*",
+    "@gurukulam/contracts": "*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "next": "^15.1.6",
