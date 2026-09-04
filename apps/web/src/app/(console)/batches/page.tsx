@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { Batch } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -122,6 +125,18 @@ export default async function BatchesPage({
       eyebrow="Batches"
       title="Batch management"
       description="A batch with a college is dedicated to it. A batch without one is retail. The two rosters never mix."
+      action={
+        <Link href="/batches/new" className={buttonVariants({ variant: "primary" })}>
+          Create batch
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Created">
+            Batch created.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

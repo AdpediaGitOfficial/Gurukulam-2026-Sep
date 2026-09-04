@@ -4,6 +4,8 @@ import type { Student } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
@@ -90,6 +92,18 @@ export default async function StudentsPage({
       eyebrow="Students"
       title="Student directory"
       description="Retail and college students in one register. A retail student has no college — and never will."
+      action={
+        <Link href="/students/new" className={buttonVariants({ variant: "primary" })}>
+          Add student
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Added">
+            Student added.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

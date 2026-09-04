@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { Country } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
@@ -74,6 +77,18 @@ export default async function CountriesPage({
       eyebrow="Settings"
       title="Countries"
       description="Operating countries, their currencies, dial codes and default timezones. Set up once, then referenced everywhere."
+      action={
+        <Link href="/settings/countries/new" className={buttonVariants({ variant: "primary" })}>
+          Add country
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Added">
+            Country added.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

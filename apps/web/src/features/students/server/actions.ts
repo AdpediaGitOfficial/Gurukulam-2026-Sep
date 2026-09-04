@@ -2,9 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { allocateStudentSchema, allocationResultSchema } from "@gurukulam/contracts";
+import {
+  allocateStudentSchema,
+  allocationResultSchema,
+  createStudentSchema,
+  studentSchema,
+} from "@gurukulam/contracts";
 
 import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
+import { apiFormError, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -89,4 +95,46 @@ export async function allocateStudent(
   // Outside the try: `redirect` works by throwing, and caught above it would be
   // reported as a failed allocation that in fact succeeded.
   redirect(`/students/${studentId}?allocated=1`);
+}
+
+/**
+ * Onboarding creates the RECORD ONLY.
+ *
+ * Course, batch, price, schedule and credentials are all decided at allocation,
+ * which is why none of them are collected here. A student who exists but is not
+ * in a batch is a real and expected state — it is what the unallocated queue
+ * is for.
+ */
+export async function createStudent(_previous: FormState, formData: FormData): Promise<FormState> {
+  const collegeId = text(formData, "collegeId");
+
+  const parsed = createStudentSchema.safeParse({
+    firstName: text(formData, "firstName"),
+    lastName: text(formData, "lastName"),
+    email: text(formData, "email"),
+    phone: text(formData, "phone"),
+    // Setting a college is what makes this institutional intake; omitting it is
+    // what makes it a retail walk-in. The two are the same field.
+    collegeId,
+    cityId: text(formData, "cityId"),
+    discipline: text(formData, "discipline"),
+    passoutYear: number(formData, "passoutYear"),
+    qualification: text(formData, "qualification"),
+    notes: text(formData, "notes"),
+  });
+
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      studentSchema,
+      await apiFetch("/students", { method: "POST", body: parsed.data }),
+      "POST /students",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath("/students");
+  redirect("/students?created=1");
 }

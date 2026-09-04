@@ -4,6 +4,8 @@ import type { College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -97,6 +99,18 @@ export default async function CollegesPage({
       eyebrow="Colleges"
       title="College database"
       description="The CRM for institutional relationships. A college is an actor, not a directory row — it carries its own contacts, requirements, students and contracts."
+      action={
+        <Link href="/colleges/new" className={buttonVariants({ variant: "primary" })}>
+          Add college
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Added">
+            College added.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

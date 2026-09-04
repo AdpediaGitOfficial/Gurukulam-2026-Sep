@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { formatRupees, fromWire, type Trainer } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -114,6 +117,18 @@ export default async function TrainersPage({
       eyebrow="Trainers"
       title="Instructor directory"
       description="Each trainer is approved for one or more courses. That mapping is what filters the trainer picker when a batch is created."
+      action={
+        <Link href="/trainers/new" className={buttonVariants({ variant: "primary" })}>
+          Add trainer
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Added">
+            Trainer added.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

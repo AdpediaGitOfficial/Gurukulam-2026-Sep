@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { City } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
@@ -79,6 +82,18 @@ export default async function CitiesPage({
       eyebrow="Settings"
       title="Cities"
       description="Operating cities mapped to their parent country. A city is not just a label — it is what scopes a regional sub-admin's access."
+      action={
+        <Link href="/settings/cities/new" className={buttonVariants({ variant: "primary" })}>
+          Add city
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Added">
+            City added.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}
