@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { allocateStudentSchema, allocationResultSchema } from "@gurukulam/contracts";
 
-import { apiFetch, ApiRequestError } from "@/server/api";
+import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -69,8 +69,10 @@ export async function allocateStudent(
   }
 
   try {
-    allocationResultSchema.parse(
+    checkShape(
+      allocationResultSchema,
       await apiFetch(`/students/${studentId}/allocate`, { method: "POST", body: parsed.data }),
+      "POST /students/:id/allocate",
     );
   } catch (error) {
     if (error instanceof ApiRequestError) {

@@ -167,3 +167,32 @@ function readError(text: string, status: number): ApiError["error"] {
         : "That request could not be completed.",
   };
 }
+
+/**
+ * Checks a response against its contract without letting a mismatch undo the
+ * outcome.
+ *
+ * For a mutation whose body we do not consume, the HTTP status IS the outcome:
+ * the write has already landed. Parsing the body and throwing on a mismatch
+ * turns a successful write into a reported failure — the operator retries and
+ * hits "that has already happened", which is far worse than the drift itself.
+ * That is not hypothetical: confirming a requirement created its batch and then
+ * reported an error, because the endpoint returns the requirement and the
+ * action was parsing a batch.
+ *
+ * So the shape is still checked, because a drifted response is a real bug, but
+ * it is reported where an engineer will see it rather than where an operator
+ * will.
+ */
+export function checkShape(
+  schema: { safeParse: (value: unknown) => { success: boolean } },
+  value: unknown,
+  label: string,
+): void {
+  if (!schema.safeParse(value).success) {
+    console.warn(
+      `[contract] ${label} returned a body that does not match its schema. ` +
+        "The write succeeded; the response shape has drifted.",
+    );
+  }
+}

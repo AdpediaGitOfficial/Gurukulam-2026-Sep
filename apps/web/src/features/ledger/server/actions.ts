@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { paymentSchema, recordPaymentSchema } from "@gurukulam/contracts";
 
-import { apiFetch, ApiRequestError } from "@/server/api";
+import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -45,8 +45,10 @@ export async function recordPayment(
   }
 
   try {
-    paymentSchema.parse(
+    checkShape(
+      paymentSchema,
       await apiFetch("/fee-ledger/payments", { method: "POST", body: parsed.data }),
+      "POST /fee-ledger/payments",
     );
   } catch (error) {
     if (error instanceof ApiRequestError) {

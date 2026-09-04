@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { Requirement } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -33,12 +34,15 @@ const COLUMNS: Column<Requirement>[] = [
     id: "requirement",
     header: "Requirement",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link
+        href={`/colleges/requirements/${row.requirementId}`}
+        className="flex flex-col hover:underline"
+      >
         <span className="font-mono text-body-sm text-ink">{row.requirementCode}</span>
         <span className="text-caption text-ink-subtle">
           raised {new Date(row.createdAt).toLocaleDateString("en-IN")}
         </span>
-      </div>
+      </Link>
     ),
   },
   {
