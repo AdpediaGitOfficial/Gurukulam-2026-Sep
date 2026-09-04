@@ -1,12 +1,15 @@
 import "server-only";
 
+import { z } from "zod";
 import {
   batchDetailSchema,
   batchSchema,
   batchSessionSchema,
+  trainerCandidateSchema,
   type Batch,
   type BatchDetail,
   type BatchSession,
+  type TrainerCandidate,
   type Page,
 } from "@gurukulam/contracts";
 
@@ -42,4 +45,18 @@ export async function listSessions(params: SearchParams): Promise<Page<BatchSess
 /** One batch with its roster counts and trainer assignments. */
 export async function getBatch(batchId: string): Promise<BatchDetail> {
   return batchDetailSchema.parse(await apiFetch(`/batches/${batchId}`));
+}
+
+/**
+ * Who may be proposed for this batch, and who would be refused.
+ *
+ * Approved trainers only — proposing anyone else is refused outright — each
+ * carrying the refusal the proposal would actually produce. The API computes
+ * it with the same function the proposal uses, so the picker cannot drift out
+ * of step with the endpoint it feeds.
+ */
+export async function listTrainerCandidates(batchId: string): Promise<TrainerCandidate[]> {
+  return z
+    .array(trainerCandidateSchema)
+    .parse(await apiFetch(`/batches/${batchId}/trainer/candidates`));
 }

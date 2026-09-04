@@ -101,6 +101,30 @@ export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
 export const proposeTrainerSchema = z.object({
   trainerId: z.string().min(1, "Select a trainer"),
 });
+
+/**
+ * Who may be proposed for this batch, and who would be refused.
+ *
+ * Only trainers approved for the batch's course appear — proposing anyone else
+ * is refused outright (invariant 15), so offering them would be offering a
+ * mistake.
+ *
+ * `blockedReason` is the refusal the proposal would actually produce, computed
+ * by the same code path that produces it. A picker that guessed would either
+ * warn about a proposal the API accepts or stay silent about one it refuses,
+ * and both are worse than no warning at all.
+ */
+export const trainerCandidateSchema = z.object({
+  trainerId: z.string(),
+  trainerCode: z.string(),
+  name: z.string(),
+  cityName: z.string().nullable(),
+  /** Their other sessions falling on this batch's session days. */
+  committedSessions: z.number().int(),
+  blockedReason: z.string().nullable(),
+});
+
+export type TrainerCandidate = z.infer<typeof trainerCandidateSchema>;
 export type ProposeTrainerInput = z.infer<typeof proposeTrainerSchema>;
 
 export const respondToProposalSchema = z

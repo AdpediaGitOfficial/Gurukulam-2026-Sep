@@ -3,7 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import type {
   Batch, BatchQuery, CreateBatchInput, Page, Principal,
   ProposeTrainerInput, RespondToProposalInput, UpdateBatchInput,
-  BatchDetail,
+  BatchDetail, TrainerCandidate,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -403,16 +403,6 @@ export class BatchesService {
       select: { scheduledDate: true, startTime: true, endTime: true, batch: { select: { batchCode: true } } },
     });
 
-    for (const session of sessions) {
-      for (const other of busy) {
-        if (other.scheduledDate.getTime() !== session.scheduledDate.getTime()) continue;
-        if (overlaps(session, other)) {
-          const day = session.scheduledDate.toISOString().slice(0, 10);
-          return `That trainer is already teaching ${other.batch.batchCode} on ${day} at the same time.`;
-        }
-      }
-    }
-
     const leave = await this.prisma.trainerAvailability.findFirst({
       where: {
         trainerId,
@@ -420,12 +410,103 @@ export class BatchesService {
         startsAt: { lte: dates[dates.length - 1] },
         endsAt: { gte: dates[0] },
       },
+      select: { availabilityId: true },
     });
-    if (leave) {
-      return `That trainer has declared leave overlapping this batch's schedule.`;
-    }
 
-    return null;
+    return clashReason(sessions, busy, leave !== null);
+  }
+
+  /**
+   * Who may be proposed for this batch, and who would be refused.
+   *
+   * Only trainers approved for the batch's course: proposing anyone else is
+   * refused outright (invariant 15), so offering them is offering a mistake.
+   *
+   * The refusal each would produce is computed by `clashReason` — the same
+   * function the proposal itself uses. A picker that reasoned separately would
+   * eventually disagree with the endpoint, and a warning that disagrees with
+   * the refusal is worse than none.
+   *
+   * The per-trainer queries are hoisted: one read of this batch's sessions, one
+   * of everyone else's on those days, one of everyone's leave — rather than
+   * three per candidate.
+   */
+  async trainerCandidates(principal: Principal, batchId: string): Promise<TrainerCandidate[]> {
+    const batch = await this.mustExist(principal, batchId);
+
+    const trainers = await this.prisma.trainer.findMany({
+      where: {
+        deletedAt: null,
+        accountStatus: "ACTIVE",
+        ...cityScope(principal),
+        courses: { some: { courseId: batch.courseId, deletedAt: null } },
+      },
+      select: {
+        trainerId: true, trainerCode: true, name: true, city: { select: { name: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+    if (trainers.length === 0) return [];
+
+    const sessions = await this.prisma.batchSession.findMany({
+      where: { batchId, deletedAt: null, status: { notIn: ["CANCELLED"] } },
+      select: { scheduledDate: true, startTime: true, endTime: true },
+    });
+
+    const ids = trainers.map((t) => t.trainerId);
+    const dates = sessions.map((s) => s.scheduledDate);
+
+    // A batch with no sessions cannot clash with anything, which is exactly
+    // what the proposal check concludes — so neither read is worth making.
+    const [busy, leave] = sessions.length === 0
+      ? [[], []]
+      : await Promise.all([
+          this.prisma.batchSession.findMany({
+            where: {
+              trainerId: { in: ids },
+              deletedAt: null,
+              status: { notIn: ["CANCELLED"] },
+              batchId: { not: batchId },
+              scheduledDate: { in: dates },
+            },
+            select: {
+              trainerId: true, scheduledDate: true, startTime: true, endTime: true,
+              batch: { select: { batchCode: true } },
+            },
+          }),
+          this.prisma.trainerAvailability.findMany({
+            where: {
+              trainerId: { in: ids },
+              deletedAt: null,
+              startsAt: { lte: dates[dates.length - 1] },
+              endsAt: { gte: dates[0] },
+            },
+            select: { trainerId: true },
+          }),
+        ]);
+
+    const onLeave = new Set(leave.map((l) => l.trainerId));
+
+    const candidates = trainers.map((trainer) => {
+      const theirs = busy.filter((b) => b.trainerId === trainer.trainerId);
+      return {
+        trainerId: trainer.trainerId,
+        trainerCode: trainer.trainerCode,
+        name: trainer.name,
+        cityName: trainer.city?.name ?? null,
+        committedSessions: theirs.length,
+        blockedReason: clashReason(sessions, theirs, onLeave.has(trainer.trainerId)),
+      } satisfies TrainerCandidate;
+    });
+
+    // Proposable first, then the least committed of them — the order an admin
+    // would sort by anyway.
+    return candidates.sort((a, b) => {
+      if ((a.blockedReason === null) !== (b.blockedReason === null)) {
+        return a.blockedReason === null ? -1 : 1;
+      }
+      return a.committedSessions - b.committedSessions;
+    });
   }
 
   private async mustExist(principal: Principal, batchId: string) {
@@ -487,6 +568,44 @@ function toAssignment(row: { assignmentId: string; batchId: string; trainerId: s
     respondedAt: row.respondedAt?.toISOString() ?? null,
     declineReason: row.declineReason,
   };
+}
+
+/**
+ * Why a trainer cannot take this batch, or null.
+ *
+ * The single statement of the rule: the proposal endpoint and the candidate
+ * list both call it, so the warning an admin sees is the refusal they would
+ * get, word for word.
+ *
+ * A batch with no sessions never clashes — there is nothing yet to collide
+ * with, and saying otherwise would block an assignment made before the
+ * schedule is built, which is the normal order.
+ */
+function clashReason(
+  sessions: ReadonlyArray<{ scheduledDate: Date; startTime: Date; endTime: Date }>,
+  busy: ReadonlyArray<{
+    scheduledDate: Date;
+    startTime: Date;
+    endTime: Date;
+    batch: { batchCode: string };
+  }>,
+  onLeave: boolean,
+): string | null {
+  if (sessions.length === 0) return null;
+
+  for (const session of sessions) {
+    for (const other of busy) {
+      if (other.scheduledDate.getTime() !== session.scheduledDate.getTime()) continue;
+      if (overlaps(session, other)) {
+        const day = session.scheduledDate.toISOString().slice(0, 10);
+        return `That trainer is already teaching ${other.batch.batchCode} on ${day} at the same time.`;
+      }
+    }
+  }
+
+  if (onLeave) return `That trainer has declared leave overlapping this batch's schedule.`;
+
+  return null;
 }
 
 function overlaps(

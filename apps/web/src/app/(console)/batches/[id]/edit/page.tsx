@@ -4,9 +4,8 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { Card } from "@/components/ui/card";
 import { BatchForm } from "@/features/batches/components/batch-form";
-import { getBatch } from "@/features/batches/server/batches-service";
+import { getBatch, listTrainerCandidates } from "@/features/batches/server/batches-service";
 import { listCourses } from "@/features/courses/server/courses-service";
-import { listTrainers } from "@/features/trainers/server/trainers-service";
 import { listCities } from "@/features/localisation/server/localisation-service";
 import { requireModule } from "@/server/principal";
 
@@ -21,17 +20,18 @@ export default async function EditBatchPage({
   const { id } = await params;
   const batch = await getBatch(id);
 
-  // Only trainers approved for this batch's course are offered: a batch may
-  // only be given to someone approved for it, and offering the rest would
-  // produce a refusal after the operator had already chosen.
-  const [cities, courses, trainers] = await Promise.all([
+  /*
+   * Candidates rather than a trainer list.
+   *
+   * The API answers who may be proposed for THIS batch and who would be
+   * refused, using the same rule the proposal applies — so the picker offers
+   * exactly what the endpoint would accept, and names the reason for everyone
+   * it would not.
+   */
+  const [cities, courses, candidates] = await Promise.all([
     listCities({ pageSize: "200", isActive: "true" }),
     listCourses({ pageSize: "200", isActive: "true" }),
-    listTrainers({
-      pageSize: "200",
-      accountStatus: "ACTIVE",
-      approvedForCourseId: batch.courseId,
-    }),
+    listTrainerCandidates(batch.batchId),
   ]);
 
   return (
@@ -46,7 +46,7 @@ export default async function EditBatchPage({
         <BatchForm
           cities={cities.rows}
           courses={courses.rows}
-          trainers={trainers.rows}
+          candidates={candidates}
           batch={batch}
         />
       </Card>

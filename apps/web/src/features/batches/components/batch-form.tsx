@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { BatchDetail, City, Course, DeliveryMode, Trainer } from "@gurukulam/contracts";
+import type {
+  BatchDetail,
+  City,
+  Course,
+  DeliveryMode,
+  Trainer,
+  TrainerCandidate,
+} from "@gurukulam/contracts";
 
 import {
   FormSection,
@@ -20,15 +27,25 @@ export function BatchForm({
   cities,
   courses,
   trainers,
+  candidates,
   batch,
 }: {
   cities: readonly City[];
   courses: readonly Course[];
-  trainers: readonly Trainer[];
+  /** Create only: every active trainer, narrowed here by the chosen course. */
+  trainers?: readonly Trainer[];
+  /** Edit only: who may be proposed for THIS batch, and who would be refused. */
+  candidates?: readonly TrainerCandidate[];
   batch?: BatchDetail;
 }) {
   const editing = batch !== undefined;
   const [mode, setMode] = useState<DeliveryMode>(batch?.mode ?? "OFFLINE");
+  /*
+   * The course decides who may be proposed, so the picker below needs it as it
+   * changes rather than after the form is submitted. On edit it is locked, and
+   * the API answers the same question directly.
+   */
+  const [courseId, setCourseId] = useState(batch?.courseId ?? "");
 
   /**
    * The API refuses a second proposal while one is proposed or confirmed, so
@@ -77,6 +94,8 @@ export function BatchForm({
             label="Course"
             required
             placeholder="Select a course"
+            value={courseId}
+            onChange={(event) => setCourseId(event.target.value)}
             options={courses.map((course) => ({ value: course.courseId, label: course.name }))}
           />
         )}
@@ -176,14 +195,10 @@ export function BatchForm({
         description="Proposed, not assigned — it is not a commitment until the trainer confirms. Only trainers approved for the chosen course can take it."
       >
         {openAssignment === undefined ? (
-          <FormSelect
-            name="trainerId"
-            label="Propose a trainer"
-            placeholder="Nobody yet"
-            options={trainers.map((trainer) => ({
-              value: trainer.trainerId,
-              label: `${trainer.name} · ${trainer.approvedCourseCount ?? 0} approved`,
-            }))}
+          <TrainerPicker
+            trainers={trainers}
+            candidates={candidates}
+            {...(courseId === "" ? {} : { courseId })}
           />
         ) : (
           <LockedField
@@ -209,5 +224,100 @@ export function BatchForm({
         </FullWidth>
       </FormSection>
     </FormShell>
+  );
+}
+
+/**
+ * Who to propose.
+ *
+ * On EDIT the batch exists, so the API can say exactly who would be refused
+ * and why — that list is fetched and the refused are shown rather than hidden,
+ * because "why is this person not in the dropdown" is the question an operator
+ * would otherwise have to ask someone.
+ *
+ * On CREATE there is no batch and no schedule yet, so nothing can clash: the
+ * only rule that can bite is approval, and it is applied here as the course
+ * changes rather than after the form is submitted.
+ */
+function TrainerPicker({
+  trainers,
+  candidates,
+  courseId,
+}: {
+  trainers?: readonly Trainer[];
+  candidates?: readonly TrainerCandidate[];
+  courseId?: string;
+}) {
+  if (candidates !== undefined) {
+    const free = candidates.filter((c) => c.blockedReason === null);
+    const blocked = candidates.filter((c) => c.blockedReason !== null);
+
+    return (
+      <>
+        <FormSelect
+          name="trainerId"
+          label="Propose a trainer"
+          placeholder={free.length === 0 ? "Nobody is free" : "Nobody yet"}
+          disabled={free.length === 0}
+          hint={
+            candidates.length === 0
+              ? "Nobody is approved for this batch's course yet."
+              : `${free.length} of ${candidates.length} approved trainer(s) are free across this batch's schedule.`
+          }
+          options={free.map((candidate) => ({
+            value: candidate.trainerId,
+            label:
+              candidate.committedSessions === 0
+                ? candidate.name
+                : `${candidate.name} · ${candidate.committedSessions} other session(s) those days`,
+          }))}
+        />
+
+        {blocked.length === 0 ? null : (
+          <FullWidth>
+            <p className="mb-2 text-body-sm text-ink-muted">
+              Approved for this course, but the proposal would be refused:
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {blocked.map((candidate) => (
+                <li key={candidate.trainerId} className="text-body-sm">
+                  <span className="font-medium text-ink">{candidate.name}</span>{" "}
+                  <span className="text-ink-muted">{candidate.blockedReason}</span>
+                </li>
+              ))}
+            </ul>
+          </FullWidth>
+        )}
+      </>
+    );
+  }
+
+  /*
+   * Create. Narrowed to the chosen course: a trainer may only take a batch of
+   * a course they are approved for, and offering the rest produces a refusal
+   * after the whole form has been filled in.
+   */
+  const offered = (trainers ?? []).filter(
+    (trainer) => courseId !== undefined && (trainer.approvedCourseIds ?? []).includes(courseId),
+  );
+
+  return (
+    <FormSelect
+      name="trainerId"
+      label="Propose a trainer"
+      placeholder={courseId === undefined ? "Choose a course first" : "Nobody yet"}
+      disabled={courseId === undefined || offered.length === 0}
+      hint={
+        courseId === undefined
+          ? "Only trainers approved for the course can take it, so the course decides who is offered."
+          : offered.length === 0
+            ? "Nobody is approved for that course yet. The batch can be created and a trainer proposed later."
+            : `${offered.length} trainer(s) approved for that course.`
+      }
+      options={offered.map((trainer) => ({
+        value: trainer.trainerId,
+        label: trainer.cityName === null ? trainer.name : `${trainer.name} · ${trainer.cityName}`,
+      }))}
+    />
   );
 }

@@ -25,6 +25,14 @@ export const trainerSchema = z.object({
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
   approvedCourseCount: z.number().int().optional(),
+  /**
+   * The courses this trainer may take, as ids.
+   *
+   * Carried on the list so a picker can narrow to a course chosen in the same
+   * form — the alternative is offering everyone and letting the API refuse
+   * after the form has been filled in.
+   */
+  approvedCourseIds: z.array(z.string()).optional(),
 });
 
 export type Trainer = z.infer<typeof trainerSchema>;

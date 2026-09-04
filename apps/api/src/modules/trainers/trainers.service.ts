@@ -15,6 +15,21 @@ import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 const SORTABLE = ["name", "trainerCode", "createdAt", "experienceYears"] as const;
 
 /**
+ * What every mapped trainer needs.
+ *
+ * Live approvals only, in both the count and the ids: a revoked approval is
+ * not one, and counting it made the detail page's tile disagree with the list
+ * printed beneath it. Shared so the four places that map a trainer cannot
+ * drift apart.
+ */
+const TRAINER_INCLUDE = {
+  city: { select: { name: true } },
+  courses: { where: { deletedAt: null }, select: { courseId: true } },
+  _count: { select: { courses: { where: { deletedAt: null } } } },
+} satisfies Prisma.TrainerInclude;
+
+
+/**
  * Trainers, and the courses they are APPROVED for.
  *
  * Approval is a relationship rather than a skill tag, because free text cannot
@@ -59,7 +74,7 @@ export class TrainersService {
           where,
           orderBy: orderBy(query, SORTABLE, "name"),
           ...paginate(query),
-          include: { city: { select: { name: true } }, _count: { select: { courses: true } } },
+          include: TRAINER_INCLUDE,
         }),
         this.prisma.trainer.count({ where }),
       ]);
@@ -71,8 +86,9 @@ export class TrainersService {
     const trainer = await this.prisma.trainer.findFirst({
       where: { trainerId, deletedAt: null },
       include: {
-        city: { select: { name: true } },
-        _count: { select: { courses: true } },
+        ...TRAINER_INCLUDE,
+        // The detail page names the courses, so this one carries them rather
+        // than only their ids.
         courses: {
           where: { deletedAt: null },
           include: { course: { select: { courseId: true, courseCode: true, name: true } } },
@@ -121,7 +137,7 @@ export class TrainersService {
           cityId: input.cityId || null,
           createdBy: principal.id,
         },
-        include: { city: { select: { name: true } }, _count: { select: { courses: true } } },
+        include: TRAINER_INCLUDE,
       });
         return toTrainer(trainer);
       });
@@ -150,7 +166,7 @@ export class TrainersService {
         ...(input.cityId !== undefined ? { cityId: input.cityId || null } : {}),
         ...(input.accountStatus !== undefined ? { accountStatus: input.accountStatus } : {}),
       },
-      include: { city: { select: { name: true } }, _count: { select: { courses: true } } },
+      include: TRAINER_INCLUDE,
     });
     return toTrainer(trainer);
   }
@@ -280,9 +296,7 @@ export class TrainersService {
   }
 }
 
-type TrainerRow = Prisma.TrainerGetPayload<{
-  include: { city: { select: { name: true } }; _count: { select: { courses: true } } };
-}>;
+type TrainerRow = Prisma.TrainerGetPayload<{ include: typeof TRAINER_INCLUDE }>;
 
 function toTrainer(row: TrainerRow): Trainer {
   return {
@@ -303,6 +317,7 @@ function toTrainer(row: TrainerRow): Trainer {
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     approvedCourseCount: row._count.courses,
+    approvedCourseIds: row.courses.map((c) => c.courseId),
   };
   // password_hash is deliberately absent. Mapping explicitly rather than
   // spreading the row is what keeps it that way when a column is added.

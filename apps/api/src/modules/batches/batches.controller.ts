@@ -146,6 +146,16 @@ export class BatchesController {
   }
 
   /** Step one of the handshake — a proposal is not committed delivery. */
+  /**
+   * Who may be proposed, and who would be refused — the picker's own question,
+   * answered by the same rule the proposal applies.
+   */
+  @Get(":id/trainer/candidates")
+  @RequirePermission("batches", "read")
+  trainerCandidates(@CurrentPrincipal() p: Principal, @Param("id") id: string) {
+    return this.batches.trainerCandidates(p, id);
+  }
+
   @Post(":id/trainer/propose")
   @HttpCode(HttpStatus.OK)
   @RequirePermission("batches", "edit")
