@@ -19,7 +19,8 @@
     "verify:completions": "tsx scripts/verify-completions.ts",
     "verify:access": "tsx scripts/verify-access.ts",
     "verify:reports": "tsx scripts/verify-reports.ts",
-    "verify:contracts": "tsx scripts/verify-contracts.ts"
+    "verify:contracts": "tsx scripts/verify-contracts.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

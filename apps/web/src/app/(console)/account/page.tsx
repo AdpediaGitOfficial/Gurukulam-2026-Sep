@@ -4,7 +4,10 @@ import { ModuleTabs } from "@/components/patterns/module-tabs";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
+import Link from "next/link";
+
 import { Avatar } from "@/components/ui/avatar";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { getAccount } from "@/features/settings/server/settings-service";
 import { requirePrincipal } from "@/server/principal";
@@ -44,8 +47,16 @@ export default async function AccountPage() {
       <ModuleTabs />
 
       {account.mustResetPassword ? (
-        <Alert intent="warning" title="Your password needs changing">
-          You are signed in on a temporary password. Set a new one before it expires.
+        <Alert
+          intent="warning"
+          title="Your password needs changing"
+          action={
+            <Link href="/account/password" className={buttonVariants({ variant: "primary", size: "sm" })}>
+              Change it
+            </Link>
+          }
+        >
+          You are signed in on a password someone else issued you.
         </Alert>
       ) : null}
 
@@ -85,6 +96,19 @@ export default async function AccountPage() {
         </Card>
 
         <Card>
+          <CardHeader
+            as="h2"
+            title="Security"
+            action={
+              <Link href="/account/password" className="text-body-sm text-gold underline-offset-4 hover:underline">
+                Change password
+              </Link>
+            }
+          />
+          <p className="mb-6 text-body-sm text-ink-muted">
+            Your password is the one credential field you may set for yourself.
+          </p>
+
           <CardHeader as="h2" title="Why the rest is locked" />
           <p className="text-body-sm text-ink-muted">
             Name, email, role and region scope decide what you can see and do. Letting an operator

@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { loginSchema, sessionSchema } from "@gurukulam/contracts";
+import { revalidatePath } from "next/cache";
+import { changePasswordSchema, loginSchema, sessionSchema } from "@gurukulam/contracts";
 
 import { apiFetch, ApiRequestError } from "@/server/api";
 import { clearSession, readRefreshToken, writeSession } from "@/server/session";
@@ -81,4 +82,46 @@ function safeNext(formData: FormData): string {
   if (typeof value !== "string") return "/dashboard";
   if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
   return value;
+}
+
+/**
+ * Changes your own password.
+ *
+ * The only credential field an operator may set for themselves. Everything else
+ * — name, role, scope — is a Super Admin's to change, because letting someone
+ * edit their own scope would make the permission model advisory.
+ */
+export async function changePassword(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path.join(".");
+      if (key !== "" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  try {
+    await apiFetch("/auth/change-password", { method: "POST", body: parsed.data });
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      return formError(
+        error.message,
+        Object.keys(error.fields).length > 0 ? error.fields : undefined,
+      );
+    }
+    throw error;
+  }
+
+  revalidatePath("/account");
+  redirect("/dashboard?password=changed");
 }
