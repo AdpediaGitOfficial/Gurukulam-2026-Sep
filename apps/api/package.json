@@ -1,0 +1,48 @@
+{
+  "name": "@gurukulam/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "openapi": "tsx scripts/emit-openapi.ts",
+    "verify": "tsx scripts/verify-auth.ts",
+    "verify:modules": "tsx scripts/verify-modules.ts",
+    "verify:delivery": "tsx scripts/verify-delivery.ts",
+    "verify:enrolment": "tsx scripts/verify-enrolment.ts",
+    "verify:money": "tsx scripts/verify-money.ts",
+    "verify:certificates": "tsx scripts/verify-certificates.ts",
+    "verify:dashboard": "tsx scripts/verify-dashboard.ts",
+    "verify:completions": "tsx scripts/verify-completions.ts",
+    "verify:access": "tsx scripts/verify-access.ts",
+    "verify:reports": "tsx scripts/verify-reports.ts",
+    "verify:contracts": "tsx scripts/verify-contracts.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@gurukulam/contracts": "*",
+    "@gurukulam/db": "*",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.1",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

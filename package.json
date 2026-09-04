@@ -1,0 +1,30 @@
+{
+  "name": "gurukulam",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.7",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:migrate": "npm run migrate --workspace @gurukulam/db",
+    "db:generate": "npm run generate --workspace @gurukulam/db",
+    "db:seed": "npm run seed --workspace @gurukulam/db",
+    "db:reset": "npm run reset --workspace @gurukulam/db",
+    "db:studio": "npm run studio --workspace @gurukulam/db",
+    "db:deploy": "npm run migrate:deploy --workspace @gurukulam/db"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}
