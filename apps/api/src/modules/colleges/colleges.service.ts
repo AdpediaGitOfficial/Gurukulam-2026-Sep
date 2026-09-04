@@ -200,6 +200,18 @@ export class CollegesService {
     return toCollege(college);
   }
 
+  /**
+   * The college's contacts, as one list.
+   *
+   * A DIFF, not a wholesale replacement. `college_users.poc_id` is a foreign
+   * key — a portal account is linked to the person it belongs to — so a
+   * contact that merely had its phone corrected must keep the id it already
+   * has. Soft-deleting the lot and re-creating it would leave every portal
+   * account pointing at a deleted row while the person is still on the list.
+   *
+   * A contact carrying a `pocId` is an edit, one without is new, and a live
+   * contact the list omits is the only thing that gets removed.
+   */
   async replacePocs(principal: Principal, collegeId: string, input: ReplacePocsInput) {
     await this.mustExist(principal, collegeId);
 
@@ -207,25 +219,54 @@ export class CollegesService {
       throw ApiException.validation({ pocs: "Only one contact can be the primary" });
     }
 
+    const existing = await this.prisma.collegePoc.findMany({
+      where: { collegeId, deletedAt: null },
+      select: { pocId: true },
+    });
+    const live = new Set(existing.map((p) => p.pocId));
+
+    const named = input.pocs.filter((p) => p.pocId !== undefined).map((p) => p.pocId as string);
+    // An id from another college — or one already removed — would otherwise
+    // re-parent someone else's contact, or revive a deleted one by accident.
+    const stranger = named.find((id) => !live.has(id));
+    if (stranger !== undefined) {
+      throw ApiException.validation({ pocs: "One of those contacts is no longer on this college" });
+    }
+    if (new Set(named).size !== named.length) {
+      throw ApiException.validation({ pocs: "The same contact appears twice" });
+    }
+
+    const kept = new Set(named);
+
     return this.prisma.$transaction(async (tx) => {
-      // Soft-deleted: a college_user may point at a POC, and a certificate
-      // submission records who sent it.
-      await tx.collegePoc.updateMany({
-        where: { collegeId, deletedAt: null },
-        data: { deletedAt: new Date(), deletedBy: principal.id },
-      });
-      await tx.collegePoc.createMany({
-        data: input.pocs.map((p) => ({
-          collegeId,
-          name: p.name,
-          designation: p.designation || null,
-          department: p.department || null,
-          email: p.email,
-          phone: p.phone || null,
-          isPrimary: p.isPrimary,
-          createdBy: principal.id,
-        })),
-      });
+      const removed = [...live].filter((id) => !kept.has(id));
+      if (removed.length > 0) {
+        // Soft-deleted rather than erased: a college_user may point at this
+        // contact, and a certificate submission records who sent it.
+        await tx.collegePoc.updateMany({
+          where: { pocId: { in: removed } },
+          data: { deletedAt: new Date(), deletedBy: principal.id },
+        });
+      }
+
+      for (const poc of input.pocs) {
+        const data = {
+          name: poc.name,
+          designation: poc.designation || null,
+          department: poc.department || null,
+          email: poc.email,
+          phone: poc.phone || null,
+          isPrimary: poc.isPrimary,
+        };
+        if (poc.pocId === undefined) {
+          await tx.collegePoc.create({
+            data: { ...data, collegeId, createdBy: principal.id },
+          });
+        } else {
+          await tx.collegePoc.update({ where: { pocId: poc.pocId }, data });
+        }
+      }
+
       return tx.collegePoc.findMany({
         where: { collegeId, deletedAt: null },
         orderBy: [{ isPrimary: "desc" }, { name: "asc" }],

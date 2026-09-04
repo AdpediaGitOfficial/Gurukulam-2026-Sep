@@ -106,12 +106,22 @@ const BATCH_COLUMNS: Column<Batch>[] = [
 ];
 
 function Contacts({ college }: { college: CollegeDetail }) {
+  const manage = (
+    <Link
+      href={`/colleges/${college.collegeId}/contacts`}
+      className={buttonVariants({ variant: "secondary", size: "sm" })}
+    >
+      {college.pocs.length === 0 ? "Add a contact" : "Manage contacts"}
+    </Link>
+  );
+
   if (college.pocs.length === 0) {
     return (
       <Card>
         <EmptyState
           title="No contacts on record"
           description="A college is an actor we deal with through people. Without a contact there is nobody to raise a requirement or approve certificate names."
+          action={manage}
         />
       </Card>
     );
@@ -146,6 +156,7 @@ function Contacts({ college }: { college: CollegeDetail }) {
           </li>
         ))}
       </ul>
+      <div className="flex justify-end border-t border-hairline p-4">{manage}</div>
     </Card>
   );
 }
@@ -184,7 +195,11 @@ export default async function CollegeDetailPage({
         }
       />
 
-      {query["saved"] === "1" ? (
+      {query["contacts"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          Contacts updated. Anyone taken off the list keeps their history.
+        </Alert>
+      ) : query["saved"] === "1" ? (
         <Alert intent="success" title="Saved">
           College updated.
         </Alert>

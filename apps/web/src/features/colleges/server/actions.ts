@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { collegeSchema, createCollegeSchema } from "@gurukulam/contracts";
+import { collegeSchema, createCollegeSchema, replacePocsSchema } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
 import { apiFormError, checked, clearable, fieldErrors, text } from "@/lib/action";
@@ -113,4 +113,62 @@ export async function saveCollege(
   revalidatePath("/colleges");
   if (editing) revalidatePath(`/colleges/${collegeId}`);
   redirect(editing ? `/colleges/${collegeId}?saved=1` : "/colleges?created=1");
+}
+
+/**
+ * The college's contacts, as one list.
+ *
+ * Sent whole because the endpoint takes the whole list — but it diffs rather
+ * than replaces, so a contact that only had its phone corrected keeps the id
+ * a portal account may already be linked to.
+ *
+ * The rows arrive as parallel arrays, one entry per row the operator can see.
+ * `pocId` is empty on a row they just added, which is exactly what tells the
+ * API it is new. The primary arrives as one key rather than a flag per row:
+ * a radio group cannot express two primaries, so the refusal never has to.
+ */
+export async function saveContacts(
+  collegeId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const column = (key: string): string[] => formData.getAll(key).map(String);
+  const keys = column("pocKey");
+  const ids = column("pocId");
+  const names = column("pocName");
+  const designations = column("pocDesignation");
+  const departments = column("pocDepartment");
+  const emails = column("pocEmail");
+  const phones = column("pocPhone");
+  const primaryKey = formData.get("primaryKey");
+
+  const at = (values: string[], index: number): string | undefined => {
+    const value = values[index]?.trim();
+    return value === undefined || value === "" ? undefined : value;
+  };
+
+  const parsed = replacePocsSchema.safeParse({
+    pocs: keys.map((key, index) => ({
+      // Undefined rather than empty: an id is either a real row or absent, and
+      // "" would read as an id that belongs to nobody.
+      ...(at(ids, index) === undefined ? {} : { pocId: at(ids, index) }),
+      name: at(names, index),
+      designation: at(designations, index),
+      department: at(departments, index),
+      email: at(emails, index),
+      phone: at(phones, index),
+      isPrimary: key === primaryKey,
+    })),
+  });
+
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/colleges/${collegeId}/contacts`, { method: "PUT", body: parsed.data });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/colleges/${collegeId}`);
+  redirect(`/colleges/${collegeId}?contacts=1`);
 }

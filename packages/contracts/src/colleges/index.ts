@@ -99,5 +99,20 @@ export const updateCollegeSchema = createCollegeSchema
 
 export type UpdateCollegeInput = z.infer<typeof updateCollegeSchema>;
 
-export const replacePocsSchema = z.object({ pocs: z.array(pocInput).max(50) });
+/**
+ * One contact in a replacement list.
+ *
+ * `pocId` identifies a contact the caller is EDITING rather than adding. It
+ * matters because `college_users.poc_id` is a foreign key: a portal account is
+ * linked to the person it belongs to, so a contact whose phone was corrected
+ * has to keep the id it already had. Matching on email would not do — changing
+ * an address is one of the commonest edits, and it would read as a delete
+ * followed by an insert.
+ *
+ * Omit it for a new contact. An id that does not belong to this college's live
+ * contacts is refused rather than treated as new.
+ */
+const replacePocInput = pocInput.extend({ pocId: z.string().optional() });
+
+export const replacePocsSchema = z.object({ pocs: z.array(replacePocInput).max(50) });
 export type ReplacePocsInput = z.infer<typeof replacePocsSchema>;
