@@ -56,11 +56,38 @@ export const calendarEntrySchema = z.object({
   /** Hours already committed in the window, against max_weekly_hours. */
   committedHours: z.number(),
   maxWeeklyHours: z.number().int().nullable(),
+  /**
+   * Committed beyond `max_weekly_hours` across the window.
+   *
+   * Reported rather than left to be inferred: a trainer with no sessions and
+   * no leave who is still not free would otherwise be unexplainable, and
+   * re-deriving it on the client means duplicating the window arithmetic that
+   * decides it here.
+   */
+  overCommitted: z.boolean(),
   /** True when nothing in the window conflicts. Computed, never stored. */
   free: z.boolean(),
   /** Present only when this call named a course (invariant 15). */
   approvedForCourse: z.boolean().nullable(),
+  /**
+   * The window, a day at a time — the grid an admin actually assigns from.
+   *
+   * Same rows the totals above are computed from, grouped by date, so it costs
+   * no extra query. Capped: past a month the grid stops being readable and the
+   * totals are the useful answer, so a longer window returns an empty array
+   * rather than a payload nobody renders.
+   */
+  days: z.array(
+    z.object({
+      date: z.string(),
+      sessions: z.number().int(),
+      away: z.boolean(),
+    }),
+  ),
 });
+
+/** Days past which the per-day breakdown is omitted. */
+export const CALENDAR_GRID_DAYS = 31;
 
 export type CalendarEntry = z.infer<typeof calendarEntrySchema>;
 

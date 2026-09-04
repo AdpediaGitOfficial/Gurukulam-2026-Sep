@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
+import { CALENDAR_GRID_DAYS } from "@gurukulam/contracts";
 import type {
   Availability, CalendarEntry, CalendarQuery, DeclareAvailabilityInput, Principal,
 } from "@gurukulam/contracts";
@@ -135,6 +136,24 @@ export class AvailabilityService {
       },
     });
 
+    /*
+     * The days the grid will show, built once.
+     *
+     * Empty past a month: the grid stops being readable long before it stops
+     * being cheap, and the window totals are the useful answer at that length.
+     */
+    // Floored, not rounded: `to` is the END of its day, so the difference is
+    // one millisecond short of a whole number of days. Rounding it up invented
+    // a fifteenth column on a fortnight — always empty, because the session
+    // query stops at `to`.
+    const span = Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
+    const grid: string[] =
+      span > CALENDAR_GRID_DAYS
+        ? []
+        : Array.from({ length: span }, (_, i) =>
+            new Date(from.getTime() + i * 86_400_000).toISOString().slice(0, 10),
+          );
+
     const entries = await Promise.all(
       trainers.map(async (t) => {
         const [sessions, away] = await Promise.all([
@@ -150,13 +169,17 @@ export class AvailabilityService {
               // surfaces at proposal time.
               batch: liveOnly(),
             },
-            select: { startTime: true, endTime: true },
+            select: { scheduledDate: true, startTime: true, endTime: true },
           }),
-          this.prisma.trainerAvailability.count({
+          // Fetched rather than counted: the same rows answer both "how many
+          // overlap the window" and "which days does each cover", and the
+          // per-day grid is what an admin actually assigns from.
+          this.prisma.trainerAvailability.findMany({
             where: {
               trainerId: t.trainerId, deletedAt: null,
               startsAt: { lte: to }, endsAt: { gte: from },
             },
+            select: { startsAt: true, endsAt: true },
           }),
         ]);
 
@@ -178,11 +201,25 @@ export class AvailabilityService {
           name: t.name,
           cityId: t.cityId,
           committedSessions: sessions.length,
-          declaredAway: away,
+          declaredAway: away.length,
           committedHours: Math.round(committedHours * 10) / 10,
           maxWeeklyHours: t.maxWeeklyHours,
-          free: sessions.length === 0 && away === 0 && !overHours,
+          overCommitted: overHours,
+          free: sessions.length === 0 && away.length === 0 && !overHours,
           approvedForCourse,
+          days: grid.map((date) => ({
+            date,
+            sessions: sessions.filter(
+              (s) => s.scheduledDate.toISOString().slice(0, 10) === date,
+            ).length,
+            // A declared entry covers a day when it overlaps any part of it —
+            // a half-day of leave still makes that day contested.
+            away: away.some(
+              (a) =>
+                a.startsAt.toISOString().slice(0, 10) <= date &&
+                a.endsAt.toISOString().slice(0, 10) >= date,
+            ),
+          })),
         } satisfies CalendarEntry;
       }),
     );

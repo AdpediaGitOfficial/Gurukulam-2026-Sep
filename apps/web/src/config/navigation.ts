@@ -102,7 +102,7 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "trainers",
     children: [
       { href: "/trainers", label: "All trainers" },
-      { href: "/trainers/calendar", label: "Availability" , built: false },
+      { href: "/trainers/calendar", label: "Availability" },
     ],
   },
   {

@@ -12,10 +12,20 @@ export interface FilterSelect {
   options: ReadonlyArray<{ value: string; label: string }>;
 }
 
+export interface FilterDate {
+  /** Query-string key this date drives. */
+  name: string;
+  label: string;
+  /** Shown when the param is absent, so the form submits a real window. */
+  defaultValue?: string;
+}
+
 export interface ListFiltersProps {
   /** Placeholder for the free-text search. Omit to leave search out. */
   searchPlaceholder?: string;
   selects?: readonly FilterSelect[];
+  /** Date bounds, e.g. the window a calendar is read over. */
+  dates?: readonly FilterDate[];
   /** The page's current searchParams, so filters survive one another. */
   params: SearchParams;
   /** Export, bulk actions — rendered at the end of the row. */
@@ -37,6 +47,7 @@ const first = (value: string | string[] | undefined): string =>
 export function ListFilters({
   searchPlaceholder,
   selects = [],
+  dates = [],
   params,
   actions,
   className,
@@ -48,7 +59,13 @@ export function ListFilters({
         filtering a sorted list would silently throw the sort away.
       */}
       {Object.entries(params)
-        .filter(([key]) => key !== "page" && key !== "q" && !selects.some((s) => s.name === key))
+        .filter(
+          ([key]) =>
+            key !== "page" &&
+            key !== "q" &&
+            !selects.some((s) => s.name === key) &&
+            !dates.some((d) => d.name === key),
+        )
         .map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={first(value)} />
         ))}
@@ -96,6 +113,26 @@ export function ListFilters({
               </option>
             ))}
           </select>
+        </div>
+      ))}
+
+      {dates.map((date) => (
+        <div key={date.name} className="flex items-center gap-2">
+          {/*
+            Labelled visibly, unlike the selects: "from" and "to" are only
+            distinguishable by their label, and two bare date boxes side by side
+            say nothing about which end is which.
+          */}
+          <label htmlFor={`filter-${date.name}`} className="text-body-sm text-ink-muted">
+            {date.label}
+          </label>
+          <input
+            id={`filter-${date.name}`}
+            name={date.name}
+            type="date"
+            defaultValue={first(params[date.name]) || (date.defaultValue ?? "")}
+            className="h-11 cursor-pointer rounded-control border border-hairline-strong bg-surface px-3.5 text-body text-ink focus:border-brand focus:outline-none"
+          />
         </div>
       ))}
 
