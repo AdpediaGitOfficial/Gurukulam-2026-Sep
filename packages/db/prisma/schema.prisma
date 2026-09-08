@@ -78,6 +78,18 @@ enum TrainerAssignmentStatus {
   DECLINED
 }
 
+/// How we engage a trainer, which decides whether an assignment needs their
+/// answer.
+///
+/// A freelancer is proposed and may decline — the proposal is a negotiation.
+/// An in-house trainer is staff: allocation is a management decision, so the
+/// assignment is confirmed as it is made. Every other rule still applies to
+/// both — approval for the course, and the double-booking check.
+enum TrainerEngagement {
+  IN_HOUSE
+  FREELANCE
+}
+
 enum BatchStatus {
   SCHEDULED
   IN_PROGRESS
@@ -744,6 +756,9 @@ model Trainer {
   qualification       String?       @db.VarChar(255)
   experienceYears     Int?          @map("experience_years")
   skillTags           String[]      @map("skill_tags")
+  /// FREELANCE by default, which is the only kind we had before in-house
+  /// trainers existed — an existing row must not silently become staff.
+  engagement          TrainerEngagement @default(FREELANCE)
   payModel            String?       @map("pay_model") @db.VarChar(40)
   payRateMinor        BigInt?       @map("pay_rate_minor")
   maxWeeklyHours      Int?          @map("max_weekly_hours")
@@ -911,7 +926,16 @@ model BatchTrainerAssignment {
   proposedBy    String?                 @map("proposed_by") @db.VarChar(36)
   proposedAt    DateTime                @default(now()) @map("proposed_at")
   respondedAt   DateTime?               @map("responded_at")
+  /// True when this was confirmed at the moment it was made, because the
+  /// trainer is in-house. "They agreed" and "we assigned them" are different
+  /// facts, and `responded_at` alone cannot tell them apart afterwards.
+  autoConfirmed Boolean                 @default(false) @map("auto_confirmed")
   declineReason String?                 @map("decline_reason") @db.VarChar(500)
+  /// Why an admin took this assignment back, as distinct from why the trainer
+  /// turned it down. Releasing a CONFIRMED trainer un-staffs a batch and
+  /// clears its scheduled sessions, so it is the kind of act the next person
+  /// to look would otherwise have to ask about.
+  releaseReason String?                 @map("release_reason") @db.VarChar(500)
   createdAt     DateTime                @default(now()) @map("created_at")
   createdBy     String?                 @map("created_by") @db.VarChar(36)
   updatedAt     DateTime                @updatedAt @map("updated_at")

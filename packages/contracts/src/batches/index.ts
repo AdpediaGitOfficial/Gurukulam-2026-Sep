@@ -119,6 +119,12 @@ export const trainerCandidateSchema = z.object({
   trainerCode: z.string(),
   name: z.string(),
   cityName: z.string().nullable(),
+  /**
+   * Carried so the picker can say what choosing this person DOES: an in-house
+   * trainer is confirmed as they are allocated, a freelancer is asked. Two
+   * outcomes behind one control need saying before the click, not after.
+   */
+  engagement: z.enum(["IN_HOUSE", "FREELANCE"]),
   /** Their other sessions falling on this batch's session days. */
   committedSessions: z.number().int(),
   blockedReason: z.string().nullable(),
@@ -138,6 +144,20 @@ export const respondToProposalSchema = z
   });
 export type RespondToProposalInput = z.infer<typeof respondToProposalSchema>;
 
+/**
+ * Taking a trainer back off a batch.
+ *
+ * The reason is REQUIRED, for the same reason revoking a login and suspending
+ * an account require one: releasing a CONFIRMED trainer un-staffs the batch and
+ * clears its scheduled sessions, and an unexplained change of that size is the
+ * thing whoever finds it has to go and ask about.
+ */
+export const releaseTrainerSchema = z.object({
+  reason: z.string().trim().min(1, "Say why this trainer is being released").max(500),
+});
+
+export type ReleaseTrainerInput = z.infer<typeof releaseTrainerSchema>;
+
 export const trainerAssignmentSchema = z.object({
   assignmentId: z.string(),
   batchId: z.string(),
@@ -146,7 +166,26 @@ export const trainerAssignmentSchema = z.object({
   status: z.enum(["PROPOSED", "CONFIRMED", "DECLINED"]),
   proposedAt: z.string(),
   respondedAt: z.string().nullable(),
+  /**
+   * True when this was confirmed at the moment it was made, because the
+   * trainer is in-house.
+   *
+   * "They agreed" and "we assigned them" are different facts. `respondedAt` is
+   * set either way, so without this the record cannot say afterwards which one
+   * happened.
+   */
+  autoConfirmed: z.boolean(),
   declineReason: z.string().nullable(),
+  /** Why an admin took the assignment back, as distinct from a decline. */
+  releaseReason: z.string().nullable(),
+  /**
+   * When it was released, or null while it still stands.
+   *
+   * A released assignment is soft-deleted and still travels with the batch:
+   * this list is a history, and the reason a batch has nobody on it today is
+   * usually the assignment that ended.
+   */
+  releasedAt: z.string().nullable(),
 });
 export type TrainerAssignment = z.infer<typeof trainerAssignmentSchema>;
 

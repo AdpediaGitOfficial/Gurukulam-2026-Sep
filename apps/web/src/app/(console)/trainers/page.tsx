@@ -77,6 +77,19 @@ const COLUMNS: Column<Trainer>[] = [
     ),
   },
   {
+    id: "engagement",
+    header: "Engagement",
+    // Not decoration: an in-house trainer is confirmed on a batch the moment
+    // they are allocated, so this is what an operator needs to know BEFORE
+    // opening the picker, not after.
+    cell: (row) =>
+      row.engagement === "IN_HOUSE" ? (
+        <StatusPill intent="info">in-house</StatusPill>
+      ) : (
+        <span className="text-body-sm text-ink-muted">freelance</span>
+      ),
+  },
+  {
     id: "pay",
     header: "Pay",
     align: "end",
@@ -151,6 +164,15 @@ export default async function TrainersPage({
           params={params}
           searchPlaceholder="Search trainers, codes or skills…"
           selects={[
+            {
+              name: "engagement",
+              label: "Engagement",
+              options: [
+                { value: "", label: "Everyone" },
+                { value: "IN_HOUSE", label: "In-house" },
+                { value: "FREELANCE", label: "Freelance" },
+              ],
+            },
             {
               name: "accountStatus",
               label: "Status",

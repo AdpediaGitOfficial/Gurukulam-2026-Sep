@@ -4,6 +4,7 @@ import type { BatchSession, TrainerAssignment } from "@gurukulam/contracts";
 
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { rowActions } from "@/components/patterns/row-actions";
+import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { BatchHeader } from "@/features/batches/components/batch-header";
 import { getBatch, listSessions } from "@/features/batches/server/batches-service";
+import { releaseTrainer, respondToProposal } from "@/features/batches/server/actions";
 import { listStudents } from "@/features/students/server/students-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -126,14 +128,24 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
  * An admin proposes and the trainer confirms; only a confirmed assignment is
  * committed delivery. The history stays rather than collapsing to one name,
  * because a decline and who declined it is the reason a batch has nobody.
+ *
+ * An in-house trainer is confirmed as they are allocated, and the row says so:
+ * "they agreed" and "we assigned them" are different facts, and a reader six
+ * months later cannot tell them apart from a timestamp.
  */
-function Assignments({ assignments }: { assignments: readonly TrainerAssignment[] }) {
+function Assignments({
+  batchId,
+  assignments,
+}: {
+  batchId: string;
+  assignments: readonly TrainerAssignment[];
+}) {
   if (assignments.length === 0) {
     return (
       <Card>
         <EmptyState
-          title="Nobody proposed yet"
-          description="A trainer is proposed from the batch's own screen and only becomes delivery once they confirm."
+          title="Nobody assigned yet"
+          description="A freelancer is proposed and becomes delivery once they confirm. An in-house trainer is confirmed as they are allocated."
         />
       </Card>
     );
@@ -145,35 +157,100 @@ function Assignments({ assignments }: { assignments: readonly TrainerAssignment[
         {assignments.map((assignment) => (
           <li
             key={assignment.assignmentId}
-            className="flex flex-wrap items-center gap-4 border-b border-hairline p-4 last:border-b-0"
+            className={
+              assignment.releasedAt === null
+                ? "flex flex-wrap items-center gap-4 border-b border-hairline p-4 last:border-b-0"
+                : "flex flex-wrap items-center gap-4 border-b border-hairline p-4 opacity-70 last:border-b-0"
+            }
           >
             <span className="min-w-0 flex-1">
               <span className="block text-body font-semibold text-ink">
                 {assignment.trainerName ?? "—"}
               </span>
               <span className="block text-caption text-ink-subtle">
-                Proposed {assignment.proposedAt.slice(0, 10)}
-                {assignment.respondedAt === null
-                  ? " · awaiting an answer"
-                  : ` · answered ${assignment.respondedAt.slice(0, 10)}`}
+                {assignment.autoConfirmed
+                  ? `Allocated ${assignment.proposedAt.slice(0, 10)} · in-house, confirmed without asking`
+                  : assignment.respondedAt === null
+                    ? `Proposed ${assignment.proposedAt.slice(0, 10)} · awaiting an answer`
+                    : `Proposed ${assignment.proposedAt.slice(0, 10)} · answered ${assignment.respondedAt.slice(0, 10)}`}
               </span>
               {assignment.declineReason === null ? null : (
                 <span className="block text-body-sm text-ink-muted">
                   “{assignment.declineReason}”
                 </span>
               )}
+              {assignment.releasedAt === null ? null : (
+                <span className="block text-body-sm text-ink-muted">
+                  Released {assignment.releasedAt.slice(0, 10)}
+                  {assignment.releaseReason === null
+                    ? ""
+                    : ` — “${assignment.releaseReason}”`}
+                </span>
+              )}
             </span>
             <StatusPill
               intent={
-                assignment.status === "CONFIRMED"
-                  ? "success"
-                  : assignment.status === "DECLINED"
-                    ? "danger"
-                    : "warning"
+                assignment.releasedAt !== null
+                  ? "neutral"
+                  : assignment.status === "CONFIRMED"
+                    ? "success"
+                    : assignment.status === "DECLINED"
+                      ? "danger"
+                      : "warning"
               }
             >
-              {assignment.status.toLowerCase()}
+              {assignment.releasedAt === null ? assignment.status.toLowerCase() : "released"}
             </StatusPill>
+
+            {/* An admin records the answer on the trainer's behalf: the admin
+                portal performs every action the deferred portals will. */}
+            {assignment.releasedAt === null && assignment.status === "PROPOSED" ? (
+              <>
+                <ConfirmAction
+                  action={respondToProposal.bind(null, batchId, "CONFIRM")}
+                  label="Confirm"
+                  pending="Confirming…"
+                  subject={assignment.trainerName ?? "this trainer"}
+                  variant="primary"
+                />
+                <ConfirmWithReason
+                  id={`decline-${assignment.assignmentId}`}
+                  subject={assignment.trainerName ?? "this trainer"}
+                  action={respondToProposal.bind(null, batchId, "DECLINE")}
+                  trigger="Decline"
+                  confirm="Record the decline"
+                  pending="Recording…"
+                  required
+                  reasonPlaceholder="Already committed that fortnight"
+                  reasonHint="Kept on the record, so whoever proposes next knows what happened."
+                  description={
+                    <>
+                      The batch goes back to unassigned. Nothing is reassigned automatically.
+                    </>
+                  }
+                />
+              </>
+            ) : null}
+
+            {assignment.releasedAt === null && assignment.status === "CONFIRMED" ? (
+              <ConfirmWithReason
+                id={`release-${assignment.assignmentId}`}
+                subject={assignment.trainerName ?? "this trainer"}
+                action={releaseTrainer.bind(null, batchId)}
+                trigger="Release"
+                confirm="Release the trainer"
+                pending="Releasing…"
+                required
+                reasonPlaceholder="Moved to the Kochi cohort"
+                reasonHint="Kept on the released assignment, so the change is not unexplained."
+                description={
+                  <>
+                    The batch loses its trainer and its scheduled sessions are cleared, freeing
+                    that time on the calendar. Sessions already completed keep who delivered them.
+                  </>
+                }
+              />
+            ) : null}
           </li>
         ))}
       </ul>
@@ -213,6 +290,21 @@ export default async function BatchSessionsPage({
         <Alert intent="success" title="Session scheduled">
           Mark it delivered once it has been taught — that is what releases its assignments and
           lets its recording be attached.
+        </Alert>
+      ) : query["confirmed"] === "1" ? (
+        <Alert intent="success" title="Trainer confirmed">
+          They are this batch&rsquo;s trainer now, and its scheduled sessions carry them — so the
+          time reads as committed on the availability calendar.
+        </Alert>
+      ) : query["declined"] === "1" ? (
+        <Alert intent="info" title="Decline recorded">
+          The batch is unassigned again. Nothing was reassigned automatically — propose someone
+          else when you are ready.
+        </Alert>
+      ) : query["released"] === "1" ? (
+        <Alert intent="info" title="Trainer released">
+          The batch has nobody on it and its scheduled sessions are free again. Sessions already
+          delivered keep who taught them.
         </Alert>
       ) : null}
 
@@ -308,9 +400,9 @@ export default async function BatchSessionsPage({
 
       <PageSection
         title="Trainer"
-        description="An admin proposes; the trainer confirms. Only a confirmed assignment is committed delivery."
+        description="A freelancer is proposed and answers for themselves. An in-house trainer is staff, so allocating them confirms them — the approval and double-booking checks apply either way."
       >
-        <Assignments assignments={batch.trainerAssignments} />
+        <Assignments batchId={batch.batchId} assignments={batch.trainerAssignments} />
       </PageSection>
     </PageBody>
   );

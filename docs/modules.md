@@ -150,8 +150,10 @@ Assignment: add/modify/delete. Recording: link/replace/unpublish.
 **Key points**
 - `batches.college_id` nullable — set means dedicated to that college; null means retail.
   **The two rosters never mix**, enforced at the allocation seam.
-- Trainer assignment is a **two-step handshake**: an admin proposes from the availability calendar,
-  the trainer confirms. Only a confirmed assignment is committed delivery.
+- Trainer assignment is a **two-step handshake** for a freelancer: an admin proposes from the
+  availability calendar, the trainer confirms. Only a confirmed assignment is committed delivery.
+  An **in-house** trainer is allocated in one step — the assignment is created confirmed, and the
+  row says so rather than looking like an answer nobody gave.
 - **A session must be marked complete before assignments can be set against it.** Completion is a
   deliberate act, not a date passing; it releases the assignment tab and prompts for the recording.
 - Rescheduling notifies students, trainer and — for a college batch — the institution, from the
@@ -169,13 +171,19 @@ Assignment: add/modify/delete. Recording: link/replace/unpublish.
 **Entities** `trainers` · `trainer_courses` · `trainer_availability` · `batch_trainer_assignments`
 
 **Operations** View all · Add · Modify · Delete · Declare availability · Propose assignment ·
-Confirm on behalf
+Confirm on behalf · Release a trainer from a batch
 
 **Key points**
 - The calendar is the **assignment surface**, not a report — you pick a trainer from it.
 - Free/busy is **computed** from committed sessions plus declared leave. Never stored, or it drifts
   the first time a session moves.
 - Guards: double-booking, `max_weekly_hours`, and course approval.
+- A trainer is **in-house or freelance**. In-house means allocating them to a batch confirms them
+  on the spot — they are staff, so it is a management decision rather than an offer. The guards
+  above are unchanged for both.
+- **Releasing** takes a trainer back off a batch, confirmed or merely proposed. It un-staffs the
+  batch and frees its scheduled sessions; sessions already delivered keep who taught them. The
+  reason is required and stays on the released assignment, which stays in the batch's history.
 
 ## 7. Fee Ledger — `/fee-ledger`
 

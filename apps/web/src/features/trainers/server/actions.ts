@@ -48,6 +48,7 @@ export async function saveTrainer(
         ?.split(",")
         .map((s) => s.trim())
         .filter(Boolean) ?? [],
+    engagement: text(formData, "engagement"),
     payModel: text(formData, "payModel"),
     payRate: optional("payRate"),
     maxWeeklyHours: number(formData, "maxWeeklyHours"),

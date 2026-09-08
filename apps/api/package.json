@@ -22,6 +22,7 @@
     "verify:contracts": "tsx scripts/verify-contracts.ts",
     "verify:paging": "tsx scripts/verify-paging.ts",
     "verify:rollups": "tsx scripts/verify-rollups.ts",
+    "verify:inhouse": "tsx scripts/verify-inhouse.ts",
     "bootstrap": "tsx scripts/bootstrap.ts"
   },
   "dependencies": {

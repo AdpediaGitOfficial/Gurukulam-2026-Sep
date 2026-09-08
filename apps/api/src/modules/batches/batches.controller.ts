@@ -2,10 +2,12 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post
 import { z } from "zod";
 import {
   batchQuerySchema, createAssignmentSchema, createBatchSchema, createSessionSchema,
-  linkRecordingSchema, proposeTrainerSchema, rescheduleSessionSchema, respondToProposalSchema,
+  linkRecordingSchema, proposeTrainerSchema, releaseTrainerSchema, rescheduleSessionSchema,
+  respondToProposalSchema,
   sessionQuerySchema, updateAssignmentSchema, updateBatchSchema, updateSessionSchema,
   type BatchQuery, type CreateAssignmentInput, type CreateBatchInput, type CreateSessionInput,
-  type LinkRecordingInput, type Principal, type ProposeTrainerInput, type RescheduleSessionInput,
+  type LinkRecordingInput, type Principal, type ProposeTrainerInput, type ReleaseTrainerInput,
+  type RescheduleSessionInput,
   type RespondToProposalInput, type SessionQuery, type UpdateAssignmentInput, type UpdateBatchInput,
   type UpdateSessionInput,
 } from "@gurukulam/contracts";
@@ -171,11 +173,22 @@ export class BatchesController {
     return this.batches.respondToProposal(p, id, body);
   }
 
+  /**
+   * Releases the batch's trainer — an open proposal, or a confirmed one.
+   *
+   * DELETE rather than POST because it takes the assignment off the batch, and
+   * it carries a body: the reason is required, as it is everywhere else a
+   * record stops being in force.
+   */
   @Delete(":id/trainer/propose")
   @RequirePermission("batches", "edit")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async withdraw(@CurrentPrincipal() p: Principal, @Param("id") id: string): Promise<void> {
-    await this.batches.withdrawProposal(p, id);
+  async withdraw(
+    @CurrentPrincipal() p: Principal,
+    @Param("id") id: string,
+    @Body(zodBody(releaseTrainerSchema)) body: ReleaseTrainerInput,
+  ): Promise<void> {
+    await this.batches.withdrawProposal(p, id, body);
   }
 
   @Delete(":id")

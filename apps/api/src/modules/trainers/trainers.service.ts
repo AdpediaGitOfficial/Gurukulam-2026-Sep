@@ -53,6 +53,7 @@ export class TrainersService {
       ...cityScope(principal),
       ...(query.cityId ? { cityId: query.cityId } : {}),
       ...(query.accountStatus ? { accountStatus: query.accountStatus } : {}),
+      ...(query.engagement ? { engagement: query.engagement } : {}),
       // Invariant 15's read side: only trainers with a live approval row.
       ...(query.approvedForCourseId
         ? { courses: { some: { courseId: query.approvedForCourseId, deletedAt: null } } }
@@ -132,6 +133,7 @@ export class TrainersService {
           qualification: input.qualification || null,
           experienceYears: input.experienceYears ?? null,
           skillTags: input.skillTags,
+          engagement: input.engagement,
           payModel: input.payModel || null,
           payRateMinor: input.payRate ? this.parseMoney(input.payRate, "payRate") : null,
           maxWeeklyHours: input.maxWeeklyHours ?? null,
@@ -159,6 +161,7 @@ export class TrainersService {
         ...(input.qualification !== undefined ? { qualification: input.qualification || null } : {}),
         ...(input.experienceYears !== undefined ? { experienceYears: input.experienceYears } : {}),
         ...(input.skillTags !== undefined ? { skillTags: input.skillTags } : {}),
+        ...(input.engagement !== undefined ? { engagement: input.engagement } : {}),
         ...(input.payModel !== undefined ? { payModel: input.payModel || null } : {}),
         ...(input.payRate !== undefined
           ? { payRateMinor: input.payRate ? this.parseMoney(input.payRate, "payRate") : null }
@@ -354,6 +357,7 @@ function toTrainer(row: TrainerRow): Trainer {
     qualification: row.qualification,
     experienceYears: row.experienceYears,
     skillTags: row.skillTags,
+    engagement: row.engagement as "IN_HOUSE" | "FREELANCE",
     payModel: row.payModel,
     payRateMinor: row.payRateMinor?.toString() ?? null,
     maxWeeklyHours: row.maxWeeklyHours,

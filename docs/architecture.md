@@ -198,7 +198,7 @@ eventually appear.
 | 6 | A reminder's recipient resolves from the installment's parent, never from a stored column. A college's students never receive an invoice reminder. | Reminder service |
 | 7 | Certificate *eligibility* is identical across segments; certificate *access* is not — retail students download their own, colleges download their students'. | Certificate access rule |
 | 8 | Trainer free/busy is computed from committed sessions plus declared leave. Never stored. | Availability service |
-| 9 | A trainer assignment is not committed delivery until the trainer confirms. | Assignment state machine |
+| 9 | A trainer assignment is not committed delivery until it is CONFIRMED. A freelancer answers for themselves; an in-house trainer is confirmed as they are allocated, and `auto_confirmed` records which of the two happened. | Assignment state machine |
 | 10 | Job audience is evaluated at read time. Never materialised per student. | Job visibility service |
 | 11 | Every scope (city for sub-admins, college for college users) is applied inside the service, never by the caller. | Every service function |
 | 12 | Allocation is one transaction: mapping, session access, ledger, credentials. All of it, or none. | Allocation service |
@@ -276,6 +276,10 @@ Retail, step by step:
 2. Admin confirms it → creates a batch with `college_id` set, linked back to the requirement.
 3. Admin proposes a trainer **from the availability calendar**, filtered by the course's skill tags.
 4. Trainer confirms → assignment becomes committed delivery; `batches.primary_trainer_id` is set.
+   An **in-house** trainer is staff rather than a counterparty, so step 4 happens inside step 3 —
+   the assignment is created CONFIRMED. What is skipped is the negotiation, not the checks:
+   approval for the course (invariant 15) and the double-booking read (invariant 8) apply to both,
+   because they answer whether the delivery is *possible*, not whether the person agreed to it.
 5. Sessions generated under the batch, per topic.
 6. College adds its students; each joins that batch only, with **no individual ledger**.
 7. `college_contracts` carries the money. Invoices and reminders go to the college.

@@ -251,12 +251,13 @@ function TrainerPicker({
   if (candidates !== undefined) {
     const free = candidates.filter((c) => c.blockedReason === null);
     const blocked = candidates.filter((c) => c.blockedReason !== null);
+    const inHouse = free.filter((c) => c.engagement === "IN_HOUSE").length;
 
     return (
       <>
         <FormSelect
           name="trainerId"
-          label="Propose a trainer"
+          label="Assign a trainer"
           placeholder={free.length === 0 ? "Nobody is free" : "Nobody yet"}
           disabled={free.length === 0}
           hint={
@@ -264,14 +265,29 @@ function TrainerPicker({
               ? "Nobody is approved for this batch's course yet."
               : `${free.length} of ${candidates.length} approved trainer(s) are free across this batch's schedule.`
           }
-          options={free.map((candidate) => ({
-            value: candidate.trainerId,
-            label:
+          // The label carries the consequence, because the same control does
+          // two different things: an in-house trainer is confirmed as they are
+          // picked, a freelancer is asked and may decline.
+          options={free.map((candidate) => {
+            const load =
               candidate.committedSessions === 0
-                ? candidate.name
-                : `${candidate.name} · ${candidate.committedSessions} other session(s) those days`,
-          }))}
+                ? ""
+                : ` · ${candidate.committedSessions} other session(s) those days`;
+            const kind =
+              candidate.engagement === "IN_HOUSE" ? " — in-house, confirmed at once" : "";
+            return { value: candidate.trainerId, label: `${candidate.name}${load}${kind}` };
+          })}
         />
+
+        {inHouse === 0 ? null : (
+          <FullWidth>
+            <p className="text-body-sm text-ink-muted">
+              {inHouse === free.length
+                ? "Everyone offered here is in-house: picking one confirms them on this batch immediately, and their sessions are committed."
+                : `${inHouse} of these are in-house. Picking one confirms them immediately; a freelancer is proposed and may still decline.`}
+            </p>
+          </FullWidth>
+        )}
 
         {blocked.length === 0 ? null : (
           <FullWidth>

@@ -9,6 +9,8 @@ import {
   createBatchSchema,
   createSessionSchema,
   linkRecordingSchema,
+  releaseTrainerSchema,
+  respondToProposalSchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
@@ -100,6 +102,69 @@ export async function saveBatch(
 
   revalidatePath("/batches");
   redirect(`/batches?${editing ? "saved" : "created"}=1`);
+}
+
+/**
+ * Records the trainer's answer to an open proposal.
+ *
+ * An admin may record it on their behalf: the admin portal performs every
+ * action the deferred trainer portal will, permanently, because an operations
+ * team needs the override regardless.
+ *
+ * Confirming makes the batch's primary trainer and commits its sessions;
+ * declining returns the batch to unassigned and keeps the reason, so whoever
+ * proposes next knows what happened. Nothing is reassigned automatically.
+ */
+export async function respondToProposal(
+  batchId: string,
+  decision: "CONFIRM" | "DECLINE",
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = respondToProposalSchema.safeParse({
+    decision,
+    // Only a decline carries one, and the contract requires it there.
+    ...(decision === "DECLINE" ? { reason: text(formData, "reason") } : {}),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/${batchId}/trainer/respond`, { method: "POST", body: parsed.data });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?${decision === "CONFIRM" ? "confirmed" : "declined"}=1`);
+}
+
+/**
+ * Releases the batch's trainer, so someone else can be put forward.
+ *
+ * Withdrawing an open proposal takes nothing away. Releasing a CONFIRMED
+ * trainer does: the batch loses its primary trainer and its scheduled sessions
+ * are cleared, which is why this is a deliberate act with its own control
+ * rather than a side effect of editing the batch.
+ */
+export async function releaseTrainer(
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = releaseTrainerSchema.safeParse({ reason: text(formData, "reason") });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/${batchId}/trainer/propose`, {
+      method: "DELETE",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?released=1`);
 }
 
 /**

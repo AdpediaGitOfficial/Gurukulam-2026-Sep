@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
   Batch, BatchQuery, CreateBatchInput, Page, Principal,
-  ProposeTrainerInput, RespondToProposalInput, UpdateBatchInput,
+  ProposeTrainerInput, ReleaseTrainerInput, RespondToProposalInput, UpdateBatchInput,
   BatchDetail, TrainerCandidate,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
@@ -76,8 +76,11 @@ export class BatchesService {
       where: { batchId, deletedAt: null },
       include: {
         ...BATCH_INCLUDE,
+        // Released assignments included ON PURPOSE. This list is the batch's
+        // staffing history — the reason a batch has nobody today is usually the
+        // assignment that ended, and hiding it leaves the section saying only
+        // "nobody proposed yet".
         trainerAssignments: {
-          where: { deletedAt: null },
           orderBy: { proposedAt: "desc" },
           include: { trainer: { select: { name: true } } },
         },
@@ -88,16 +91,10 @@ export class BatchesService {
 
     return {
       ...toBatch(batch),
-      trainerAssignments: batch.trainerAssignments.map((a) => ({
-        assignmentId: a.assignmentId,
-        batchId: a.batchId,
-        trainerId: a.trainerId,
-        trainerName: a.trainer.name,
-        status: a.status,
-        proposedAt: a.proposedAt.toISOString(),
-        respondedAt: a.respondedAt?.toISOString() ?? null,
-        declineReason: a.declineReason,
-      })),
+      // The same mapper the write paths return, rather than a second copy of
+      // it — the copy is how `autoConfirmed` would have reached one and not
+      // the other.
+      trainerAssignments: batch.trainerAssignments.map(toAssignment),
     };
   }
 
@@ -237,13 +234,20 @@ export class BatchesService {
    * course) and invariant 8's read side: free/busy is COMPUTED from committed
    * sessions plus declared leave, so a double-booking is detected here rather
    * than stored anywhere.
+   *
+   * An IN_HOUSE trainer skips the negotiation, not the checks. Staff are
+   * allocated by a management decision rather than asked, so the assignment is
+   * created CONFIRMED and commits in the same transaction — but they must
+   * still be approved for the course, and they still cannot be in two places
+   * at once. Those two rules are about whether the delivery is possible, which
+   * is a different question from whether the person agreed to it.
    */
   async proposeTrainer(principal: Principal, batchId: string, input: ProposeTrainerInput) {
     const batch = await this.mustExist(principal, batchId);
 
     const trainer = await this.prisma.trainer.findFirst({
       where: { trainerId: input.trainerId, deletedAt: null },
-      select: { trainerId: true, name: true, accountStatus: true },
+      select: { trainerId: true, name: true, accountStatus: true, engagement: true },
     });
     if (!trainer) throw ApiException.validation({ trainerId: "That trainer no longer exists" });
     if (trainer.accountStatus !== "ACTIVE") {
@@ -277,18 +281,33 @@ export class BatchesService {
     const clash = await this.findScheduleClash(input.trainerId, batchId);
     if (clash) throw ApiException.invariant(clash);
 
-    const assignment = await this.prisma.batchTrainerAssignment.create({
-      data: {
-        batchId,
-        trainerId: input.trainerId,
-        status: "PROPOSED",
-        proposedBy: principal.id,
-        createdBy: principal.id,
-      },
-      include: { trainer: { select: { name: true } } },
-    });
+    const inHouse = trainer.engagement === "IN_HOUSE";
+    const now = new Date();
 
-    return toAssignment(assignment);
+    return this.prisma.$transaction(async (tx) => {
+      const assignment = await tx.batchTrainerAssignment.create({
+        data: {
+          batchId,
+          trainerId: input.trainerId,
+          status: inHouse ? "CONFIRMED" : "PROPOSED",
+          // Set for an in-house assignment because it IS responded to — by the
+          // act of making it. `autoConfirmed` is what says who did the
+          // responding, since the timestamp alone cannot.
+          respondedAt: inHouse ? now : null,
+          autoConfirmed: inHouse,
+          proposedBy: principal.id,
+          createdBy: principal.id,
+        },
+        include: { trainer: { select: { name: true } } },
+      });
+
+      // Exactly what a trainer's own CONFIRM does. Shared rather than
+      // repeated: a batch confirmed one way and not the other would leave
+      // sessions with no trainer on the availability calendar.
+      if (inHouse) await commitConfirmation(tx, batchId, input.trainerId);
+
+      return toAssignment(assignment);
+    });
   }
 
   /**
@@ -318,39 +337,68 @@ export class BatchesService {
         include: { trainer: { select: { name: true } } },
       });
 
-      await tx.batch.update({
-        where: { batchId },
-        data: {
-          // Only a CONFIRMED assignment makes a primary trainer. A declined
-          // one leaves the batch unassigned for an admin to propose again.
-          primaryTrainerId: input.decision === "CONFIRM" ? proposal.trainerId : null,
-        },
-      });
-
       if (input.decision === "CONFIRM") {
-        // Sessions already scheduled under the batch inherit the confirmed
-        // trainer, so the availability calendar reflects committed delivery.
-        await tx.batchSession.updateMany({
-          where: { batchId, deletedAt: null, trainerId: null },
-          data: { trainerId: proposal.trainerId },
-        });
+        await commitConfirmation(tx, batchId, proposal.trainerId);
+      } else {
+        // A declined proposal leaves the batch unassigned for an admin to put
+        // someone else forward. Nothing is auto-reassigned.
+        await tx.batch.update({ where: { batchId }, data: { primaryTrainerId: null } });
       }
 
       return toAssignment(updated);
     });
   }
 
-  /** Withdraws an open proposal, so another trainer can be put forward. */
-  async withdrawProposal(principal: Principal, batchId: string): Promise<void> {
+  /**
+   * Releases the batch's trainer, so another can be put forward.
+   *
+   * A PROPOSED assignment is simply withdrawn — nothing was committed. A
+   * CONFIRMED one also has to be undone: the batch loses its primary trainer,
+   * and the sessions that inherited them are cleared so the availability
+   * calendar stops counting that time as busy.
+   *
+   * Sessions that already HAPPENED keep their trainer. Who delivered a
+   * completed session is a fact about the past, and rewriting it to reflect a
+   * later staffing change would make attendance and pay records disagree with
+   * each other.
+   *
+   * Confirmed releases matter more now that an in-house trainer is confirmed
+   * the moment they are allocated: without this, the first mistaken allocation
+   * would be permanent.
+   */
+  async withdrawProposal(
+    principal: Principal,
+    batchId: string,
+    input: ReleaseTrainerInput,
+  ): Promise<void> {
     await this.mustExist(principal, batchId);
-    const proposal = await this.prisma.batchTrainerAssignment.findFirst({
-      where: { batchId, deletedAt: null, status: "PROPOSED" },
+    const assignment = await this.prisma.batchTrainerAssignment.findFirst({
+      where: { batchId, deletedAt: null, status: { in: ["PROPOSED", "CONFIRMED"] } },
     });
-    if (!proposal) throw ApiException.notFound("Open proposal");
+    if (!assignment) throw ApiException.notFound("Trainer assignment");
 
-    await this.prisma.batchTrainerAssignment.update({
-      where: { assignmentId: proposal.assignmentId },
-      data: { deletedAt: new Date(), deletedBy: principal.id },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.batchTrainerAssignment.update({
+        where: { assignmentId: assignment.assignmentId },
+        data: {
+          releaseReason: input.reason,
+          deletedAt: new Date(),
+          deletedBy: principal.id,
+        },
+      });
+
+      if (assignment.status !== "CONFIRMED") return;
+
+      await tx.batch.update({ where: { batchId }, data: { primaryTrainerId: null } });
+      await tx.batchSession.updateMany({
+        where: {
+          batchId,
+          deletedAt: null,
+          trainerId: assignment.trainerId,
+          status: { in: ["SCHEDULED", "LIVE"] },
+        },
+        data: { trainerId: null },
+      });
     });
   }
 
@@ -442,7 +490,8 @@ export class BatchesService {
         courses: { some: { courseId: batch.courseId, deletedAt: null } },
       },
       select: {
-        trainerId: true, trainerCode: true, name: true, city: { select: { name: true } },
+        trainerId: true, trainerCode: true, name: true, engagement: true,
+        city: { select: { name: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -494,6 +543,7 @@ export class BatchesService {
         trainerCode: trainer.trainerCode,
         name: trainer.name,
         cityName: trainer.city?.name ?? null,
+        engagement: trainer.engagement,
         committedSessions: theirs.length,
         blockedReason: clashReason(sessions, theirs, onLeave.has(trainer.trainerId)),
       } satisfies TrainerCandidate;
@@ -557,7 +607,7 @@ function toBatch(row: BatchRow): Batch {
   };
 }
 
-function toAssignment(row: { assignmentId: string; batchId: string; trainerId: string; status: string; proposedAt: Date; respondedAt: Date | null; declineReason: string | null; trainer: { name: string } }) {
+function toAssignment(row: { assignmentId: string; batchId: string; trainerId: string; status: string; proposedAt: Date; respondedAt: Date | null; autoConfirmed: boolean; declineReason: string | null; releaseReason: string | null; deletedAt: Date | null; trainer: { name: string } }) {
   return {
     assignmentId: row.assignmentId,
     batchId: row.batchId,
@@ -566,8 +616,35 @@ function toAssignment(row: { assignmentId: string; batchId: string; trainerId: s
     status: row.status as "PROPOSED" | "CONFIRMED" | "DECLINED",
     proposedAt: row.proposedAt.toISOString(),
     respondedAt: row.respondedAt?.toISOString() ?? null,
+    autoConfirmed: row.autoConfirmed,
     declineReason: row.declineReason,
+    releaseReason: row.releaseReason,
+    releasedAt: row.deletedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * What a confirmed assignment commits, wherever the confirmation came from.
+ *
+ * Only a CONFIRMED assignment makes a primary trainer, and the sessions already
+ * scheduled under the batch inherit them — the availability calendar is
+ * computed from committed sessions, so a batch whose trainer is confirmed but
+ * whose sessions still carry no trainer would read as free time.
+ *
+ * One function because there are now two ways in: a freelancer answering, and
+ * an in-house trainer being allocated. Two copies would drift, and the drift
+ * would be invisible until someone was double-booked.
+ */
+async function commitConfirmation(
+  tx: Prisma.TransactionClient,
+  batchId: string,
+  trainerId: string,
+): Promise<void> {
+  await tx.batch.update({ where: { batchId }, data: { primaryTrainerId: trainerId } });
+  await tx.batchSession.updateMany({
+    where: { batchId, deletedAt: null, trainerId: null },
+    data: { trainerId },
+  });
 }
 
 /**

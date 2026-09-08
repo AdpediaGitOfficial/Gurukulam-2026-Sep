@@ -307,6 +307,14 @@ export default async function TrainerDetailPage({
             )}
           </span>
         ) : null}
+        {/* Not decoration: it decides whether allocating them to a batch needs
+            their answer, so it sits with the status rather than in the pay
+            block where the engagement form keeps it. */}
+        {trainer.engagement === "IN_HOUSE" ? (
+          <StatusPill intent="info">in-house</StatusPill>
+        ) : (
+          <Chip>Freelance</Chip>
+        )}
         {trainer.qualification === null ? null : <Chip>{trainer.qualification}</Chip>}
         {trainer.experienceYears === null ? null : (
           <Chip>{trainer.experienceYears} years experience</Chip>

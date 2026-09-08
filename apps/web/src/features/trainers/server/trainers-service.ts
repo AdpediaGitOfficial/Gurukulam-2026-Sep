@@ -21,6 +21,7 @@ export const TRAINER_FILTERS = [
   "cityId",
   "approvedForCourseId",
   "accountStatus",
+  "engagement",
 ] as const;
 
 export async function listTrainers(params: SearchParams): Promise<Page<Trainer>> {

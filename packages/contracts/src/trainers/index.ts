@@ -16,6 +16,14 @@ export const trainerSchema = z.object({
   qualification: z.string().nullable(),
   experienceYears: z.number().int().nullable(),
   skillTags: z.array(z.string()),
+  /**
+   * How we engage them, which decides whether an assignment needs their answer.
+   *
+   * A freelancer is proposed and may decline. An in-house trainer is staff:
+   * allocating them is a management decision, so the assignment is confirmed as
+   * it is made. Every other rule still applies to both.
+   */
+  engagement: z.enum(["IN_HOUSE", "FREELANCE"]),
   payModel: z.string().nullable(),
   payRateMinor: moneyMinor.nullable(),
   maxWeeklyHours: z.number().int().nullable(),
@@ -72,6 +80,7 @@ export type TrainerDetail = z.infer<typeof trainerDetailSchema>;
 
 export const trainerQuerySchema = pageQuerySchema.extend({
   cityId: z.string().optional(),
+  engagement: z.enum(["IN_HOUSE", "FREELANCE"]).optional(),
   /** Only trainers approved for this course — the batch trainer picker. */
   approvedForCourseId: z.string().optional(),
   accountStatus: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
@@ -86,6 +95,10 @@ export const createTrainerSchema = z.object({
   qualification: z.string().trim().max(255).optional(),
   experienceYears: z.number().int().min(0).max(70).optional(),
   skillTags: z.array(z.string().trim().min(1).max(60)).max(50).default([]),
+  /* Defaulted rather than required: FREELANCE is what every trainer was before
+     this field existed, and it is the safer of the two to assume — it asks
+     rather than commits. */
+  engagement: z.enum(["IN_HOUSE", "FREELANCE"]).default("FREELANCE"),
   payModel: z.enum(["PER_SESSION", "PER_HOUR", "MONTHLY", "PER_BATCH"]).optional(),
   payRate: z.string().optional(),
   maxWeeklyHours: z.number().int().min(1).max(80).optional(),

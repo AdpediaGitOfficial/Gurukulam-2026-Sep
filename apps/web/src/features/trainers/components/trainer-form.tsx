@@ -128,7 +128,21 @@ export function TrainerForm({
         </FullWidth>
       </FormSection>
 
-      <FormSection title="Engagement">
+      <FormSection
+        title="Engagement"
+        description="How we engage them, and what we pay. The engagement type decides whether allocating them to a batch needs their answer."
+      >
+        <FormSelect
+          name="engagement"
+          label="Engagement type"
+          required
+          defaultValue={trainer?.engagement ?? "FREELANCE"}
+          hint="An in-house trainer is confirmed on a batch the moment they are allocated. A freelancer is proposed, and may decline."
+          options={[
+            { value: "FREELANCE", label: "Freelance — proposed, and may decline" },
+            { value: "IN_HOUSE", label: "In-house — allocated without asking" },
+          ]}
+        />
         <FormSelect
           name="payModel"
           label="Pay model"
