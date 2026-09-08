@@ -28,3 +28,13 @@ export async function listAdministrators(params: SearchParams): Promise<Page<Adm
   const response = await apiFetch(`/settings/administrators${queryString(params, PAGE_KEYS)}`);
   return pageOf(adminUserSchema).parse(response) as Page<AdminUser>;
 }
+
+/** One role, for the edit form. */
+export async function getRole(roleId: string): Promise<Role> {
+  return roleSchema.parse(await apiFetch(`/settings/roles/${roleId}`));
+}
+
+/** One administrator, for the edit form. */
+export async function getAdministrator(adminUserId: string): Promise<AdminUser> {
+  return adminUserSchema.parse(await apiFetch(`/settings/administrators/${adminUserId}`));
+}

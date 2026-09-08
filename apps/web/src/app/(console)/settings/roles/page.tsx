@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { MODULES, type ModuleName, type Role } from "@gurukulam/contracts";
 
+import Link from "next/link";
+
 import { ModuleTabs } from "@/components/patterns/module-tabs";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -86,8 +90,23 @@ export default async function RolesPage({
         eyebrow="Settings"
         title="Roles & permissions"
         description="Module-level permissions per role. A role plus a scope is what every query is filtered by."
+        action={
+          <Link href="/settings/roles/new" className={buttonVariants({ variant: "primary" })}>
+            Add role
+          </Link>
+        }
       />
       <ModuleTabs />
+
+      {params["created"] === "1" ? (
+        <Alert intent="success" title="Created">
+          Role created. Assign it to an operator under Administrators.
+        </Alert>
+      ) : params["saved"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          Role updated — every operator holding it is affected immediately.
+        </Alert>
+      ) : null}
 
       <Card padding="none" className="overflow-hidden">
         <div className="w-full overflow-x-auto">
@@ -125,7 +144,12 @@ export default async function RolesPage({
                     className="sticky left-0 z-10 bg-surface px-4 py-4 text-left align-middle font-normal"
                   >
                     <span className="flex flex-col gap-1">
-                      <span className="text-body font-semibold text-ink">{role.name}</span>
+                      <Link
+                        href={`/settings/roles/${role.roleId}/edit`}
+                        className="text-body font-semibold text-ink hover:underline"
+                      >
+                        {role.name}
+                      </Link>
                       {role.isSystem ? (
                         <StatusPill intent="info">System role</StatusPill>
                       ) : null}

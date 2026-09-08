@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import type { AdminUser } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
+import Link from "next/link";
+
 import { ListPage } from "@/components/patterns/list-page";
+import { rowActions } from "@/components/patterns/row-actions";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
@@ -77,6 +82,9 @@ const COLUMNS: Column<AdminUser>[] = [
       );
     },
   },
+  rowActions((row) => [
+    { label: "Edit", href: `/settings/administrators/${row.adminUserId}/edit` },
+  ]),
 ];
 
 export default async function AdministratorsPage({
@@ -93,6 +101,21 @@ export default async function AdministratorsPage({
       eyebrow="Settings"
       title="Administrators"
       description="Admin accounts and the regions each one is allowed to see."
+      action={
+        <Link
+          href="/settings/administrators/new"
+          className={buttonVariants({ variant: "primary" })}
+        >
+          Add operator
+        </Link>
+      }
+      summary={
+        params["saved"] === "1" ? (
+          <Alert intent="success" title="Saved">
+            Operator updated.
+          </Alert>
+        ) : null
+      }
       toolbar={<ListFilters params={params} searchPlaceholder="Search administrators…" />}
       pagination={
         <Pagination
@@ -108,7 +131,7 @@ export default async function AdministratorsPage({
         rows={page.rows}
         getRowId={(row) => row.adminUserId}
         caption="Administrators by role, region scope and status"
-        minWidth="1000px"
+        minWidth="1150px"
         empty={<EmptyState title="No administrators match that search" />}
       />
     </ListPage>
