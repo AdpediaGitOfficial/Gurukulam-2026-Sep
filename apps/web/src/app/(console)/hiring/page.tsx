@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { formatRupees, fromWire, type JobPosting } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -52,11 +55,11 @@ const COLUMNS: Column<JobPosting>[] = [
     id: "role",
     header: "Role",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link href={`/hiring/${row.jobPostingId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.roleTitle}</span>
         <span className="text-body-sm text-ink-muted">{row.companyName}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.jobCode}</span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -139,6 +142,18 @@ export default async function HiringPage({
       eyebrow="Hiring"
       title="Job announcements"
       description="Post a role, aim it at the students who took the relevant course, and check the reach before publishing."
+      action={
+        <Link href="/hiring/new" className={buttonVariants({ variant: "primary" })}>
+          Post a role
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Saved as a draft">
+            Nobody sees it until it is published.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

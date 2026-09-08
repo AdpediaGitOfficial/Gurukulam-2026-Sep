@@ -4,6 +4,8 @@ import type { Requirement } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
@@ -116,6 +118,22 @@ export default async function RequirementsPage({
       eyebrow="Colleges"
       title="Training requirements"
       description="The demand record that starts a college engagement. Confirming one is what creates its dedicated batch."
+      action={
+        <Link
+          href="/colleges/requirements/new"
+          className={buttonVariants({ variant: "primary" })}
+        >
+          Log requirement
+        </Link>
+      }
+      summary={
+        params["created"] === "1" ? (
+          <Alert intent="success" title="Logged">
+            The requirement is in the queue. Confirming it creates the college&rsquo;s dedicated
+            batch.
+          </Alert>
+        ) : null
+      }
       toolbar={
         <ListFilters
           params={params}

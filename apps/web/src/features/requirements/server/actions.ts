@@ -4,21 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   confirmRequirementSchema,
+  createRequirementSchema,
   rejectRequirementSchema,
   requirementSchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
 import { formError, type FormState } from "@/lib/form";
-
-function fieldErrors(issues: { path: PropertyKey[]; message: string }[]): Record<string, string> {
-  const fields: Record<string, string> = {};
-  for (const issue of issues) {
-    const key = issue.path.join(".");
-    if (key !== "" && fields[key] === undefined) fields[key] = issue.message;
-  }
-  return fields;
-}
+import { apiFormError, fieldErrors, number, text } from "@/lib/action";
 
 /**
  * Confirming a requirement is what creates its dedicated batch.
@@ -110,4 +103,43 @@ export async function rejectRequirement(
   revalidatePath("/colleges/requirements");
   revalidatePath(`/colleges/requirements/${requirementId}`);
   redirect(`/colleges/requirements/${requirementId}?rejected=1`);
+}
+
+/**
+ * Logs a college's training requirement.
+ *
+ * An admin raises it on the institution's behalf — the college portal will
+ * raise its own, and both land in the same queue. Confirming it is what
+ * creates the dedicated batch (invariant 14), which is a separate, deliberate
+ * act on the requirement's own page.
+ */
+export async function createRequirement(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = createRequirementSchema.safeParse({
+    collegeId: text(formData, "collegeId"),
+    courseId: text(formData, "courseId"),
+    expectedHeadcount: number(formData, "expectedHeadcount"),
+    preferredMode: text(formData, "preferredMode") ?? "OFFLINE",
+    preferredWindowStart: text(formData, "preferredWindowStart"),
+    preferredWindowEnd: text(formData, "preferredWindowEnd"),
+    discipline: text(formData, "discipline"),
+    source: text(formData, "source"),
+    notes: text(formData, "notes"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      requirementSchema,
+      await apiFetch("/colleges/requirements", { method: "POST", body: parsed.data }),
+      "POST /colleges/requirements",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath("/colleges/requirements");
+  redirect("/colleges/requirements?created=1");
 }

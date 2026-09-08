@@ -280,6 +280,14 @@ export default async function CollegeDetailPage({
       <PageSection
         title="Trainings"
         description="A batch attached to this college is dedicated to it — retail students can never join."
+        action={
+          <Link
+            href={`/colleges/requirements/new?collegeId=${college.collegeId}`}
+            className={buttonVariants({ variant: "secondary", size: "sm" })}
+          >
+            Log a requirement
+          </Link>
+        }
       >
         <Card padding="none" className="overflow-hidden">
           <DataTable
