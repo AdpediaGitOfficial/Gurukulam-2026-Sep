@@ -378,7 +378,17 @@ async function main() {
   expect("…but the row is still there", stillInDb !== null, true);
   expect("…marked with when and by whom", stillInDb?.deletedAt !== null && stillInDb?.deletedBy !== null, true);
 
-  const includingDeleted = await call(`/courses?includeDeleted=true&q=Cloud%20Engineering`, { token: admin });
+  // Searched by the course's OWN code, not by its name.
+  //
+  // The name is shared with every course this suite has ever created, so once
+  // ~25 runs had accumulated the newly deleted one fell off page one and this
+  // check began failing for a reason that had nothing to do with soft delete.
+  // A business ID is unique by construction, which is the whole point of it.
+  const code = created.body.courseCode as string;
+  const includingDeleted = await call(
+    `/courses?includeDeleted=true&q=${encodeURIComponent(code)}`,
+    { token: admin },
+  );
   const found = includingDeleted.body.rows.some((c: any) => c.courseId === courseId);
   expect("a report can opt back in to removed rows", found, true);
 

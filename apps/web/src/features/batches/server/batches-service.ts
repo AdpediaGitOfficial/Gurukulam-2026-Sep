@@ -5,10 +5,12 @@ import {
   batchDetailSchema,
   batchSchema,
   batchSessionSchema,
+  sessionDetailSchema,
   trainerCandidateSchema,
   type Batch,
   type BatchDetail,
   type BatchSession,
+  type SessionDetail,
   type TrainerCandidate,
   type Page,
 } from "@gurukulam/contracts";
@@ -59,4 +61,9 @@ export async function listTrainerCandidates(batchId: string): Promise<TrainerCan
   return z
     .array(trainerCandidateSchema)
     .parse(await apiFetch(`/batches/${batchId}/trainer/candidates`));
+}
+
+/** One session, with its assignments and recording. */
+export async function getSession(sessionId: string): Promise<SessionDetail> {
+  return sessionDetailSchema.parse(await apiFetch(`/batches/sessions/${sessionId}`));
 }

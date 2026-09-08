@@ -319,6 +319,20 @@ export const recordingSchema = z.object({
 
 export type Recording = z.infer<typeof recordingSchema>;
 
+/**
+ * What `GET /batches/sessions/:id` returns: the session with what hangs off it.
+ *
+ * Assignments and the recording travel with it because the session is the unit
+ * that actually happened — an assignment is set against a delivered session,
+ * and a recording is the artefact of one.
+ */
+export const sessionDetailSchema = batchSessionSchema.extend({
+  assignments: z.array(assignmentSchema),
+  recording: recordingSchema.nullable(),
+});
+
+export type SessionDetail = z.infer<typeof sessionDetailSchema>;
+
 export const linkRecordingSchema = z.object({
   url: z.string().url("Enter the recording URL"),
   title: z.string().trim().max(200).optional(),

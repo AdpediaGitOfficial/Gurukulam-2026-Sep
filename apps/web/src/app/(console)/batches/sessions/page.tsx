@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { BatchSession } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -29,12 +30,15 @@ const COLUMNS: Column<BatchSession>[] = [
     id: "session",
     header: "Session / topic",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link
+        href={`/batches/sessions/${row.sessionId}`}
+        className="flex flex-col hover:underline"
+      >
         <span className="text-body font-semibold text-ink">{row.title}</span>
         <span className="text-caption text-ink-subtle">
           {row.topicTitle ?? "No topic"} · #{row.sequence}
         </span>
-      </div>
+      </Link>
     ),
   },
   {

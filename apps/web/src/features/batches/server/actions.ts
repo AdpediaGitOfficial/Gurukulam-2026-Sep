@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { batchSchema, batchStatusSchema, createBatchSchema } from "@gurukulam/contracts";
+import {
+  batchSchema,
+  batchSessionSchema,
+  batchStatusSchema,
+  createBatchSchema,
+  createSessionSchema,
+  linkRecordingSchema,
+} from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { apiFormError, clearable, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, checked, clearable, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /*
@@ -93,4 +100,119 @@ export async function saveBatch(
 
   revalidatePath("/batches");
   redirect(`/batches?${editing ? "saved" : "created"}=1`);
+}
+
+/**
+ * Schedules a session under a batch.
+ *
+ * A session belongs to a batch and is taught against a topic OF THAT BATCH'S
+ * COURSE — the API refuses any other topic, because a session mapped to a
+ * foreign topic makes the curriculum report meaningless.
+ *
+ * Nothing stops a date in the past. Backdating is how a batch that started two
+ * months ago gets its history recorded, and refusing it would make the console
+ * unusable for exactly the cohorts most in need of catching up.
+ */
+export async function createSession(
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = createSessionSchema.safeParse({
+    batchId,
+    topicId: text(formData, "topicId"),
+    trainerId: text(formData, "trainerId"),
+    title: text(formData, "title"),
+    scheduledDate: text(formData, "scheduledDate"),
+    startTime: text(formData, "startTime"),
+    endTime: text(formData, "endTime"),
+    mode: text(formData, "mode"),
+    venue: text(formData, "venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      batchSessionSchema,
+      await apiFetch("/batches/sessions", { method: "POST", body: parsed.data }),
+      "POST /batches/sessions",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?session=1`);
+}
+
+/**
+ * Marks a session delivered.
+ *
+ * A deliberate act, not a date passing (invariant 10): it is what releases
+ * assignments against the session and what makes a missing recording a gap
+ * rather than a session that has not happened yet.
+ */
+export async function completeSession(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/complete`, { method: "POST", body: {} });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?completed=1`);
+}
+
+/** Completion is a human judgement, so it can be undone. */
+export async function reopenSession(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/reopen`, { method: "POST", body: {} });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?reopened=1`);
+}
+
+/**
+ * Attaches the recording of a delivered session.
+ *
+ * A YouTube URL is what the operator has to hand, so that is the default —
+ * the contract accepts S3 and Zoom too, and stores which it is rather than
+ * guessing from the URL later.
+ */
+export async function linkRecording(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = linkRecordingSchema.safeParse({
+    url: text(formData, "url"),
+    title: text(formData, "title"),
+    provider: text(formData, "provider") ?? "YOUTUBE",
+    isPublished: checked(formData, "isPublished"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/recording`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?recorded=1`);
 }

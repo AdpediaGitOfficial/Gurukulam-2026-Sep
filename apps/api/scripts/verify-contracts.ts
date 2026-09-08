@@ -22,6 +22,7 @@
  */
 import {
   batchDetailSchema,
+  sessionDetailSchema,
   collegeDetailSchema,
   courseDetailSchema,
   jobPostingSchema,
@@ -69,6 +70,7 @@ const TARGETS: Target[] = [
   { label: "GET /colleges/:id", list: "/colleges", id: "collegeId", detail: (i) => `/colleges/${i}`, schema: collegeDetailSchema },
   { label: "GET /courses/:id", list: "/courses", id: "courseId", detail: (i) => `/courses/${i}`, schema: courseDetailSchema },
   { label: "GET /batches/:id", list: "/batches", id: "batchId", detail: (i) => `/batches/${i}`, schema: batchDetailSchema },
+  { label: "GET /batches/sessions/:id", list: "/batches/sessions", id: "sessionId", detail: (i) => `/batches/sessions/${i}`, schema: sessionDetailSchema },
   { label: "GET /trainers/:id", list: "/trainers", id: "trainerId", detail: (i) => `/trainers/${i}`, schema: trainerDetailSchema },
   { label: "GET /students/:id", list: "/students", id: "studentId", detail: (i) => `/students/${i}`, schema: studentDetailSchema },
   { label: "GET /fee-ledger/:id", list: "/fee-ledger", id: "ledgerId", detail: (i) => `/fee-ledger/${i}`, schema: ledgerDetailSchema },

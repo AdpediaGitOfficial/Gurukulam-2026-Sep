@@ -131,17 +131,22 @@ export function ConfirmAction({
   label,
   pending,
   subject,
+  variant = "secondary",
+  size = "sm",
 }: {
   action: (previous: FormState, formData: FormData) => Promise<FormState>;
   label: string;
   pending: string;
   subject: string;
+  /** Putting something back is secondary; moving it forward is primary. */
+  variant?: "primary" | "secondary";
+  size?: "sm" | "md";
 }) {
   const [state, submit] = useActionState<FormState, FormData>(action, IDLE);
 
   return (
     <form action={submit} className="flex flex-col items-end gap-1">
-      <Restore label={label} pending={pending} subject={subject} />
+      <Restore label={label} pending={pending} subject={subject} variant={variant} size={size} />
       {state.status === "error" && state.message !== undefined ? (
         <span className="text-caption text-danger">{state.message}</span>
       ) : null}
@@ -153,17 +158,21 @@ function Restore({
   label,
   pending,
   subject,
+  variant,
+  size,
 }: {
   label: string;
   pending: string;
   subject: string;
+  variant: "primary" | "secondary";
+  size: "sm" | "md";
 }) {
   const { pending: busy } = useFormStatus();
   return (
     <Button
       type="submit"
-      variant="secondary"
-      size="sm"
+      variant={variant}
+      size={size}
       disabled={busy}
       aria-label={`${label} — ${subject}`}
     >

@@ -3,7 +3,10 @@ import Link from "next/link";
 import type { BatchSession, TrainerAssignment } from "@gurukulam/contracts";
 
 import { PageBody, PageSection } from "@/components/patterns/page-section";
+import { rowActions } from "@/components/patterns/row-actions";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -12,6 +15,7 @@ import { BatchHeader } from "@/features/batches/components/batch-header";
 import { getBatch, listSessions } from "@/features/batches/server/batches-service";
 import { listStudents } from "@/features/students/server/students-service";
 import { requireModule } from "@/server/principal";
+import type { SearchParams } from "@/server/list";
 import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
 import { formatCount } from "@/lib/format";
 
@@ -22,10 +26,13 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
     id: "session",
     header: "Session",
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link
+        href={`/batches/sessions/${row.sessionId}`}
+        className="flex flex-col hover:underline"
+      >
         <span className="text-body font-semibold text-ink">{row.title}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.sessionCode}</span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -78,6 +85,20 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
       ),
   },
   {
+    id: "recording",
+    header: "Recording",
+    // Only meaningful once delivered — a scheduled session has nothing to
+    // record, so a dash there is the rule rather than a gap.
+    cell: (row) =>
+      row.status !== "COMPLETED" ? (
+        <span className="text-ink-subtle">—</span>
+      ) : row.hasRecording === true ? (
+        <StatusPill intent="success">Linked</StatusPill>
+      ) : (
+        <StatusPill intent="warning">Missing</StatusPill>
+      ),
+  },
+  {
     id: "status",
     header: "Status",
     cell: (row) => (
@@ -96,6 +117,7 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
       </StatusPill>
     ),
   },
+  rowActions((row) => [{ label: "Open", href: `/batches/sessions/${row.sessionId}` }]),
 ];
 
 /**
@@ -161,11 +183,14 @@ function Assignments({ assignments }: { assignments: readonly TrainerAssignment[
 
 export default async function BatchSessionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   await requireModule("batches");
   const { id } = await params;
+  const query = await searchParams;
   const batch = await getBatch(id);
 
   const [sessions, students] = await Promise.all([
@@ -183,6 +208,13 @@ export default async function BatchSessionsPage({
         batch={batch}
         counts={{ sessions: sessions.total, students: students.total, recordings: recorded }}
       />
+
+      {query["session"] === "1" ? (
+        <Alert intent="success" title="Session scheduled">
+          Mark it delivered once it has been taught — that is what releases its assignments and
+          lets its recording be attached.
+        </Alert>
+      ) : null}
 
       <StatTileGrid>
         <StatTile
@@ -233,12 +265,20 @@ export default async function BatchSessionsPage({
         title="Session schedule"
         description="A session must be marked complete before assignments can be set against it — completion is a deliberate act, not a date passing."
         action={
-          <Link
-            href={`/batches/sessions?batchId=${batch.batchId}`}
-            className="text-body-sm text-gold underline-offset-4 hover:underline"
-          >
-            Open in Sessions
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href={`/batches/sessions?batchId=${batch.batchId}`}
+              className="text-body-sm text-gold underline-offset-4 hover:underline"
+            >
+              Open in Sessions
+            </Link>
+            <Link
+              href={`/batches/${batch.batchId}/sessions/new`}
+              className={buttonVariants({ variant: "primary", size: "sm" })}
+            >
+              Schedule a session
+            </Link>
+          </div>
         }
       >
         <Card padding="none" className="overflow-hidden">
@@ -252,6 +292,14 @@ export default async function BatchSessionsPage({
               <EmptyState
                 title="No sessions scheduled"
                 description="A batch with no sessions has nothing to deliver. Sessions are scheduled under the course's topics."
+                action={
+                  <Link
+                    href={`/batches/${batch.batchId}/sessions/new`}
+                    className={buttonVariants({ variant: "primary" })}
+                  >
+                    Schedule the first session
+                  </Link>
+                }
               />
             }
           />
