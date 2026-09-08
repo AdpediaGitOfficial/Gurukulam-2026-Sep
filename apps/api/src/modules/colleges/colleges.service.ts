@@ -1,8 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
-  College, CollegeQuery, CreateCollegeInput, Page, Principal, ReplacePocsInput, UpdateCollegeInput,
-  CollegeDetail,
+  College, CollegeContact, CollegeQuery, ContactQuery, CreateCollegeInput, Page, Principal,
+  ReplacePocsInput, UpdateCollegeInput, CollegeDetail,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -12,6 +12,8 @@ import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/s
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
 const SORTABLE = ["name", "collegeCode", "createdAt"] as const;
+
+const CONTACT_SORTABLE = ["name", "email", "createdAt"] as const;
 
 /**
  * The institutional CRM. A college is an actor, not a directory row.
@@ -56,7 +58,7 @@ export class CollegesService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.college.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "name"),
+          orderBy: orderBy(query, SORTABLE, "name", "collegeId"),
           ...paginate(query),
           include: {
             city: { select: { name: true } },
@@ -66,6 +68,68 @@ export class CollegesService {
         this.prisma.college.count({ where }),
       ]);
       return [rows.map(toCollege), total];
+    });
+  }
+
+  /**
+   * Every contact on file, read from across the colleges rather than inside
+   * one.
+   *
+   * `GET /colleges/:id` already answers "who do we deal with at this
+   * institution". This answers the operational question instead — find the
+   * person, then see where they sit — which is how an operator with a name and
+   * no college arrives at the record. It carries whether the contact also
+   * holds a login, because "we have their number but they cannot get in" is
+   * exactly the gap the roll-up exists to expose.
+   *
+   * The contact has no city of its own, so both the filter and the regional
+   * scope are expressed through its college — the same shape the portal-access
+   * roll-up uses.
+   */
+  async listContacts(principal: Principal, query: ContactQuery): Promise<Page<CollegeContact>> {
+    const where: Prisma.CollegePocWhereInput = {
+      ...liveOnly(query.includeDeleted),
+      ...collegeScope(principal),
+      ...(query.collegeId ? { collegeId: query.collegeId } : {}),
+      ...(query.isPrimary !== undefined ? { isPrimary: query.isPrimary } : {}),
+      college: {
+        deletedAt: null,
+        ...cityScope(principal),
+        ...(query.cityId ? { cityId: query.cityId } : {}),
+      },
+      ...(query.q
+        ? {
+            OR: [
+              { name: { contains: query.q, mode: "insensitive" } },
+              { email: { contains: query.q, mode: "insensitive" } },
+              { designation: { contains: query.q, mode: "insensitive" } },
+              { college: { name: { contains: query.q, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    };
+
+    return listPage(query, async () => {
+      const [rows, total] = await this.prisma.$transaction([
+        this.prisma.collegePoc.findMany({
+          where,
+          // Primary first within a college, so a page read by institution
+          // still opens with the person we actually deal with.
+          orderBy: [{ isPrimary: "desc" }, ...orderBy(query, CONTACT_SORTABLE, "name", "pocId")],
+          ...paginate(query),
+          include: {
+            college: { select: { name: true, collegeCode: true, city: { select: { name: true } } } },
+            users: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { accessStatus: true },
+            },
+          },
+        }),
+        this.prisma.collegePoc.count({ where }),
+      ]);
+      return [rows.map(toContact), total];
     });
   }
 
@@ -344,5 +408,38 @@ function toCollege(row: CollegeRow): College {
     pocCount: row._count.pocs,
     studentCount: row._count.students,
     batchCount: row._count.batches,
+  };
+}
+
+/**
+ * The cross-college view of a contact.
+ *
+ * `portalAccessStatus` is read from the contact's most recent live account: a
+ * contact who was granted access, had it revoked and was granted it again has
+ * two rows, and the current one is the one an operator is asking about. No
+ * account at all stays null — distinct from an account sitting at NONE.
+ */
+function toContact(
+  row: Prisma.CollegePocGetPayload<{
+    include: {
+      college: { select: { name: true; collegeCode: true; city: { select: { name: true } } } };
+      users: { select: { accessStatus: true } };
+    };
+  }>,
+): CollegeContact {
+  const account = row.users[0] ?? null;
+  return {
+    pocId: row.pocId,
+    collegeId: row.collegeId,
+    name: row.name,
+    designation: row.designation,
+    department: row.department,
+    email: row.email,
+    phone: row.phone,
+    isPrimary: row.isPrimary,
+    collegeName: row.college?.name ?? null,
+    collegeCode: row.college?.collegeCode ?? null,
+    cityName: row.college?.city?.name ?? null,
+    portalAccessStatus: (account?.accessStatus ?? null) as CollegeContact["portalAccessStatus"],
   };
 }

@@ -59,7 +59,7 @@ export class SessionsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.batchSession.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "scheduledDate"),
+          orderBy: orderBy(query, SORTABLE, "scheduledDate", "sessionId"),
           ...paginate(query),
           include: SESSION_INCLUDE,
         }),

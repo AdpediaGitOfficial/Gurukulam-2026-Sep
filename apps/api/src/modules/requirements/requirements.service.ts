@@ -5,7 +5,7 @@ import { collegeLoginEmail } from "@gurukulam/contracts";
 import type {
   CollegeUser, ConfirmRequirementInput, CreateRequirementInput, GrantPortalAccessInput,
   IssuedCredential, Page, Principal, RejectRequirementInput, Requirement, RequirementQuery,
-  RevokePortalAccessInput, UpdateRequirementInput,
+  PortalAccessQuery, RevokePortalAccessInput, UpdateRequirementInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -48,7 +48,7 @@ export class RequirementsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.collegeRequirement.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "requirementId"),
           ...paginate(query),
           include: REQ_INCLUDE,
         }),
@@ -249,6 +249,12 @@ export class RequirementsService {
   }
 }
 
+const ACCESS_SORTABLE = ["createdAt", "name", "accessStatus"] as const;
+
+const ACCESS_INCLUDE = {
+  college: { select: { name: true, collegeCode: true, city: { select: { name: true } } } },
+} satisfies Prisma.CollegeUserInclude;
+
 /**
  * Portal access — the college portal's entire server side, testable now even
  * though its UI does not exist.
@@ -257,12 +263,60 @@ export class RequirementsService {
 export class PortalAccessService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Portal accounts across every college.
+   *
+   * The per-college list below answers "who can get in HERE"; this one answers
+   * "who can get in AT ALL", which is the question an operator actually asks
+   * when a revocation is overdue or an invitation was never taken up. It is the
+   * same rows read from the other side, so it shares the mapper — and both
+   * scope axes still apply: a regional sub-admin sees their cities' colleges,
+   * and a college user sees only their own institution's accounts.
+   */
+  async listAll(principal: Principal, query: PortalAccessQuery): Promise<Page<CollegeUser>> {
+    const where: Prisma.CollegeUserWhereInput = {
+      deletedAt: null,
+      ...collegeScope(principal),
+      ...(query.collegeId ? { collegeId: query.collegeId } : {}),
+      ...(query.accessStatus ? { accessStatus: query.accessStatus } : {}),
+      // The account carries no city of its own — it inherits its college's, so
+      // both the city filter and city scope are expressed through the college.
+      college: {
+        deletedAt: null,
+        ...cityScope(principal),
+        ...(query.cityId ? { cityId: query.cityId } : {}),
+      },
+      ...(query.q
+        ? {
+            OR: [
+              { name: { contains: query.q, mode: "insensitive" } },
+              { email: { contains: query.q, mode: "insensitive" } },
+              { loginEmail: { contains: query.q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+
+    return listPage(query, async () => {
+      const [rows, total] = await this.prisma.$transaction([
+        this.prisma.collegeUser.findMany({
+          where,
+          orderBy: orderBy(query, ACCESS_SORTABLE, "createdAt", "collegeUserId"),
+          ...paginate(query),
+          include: ACCESS_INCLUDE,
+        }),
+        this.prisma.collegeUser.count({ where }),
+      ]);
+      return [rows.map(toCollegeUser), total];
+    });
+  }
+
   async list(principal: Principal, collegeId: string): Promise<CollegeUser[]> {
     const college = await this.mustFindCollege(principal, collegeId);
     const users = await this.prisma.collegeUser.findMany({
       where: { collegeId: college.collegeId, deletedAt: null },
       orderBy: { createdAt: "asc" },
-      include: { college: { select: { name: true } } },
+      include: ACCESS_INCLUDE,
     });
     return users.map(toCollegeUser);
   }
@@ -475,12 +529,14 @@ function toCollegeUser(row: {
   accessStatus: string; accountStatus: string; grantedAt: Date | null;
   revokedAt: Date | null; revokeReason: string | null;
   lastLoginAt: Date | null; createdAt: Date;
-  college?: { name: string } | null;
+  college?: { name: string; collegeCode?: string; city?: { name: string } | null } | null;
 }): CollegeUser {
   return {
     collegeUserId: row.collegeUserId,
     collegeId: row.collegeId,
     collegeName: row.college?.name ?? null,
+    collegeCode: row.college?.collegeCode ?? null,
+    cityName: row.college?.city?.name ?? null,
     pocId: row.pocId,
     name: row.name,
     email: row.email,

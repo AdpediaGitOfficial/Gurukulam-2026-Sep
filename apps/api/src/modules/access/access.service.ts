@@ -41,7 +41,7 @@ export class RolesService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.role.findMany({
           where,
-          orderBy: orderBy(query, ["name", "createdAt"] as const, "name"),
+          orderBy: orderBy(query, ["name", "createdAt"] as const, "name", "roleId"),
           ...paginate(query),
           include: { _count: { select: { adminUsers: { where: { deletedAt: null } } } } },
         }),
@@ -193,7 +193,7 @@ export class AdminUsersService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.adminUser.findMany({
           where,
-          orderBy: orderBy(query, ["name", "createdAt"] as const, "name"),
+          orderBy: orderBy(query, ["name", "createdAt"] as const, "name", "adminUserId"),
           ...paginate(query),
           include: { role: { select: { name: true } } },
         }),

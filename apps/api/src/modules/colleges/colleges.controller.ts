@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import {
-  collegeQuerySchema, createCollegeSchema, replacePocsSchema, updateCollegeSchema,
-  type CollegeQuery, type CreateCollegeInput, type Principal, type ReplacePocsInput, type UpdateCollegeInput,
+  collegeQuerySchema, contactQuerySchema, createCollegeSchema, replacePocsSchema, updateCollegeSchema,
+  type CollegeQuery, type ContactQuery, type CreateCollegeInput, type Principal,
+  type ReplacePocsInput, type UpdateCollegeInput,
 } from "@gurukulam/contracts";
 import { CollegesService } from "./colleges.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
@@ -15,6 +16,16 @@ export class CollegesController {
   @RequirePermission("colleges", "read")
   list(@CurrentPrincipal() p: Principal, @Query(zodBody(collegeQuerySchema)) query: CollegeQuery) {
     return this.colleges.list(p, query);
+  }
+
+  /**
+   * Contacts across every college. Declared before `:id` — Fastify prefers a
+   * static segment regardless, but the ordering says so out loud.
+   */
+  @Get("contacts")
+  @RequirePermission("colleges", "read")
+  contacts(@CurrentPrincipal() p: Principal, @Query(zodBody(contactQuerySchema)) query: ContactQuery) {
+    return this.colleges.listContacts(p, query);
   }
 
   @Get(":id")

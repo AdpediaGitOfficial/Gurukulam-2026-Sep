@@ -58,6 +58,38 @@ export const collegeDetailSchema = collegeSchema.extend({
 
 export type CollegeDetail = z.infer<typeof collegeDetailSchema>;
 
+/**
+ * One contact, seen from ACROSS the colleges rather than from inside one.
+ *
+ * The per-college view already answers "who do we deal with here". This one
+ * answers the operations question — who is on file anywhere, and can they get
+ * in — so it carries the institution and whether the person holds a login.
+ */
+export const collegeContactSchema = collegePocSchema.extend({
+  collegeName: z.string().nullable(),
+  collegeCode: z.string().nullable(),
+  cityName: z.string().nullable(),
+  /**
+   * The state of this contact's portal account, or null when they have none.
+   *
+   * Null and `NONE` are different answers: null is "nobody ever made them an
+   * account", `NONE` is "an account exists and has not been granted". A single
+   * boolean cannot say both, and a boolean beside the status would contradict
+   * it the moment access was revoked.
+   */
+  portalAccessStatus: z.enum(["NONE", "INVITED", "GRANTED", "REVOKED"]).nullable(),
+});
+
+export type CollegeContact = z.infer<typeof collegeContactSchema>;
+
+export const contactQuerySchema = pageQuerySchema.extend({
+  collegeId: z.string().optional(),
+  cityId: z.string().optional(),
+  isPrimary: queryBoolean.optional(),
+});
+
+export type ContactQuery = z.infer<typeof contactQuerySchema>;
+
 export const collegeQuerySchema = pageQuerySchema.extend({
   cityId: z.string().optional(),
   discipline: z.string().optional(),

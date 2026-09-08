@@ -56,7 +56,7 @@ export class LedgerService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.studentFeeLedger.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "ledgerId"),
           ...paginate(query),
           include: LEDGER_INCLUDE,
         }),

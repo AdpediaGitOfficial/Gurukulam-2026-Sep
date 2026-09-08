@@ -3,12 +3,14 @@ import "server-only";
 import { z } from "zod";
 import {
   batchSchema,
+  collegeContactSchema,
   collegeDetailSchema,
   collegeSchema,
   collegeUserSchema,
   studentSchema,
   type Batch,
   type College,
+  type CollegeContact,
   type CollegeDetail,
   type CollegeUser,
   type Page,
@@ -22,6 +24,10 @@ import { STUDENT_FILTERS } from "@/features/students/server/students-service";
 
 /** Filters this module accepts from the URL. Anything else is dropped. */
 export const COLLEGE_FILTERS = [...PAGE_KEYS, "cityId", "discipline", "isActive"] as const;
+
+export const CONTACT_FILTERS = [...PAGE_KEYS, "collegeId", "cityId", "isPrimary"] as const;
+
+export const ACCESS_FILTERS = [...PAGE_KEYS, "collegeId", "cityId", "accessStatus"] as const;
 
 /**
  * The only thing in this feature that knows where colleges come from.
@@ -75,4 +81,26 @@ export async function listPortalAccess(collegeId: string): Promise<CollegeUser[]
   return z
     .array(collegeUserSchema)
     .parse(await apiFetch(`/colleges/${collegeId}/access`));
+}
+
+/**
+ * Every contact on file, across the colleges.
+ *
+ * The per-college record already lists its own contacts; this reads the same
+ * rows from the other side, for the operator who has a name and needs the
+ * institution — and it carries whether the person can actually get into the
+ * portal, which is the gap this view exists to make visible.
+ */
+export async function listContacts(params: SearchParams): Promise<Page<CollegeContact>> {
+  return fetchPage("/colleges/contacts", collegeContactSchema, params, CONTACT_FILTERS);
+}
+
+/**
+ * Portal accounts across every college.
+ *
+ * Paged, unlike `listPortalAccess` above: one college has a handful of
+ * accounts, the estate has as many as there are colleges.
+ */
+export async function listAllPortalAccess(params: SearchParams): Promise<Page<CollegeUser>> {
+  return fetchPage("/colleges/access", collegeUserSchema, params, ACCESS_FILTERS);
 }

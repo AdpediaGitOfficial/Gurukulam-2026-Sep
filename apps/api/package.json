@@ -20,6 +20,8 @@
     "verify:access": "tsx scripts/verify-access.ts",
     "verify:reports": "tsx scripts/verify-reports.ts",
     "verify:contracts": "tsx scripts/verify-contracts.ts",
+    "verify:paging": "tsx scripts/verify-paging.ts",
+    "verify:rollups": "tsx scripts/verify-rollups.ts",
     "bootstrap": "tsx scripts/bootstrap.ts"
   },
   "dependencies": {

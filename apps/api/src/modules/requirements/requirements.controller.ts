@@ -1,9 +1,10 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from "@nestjs/common";
 import {
   confirmRequirementSchema, createRequirementSchema, grantPortalAccessSchema,
-  rejectRequirementSchema, requirementQuerySchema, revokePortalAccessSchema, updateRequirementSchema,
+  portalAccessQuerySchema, rejectRequirementSchema, requirementQuerySchema,
+  revokePortalAccessSchema, updateRequirementSchema,
   type ConfirmRequirementInput, type CreateRequirementInput, type GrantPortalAccessInput,
-  type Principal, type RejectRequirementInput, type RequirementQuery,
+  type PortalAccessQuery, type Principal, type RejectRequirementInput, type RequirementQuery,
   type RevokePortalAccessInput, type UpdateRequirementInput,
 } from "@gurukulam/contracts";
 import { PortalAccessService, RequirementsService } from "./requirements.service";
@@ -67,6 +68,13 @@ export class RequirementsController {
   }
 
   // ── Portal access ───────────────────────────────────────────────────────
+
+  /** The roll-up: portal accounts across every college. */
+  @Get("access")
+  @RequirePermission("colleges", "read")
+  listAllAccess(@CurrentPrincipal() p: Principal, @Query(zodBody(portalAccessQuerySchema)) q: PortalAccessQuery) {
+    return this.access.listAll(p, q);
+  }
 
   @Get(":collegeId/access")
   @RequirePermission("colleges", "read")

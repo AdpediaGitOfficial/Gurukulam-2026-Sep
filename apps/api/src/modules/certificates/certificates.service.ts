@@ -62,7 +62,7 @@ export class CertificatesService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.certificate.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "certificateId"),
           ...paginate(query),
           include: CERT_INCLUDE,
         }),

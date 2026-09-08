@@ -44,7 +44,7 @@ export class QuestionsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.questionBank.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "questionId"),
           ...paginate(query),
           include: {
             course: { select: { name: true } },

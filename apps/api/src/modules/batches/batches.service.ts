@@ -61,7 +61,7 @@ export class BatchesService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.batch.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "startDate"),
+          orderBy: orderBy(query, SORTABLE, "startDate", "batchId"),
           ...paginate(query),
           include: BATCH_INCLUDE,
         }),

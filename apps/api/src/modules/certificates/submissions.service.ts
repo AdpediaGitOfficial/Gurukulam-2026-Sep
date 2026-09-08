@@ -46,7 +46,7 @@ export class SubmissionsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.certificateSubmission.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "submittedAt"),
+          orderBy: orderBy(query, SORTABLE, "submittedAt", "submissionId"),
           ...paginate(query),
           include: SUBMISSION_INCLUDE,
         }),

@@ -73,7 +73,7 @@ export class TrainersService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.trainer.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "name"),
+          orderBy: orderBy(query, SORTABLE, "name", "trainerId"),
           ...paginate(query),
           include: TRAINER_INCLUDE,
         }),

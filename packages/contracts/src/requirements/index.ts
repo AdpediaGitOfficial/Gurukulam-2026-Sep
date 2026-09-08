@@ -110,6 +110,9 @@ export const collegeUserSchema = z.object({
   collegeUserId: z.string(),
   collegeId: z.string(),
   collegeName: z.string().nullable().optional(),
+  collegeCode: z.string().nullable().optional(),
+  /** Carried by the cross-college roll-up so it can be read by region. */
+  cityName: z.string().nullable().optional(),
   pocId: z.string().nullable(),
   name: z.string(),
   /** The contact address — where invoices and correspondence go. */
@@ -128,6 +131,21 @@ export const collegeUserSchema = z.object({
 });
 
 export type CollegeUser = z.infer<typeof collegeUserSchema>;
+
+/**
+ * Portal accounts across every college — "who can get in, and where".
+ *
+ * The per-college screen grants and revokes; this one is the roll-up an
+ * operator reads when the question is about the estate rather than one
+ * institution.
+ */
+export const portalAccessQuerySchema = pageQuerySchema.extend({
+  collegeId: z.string().optional(),
+  cityId: z.string().optional(),
+  accessStatus: portalAccessStatusSchema.optional(),
+});
+
+export type PortalAccessQuery = z.infer<typeof portalAccessQuerySchema>;
 
 export const grantPortalAccessSchema = z.object({
   /** Grant against an existing contact, or supply the details directly. */

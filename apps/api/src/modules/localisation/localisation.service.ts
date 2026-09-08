@@ -45,7 +45,7 @@ export class LocalisationService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.country.findMany({
           where,
-          orderBy: orderBy(query, ["name", "countryCode", "createdAt"] as const, "name"),
+          orderBy: orderBy(query, ["name", "countryCode", "createdAt"] as const, "name", "countryId"),
           ...paginate(query),
           include: { _count: { select: { cities: { where: { deletedAt: null } } } } },
         }),
@@ -174,7 +174,7 @@ export class LocalisationService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.city.findMany({
           where,
-          orderBy: orderBy(query, ["name", "cityCode", "createdAt"] as const, "name"),
+          orderBy: orderBy(query, ["name", "cityCode", "createdAt"] as const, "name", "cityId"),
           ...paginate(query),
           include: CITY_INCLUDE,
         }),

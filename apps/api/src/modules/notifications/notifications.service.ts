@@ -39,7 +39,7 @@ export class NotificationsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.notification.findMany({
           where,
-          orderBy: orderBy(query, ["createdAt", "class"] as const, "createdAt"),
+          orderBy: orderBy(query, ["createdAt", "class"] as const, "createdAt", "notificationId"),
           ...paginate(query),
         }),
         this.prisma.notification.count({ where }),

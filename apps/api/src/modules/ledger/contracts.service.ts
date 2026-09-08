@@ -48,7 +48,7 @@ export class ContractsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.collegeContract.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "contractId"),
           ...paginate(query),
           include: CONTRACT_INCLUDE,
         }),

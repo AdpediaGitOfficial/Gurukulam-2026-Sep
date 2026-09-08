@@ -66,7 +66,7 @@ export class StudentsService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.student.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "studentId"),
           ...paginate(query),
           include: STUDENT_INCLUDE,
         }),

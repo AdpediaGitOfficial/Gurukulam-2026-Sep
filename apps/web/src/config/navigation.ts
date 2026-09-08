@@ -59,9 +59,9 @@ export const primaryNavItems: readonly NavItem[] = [
     module: "colleges",
     children: [
       { href: "/colleges", label: "All colleges" },
-      { href: "/colleges/contacts", label: "Contacts" , built: false },
+      { href: "/colleges/contacts", label: "Contacts" },
       { href: "/colleges/requirements", label: "Requirements" },
-      { href: "/colleges/access", label: "Portal access" , built: false },
+      { href: "/colleges/access", label: "Portal access" },
     ],
   },
   {

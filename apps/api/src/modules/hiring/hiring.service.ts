@@ -56,7 +56,7 @@ export class HiringService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.jobPosting.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "createdAt"),
+          orderBy: orderBy(query, SORTABLE, "createdAt", "jobPostingId"),
           ...paginate(query),
           include: { audienceRules: { where: { deletedAt: null } } },
         }),

@@ -54,7 +54,7 @@ export class CoursesService {
       const [rows, total] = await this.prisma.$transaction([
         this.prisma.course.findMany({
           where,
-          orderBy: orderBy(query, SORTABLE, "name"),
+          orderBy: orderBy(query, SORTABLE, "name", "courseId"),
           ...paginate(query),
           include: {
             _count: { select: { topics: true, batches: true, trainerCourses: true } },
