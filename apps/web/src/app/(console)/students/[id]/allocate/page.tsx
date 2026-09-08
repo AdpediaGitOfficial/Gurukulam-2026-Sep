@@ -9,6 +9,7 @@ import {
   getStudent,
   listJoinableBatches,
 } from "@/features/students/server/students-service";
+import { listCourses } from "@/features/courses/server/courses-service";
 import { requireModule } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Allocate to a batch" };
@@ -24,6 +25,19 @@ export default async function AllocatePage({ params }: { params: Promise<{ id: s
   if (student.isAllocated === true) redirect(`/students/${id}`);
 
   const batches = await listJoinableBatches(student);
+
+  /*
+   * The ceiling on the agreed price, per course.
+   *
+   * The API refuses an enrolment value above the course's standard market
+   * value — a retail price is negotiated DOWN from the catalogue, never up.
+   * Without it here the form can only report that refusal after the whole
+   * schedule has been typed.
+   */
+  const courses = await listCourses({ pageSize: "200" });
+  const ceilings = Object.fromEntries(
+    courses.rows.map((course) => [course.courseId, course.standardMarketValueMinor]),
+  );
   const name = student.lastName === null ? student.firstName : `${student.firstName} ${student.lastName}`;
 
   return (
@@ -45,7 +59,7 @@ export default async function AllocatePage({ params }: { params: Promise<{ id: s
         of it does, so a half-allocated student cannot exist.
       </Alert>
 
-      <AllocationForm student={student} batches={batches.rows} />
+      <AllocationForm student={student} batches={batches.rows} ceilings={ceilings} />
     </PageBody>
   );
 }
