@@ -12,6 +12,8 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "audit:prod": "npm audit --omit=dev",
+    "audit:why": "node scripts/audit-explain.mjs",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",

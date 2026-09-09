@@ -487,6 +487,86 @@ read-only and safe anywhere.
 
 ---
 
+## 9b. Reading `npm audit` without panicking
+
+`npm audit` on this repo reports ten or so advisories, several of them "high"
+and one "critical". That number is honest and almost entirely irrelevant to a
+running server, because `npm audit` reports the whole tree — the test runner and
+the compiler included — and says nothing about whether anything loads them.
+
+```bash
+npm run audit:why     # sorts the advisories by whether they reach the server
+npm run audit:prod    # the same tree a production install would create
+```
+
+As of this release, measured rather than assumed:
+
+| Advisory | Reaches the running server? | Why |
+| --- | --- | --- |
+| `vitest`, `@vitest/mocker`, `vite`, `vite-node`, `esbuild` | **No** | Test tooling. The esbuild and vitest issues need their **dev server** running and reachable; production runs `node dist/main.js` and `next start`. |
+| `prisma`, `@prisma/config`, `deepmerge-ts` | **No** | The Prisma **CLI**, used by `migrate` and `generate`. `@prisma/client` — the part the API loads — has no dependencies at all. The advisory is a stack overflow from a recursive config file, which means it needs someone who already edits your config. |
+| `postcss` (under `next`) | **Build only** | Verified by tracing every module the production server loads while serving pages: `next/node_modules/postcss` is loaded **zero** times. It processes your own CSS at build time. The advisories need attacker-controlled CSS input. |
+| `next` | **Yes, it is the server** | Kept current within 15.x. Clearing the postcss advisory outright means Next 16, which is a compatibility exercise rather than a security one. |
+
+**None of them is a remote-code-execution path**, which is what an attacker
+would need to run a miner, install a backdoor, or read your database. The worst
+of them is an arbitrary *file read* against a development server that a
+deployment does not run.
+
+To make a production box match that reasoning physically rather than only
+logically, prune after building:
+
+```bash
+npm run build
+npm prune --omit=dev          # removes vitest, vite, esbuild, the Prisma CLI, tsc
+sudo systemctl restart gurukulam-api gurukulam-web
+```
+
+The trade-off, and it is a real one: this also removes the **Prisma CLI** and
+`tsx`, so `npm run db:deploy` and `npm run bootstrap` stop working until the
+next `npm ci`. Run migrations and create the first operator **before** pruning,
+and accept that a redeploy reinstalls everything anyway (§10). On a box where
+the same checkout is used to build and to run, pruning buys you less than it
+costs; on one where the build happens elsewhere, prune.
+
+### What would actually get a server mining
+
+None of the above. In practice a Linux box gets a miner through one of these,
+and all of them are configuration rather than dependencies:
+
+```bash
+# 1. A service listening where it should not be. Redis with no password on a
+#    public interface is the single most common way an EC2 box starts mining —
+#    it allows writing arbitrary files, which becomes a cron entry.
+ss -tulpn | grep -v '127.0.0.1\|::1'
+
+# 2. What the security group actually allows in. Only 80 and 443 should be open
+#    to 0.0.0.0/0; SSH should be your address, and 4000/5432/6379 nothing.
+#    (Check in the AWS console — the box cannot see its own security group.)
+
+# 3. Redis reachable without a password.
+redis-cli -h 127.0.0.1 ping && redis-cli config get requirepass
+
+# 4. Password SSH and root SSH — both should be no.
+sudo sshd -T | grep -E 'permitrootlogin|passwordauthentication'
+```
+
+And to check whether something is already running:
+
+```bash
+ps aux --sort=-%cpu | head -15          # a miner does not hide its CPU use
+ss -tunp | grep -vE '127.0.0.1|::1'     # outbound to a pool, on an odd port
+crontab -l; sudo crontab -l; ls -la /etc/cron.*/   # how they survive a reboot
+sudo journalctl -u ssh --since '7 days ago' | grep -c 'Failed password'
+```
+
+A miner is loud: sustained high CPU from a process you do not recognise, often
+out of `/tmp`, `/dev/shm` or `/var/tmp`, with an outbound connection it keeps
+re-establishing. If `ps` and `ss` are clean and nothing unexpected is listening,
+the audit output is not telling you that you have one.
+
+---
+
 ## 10. Redeploying
 
 ```bash
