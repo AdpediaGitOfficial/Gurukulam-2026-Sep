@@ -7,6 +7,7 @@ import { changePasswordSchema, loginSchema, sessionSchema } from "@gurukulam/con
 import { apiFetch, ApiRequestError } from "@/server/api";
 import { clearSession, readRefreshToken, writeSession } from "@/server/session";
 import { formError, type FormState } from "@/lib/form";
+import { safePath } from "@/lib/safe-path";
 
 /**
  * Signs in and stores the token pair in httpOnly cookies.
@@ -72,16 +73,10 @@ export async function logout(): Promise<void> {
   redirect("/login");
 }
 
-/**
- * Where to go after signing in. Only a bare same-origin path is honoured: a
- * `next` of `//evil.example` is protocol-relative, and browsers follow it off
- * this origin entirely.
- */
+/** Where to go after signing in. `lib/safe-path` decides what is ours. */
 function safeNext(formData: FormData): string {
   const value = formData.get("next");
-  if (typeof value !== "string") return "/dashboard";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  return value;
+  return safePath(typeof value === "string" ? value : null);
 }
 
 /**

@@ -23,6 +23,7 @@
     "verify:paging": "tsx scripts/verify-paging.ts",
     "verify:rollups": "tsx scripts/verify-rollups.ts",
     "verify:inhouse": "tsx scripts/verify-inhouse.ts",
+    "verify:security": "tsx scripts/verify-security.ts",
     "bootstrap": "tsx scripts/bootstrap.ts"
   },
   "dependencies": {

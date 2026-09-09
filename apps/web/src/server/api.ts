@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiErrorSchema, type ApiError } from "@gurukulam/contracts";
 
+import { safePath } from "@/lib/safe-path";
 import { API_INTERNAL_URL } from "./env";
 import { readAccessToken, readRefreshToken } from "./session";
 
@@ -70,10 +71,9 @@ async function recoverSession(): Promise<never> {
  * middleware — `next/headers` exposes request headers but not the URL.
  */
 async function currentPath(): Promise<string> {
-  const value = (await headers()).get("x-pathname");
-  // Only ever a same-origin path. Anything else is an open redirect waiting to
-  // happen, even though this one is set by our own middleware.
-  return value !== null && value.startsWith("/") && !value.startsWith("//") ? value : "/dashboard";
+  // Set by our own middleware, and still checked: the middleware copies the
+  // request URL, so the value originates with the caller either way.
+  return safePath((await headers()).get("x-pathname"));
 }
 
 export interface ApiRequest {

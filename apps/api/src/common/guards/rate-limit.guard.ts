@@ -25,6 +25,16 @@ export class RateLimitGuard implements CanActivate, OnModuleDestroy {
   private readonly redis: Redis | null;
   private readonly memory = new Map<string, { count: number; expiresAt: number }>();
 
+  /**
+   * The in-memory fallback is keyed by CALLER, and a caller is an address —
+   * something the other end chooses. Without a bound, an attacker walking a
+   * /16 fills this map with a million entries that nothing ever removes, and
+   * the process dies of memory rather than of the flood it was meant to
+   * survive. Redis expires its own keys; this has to do it itself.
+   */
+  private static readonly MEMORY_LIMIT = 50_000;
+  private sweptAt = 0;
+
   constructor(
     private readonly reflector: Reflector,
     @Inject(ENV) private readonly env: Env,
@@ -79,6 +89,8 @@ export class RateLimitGuard implements CanActivate, OnModuleDestroy {
     }
 
     const now = Date.now();
+    this.sweep(now);
+
     const entry = this.memory.get(key);
     if (!entry || entry.expiresAt <= now) {
       this.memory.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
@@ -86,6 +98,31 @@ export class RateLimitGuard implements CanActivate, OnModuleDestroy {
     }
     entry.count += 1;
     return { count: entry.count, ttl: Math.ceil((entry.expiresAt - now) / 1000) };
+  }
+
+  /**
+   * Drops expired buckets, at most once a second.
+   *
+   * If sweeping is not enough — a flood can create entries faster than they
+   * expire — the map is cleared outright. Losing the counts briefly lets a
+   * burst through; keeping them costs the process. Under that much traffic the
+   * answer is Redis, and the warning at boot says so.
+   */
+  private sweep(now: number): void {
+    if (now - this.sweptAt < 1000 && this.memory.size < RateLimitGuard.MEMORY_LIMIT) return;
+    this.sweptAt = now;
+
+    for (const [key, entry] of this.memory) {
+      if (entry.expiresAt <= now) this.memory.delete(key);
+    }
+
+    if (this.memory.size >= RateLimitGuard.MEMORY_LIMIT) {
+      this.logger.warn(
+        `In-memory rate-limit store hit ${RateLimitGuard.MEMORY_LIMIT} live entries and was ` +
+          "cleared. Set REDIS_URL — this store cannot hold under this much traffic.",
+      );
+      this.memory.clear();
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

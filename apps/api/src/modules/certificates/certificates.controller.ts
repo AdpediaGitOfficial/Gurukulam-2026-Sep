@@ -9,6 +9,7 @@ import {
 import { CertificatesService } from "./certificates.service";
 import { SubmissionsService } from "./submissions.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
+import { RateLimit } from "../../common/guards/rate-limit.guard";
 import { CurrentPrincipal, Public, RequirePermission } from "../../common/decorators/principal.decorator";
 
 const eligibilityQuery = z.object({
@@ -30,6 +31,10 @@ export class CertificatesController {
    * moment it happens because this reads the row.
    */
   @Public()
+  // The code is 128 random bits, so it cannot be guessed — but an
+  // unauthenticated read of the certificate register should still not be
+  // available at machine speed to anyone who finds the URL.
+  @RateLimit({ limit: 60, windowSeconds: 60 })
   @Get("verify/:code")
   verify(@Param("code") code: string) {
     return this.certificates.verify(code);

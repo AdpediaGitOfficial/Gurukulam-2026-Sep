@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { sessionSchema } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
+import { safePath } from "@/lib/safe-path";
 import { clearSession, readRefreshToken, writeSession } from "@/server/session";
 
 /**
@@ -17,7 +18,7 @@ import { clearSession, readRefreshToken, writeSession } from "@/server/session";
  * refreshes would revoke the session outright; a redirect is one request.
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const next = safeNext(request.nextUrl.searchParams.get("next"));
+  const next = safePath(request.nextUrl.searchParams.get("next"));
 
   const refreshToken = await readRefreshToken();
   if (refreshToken === undefined) redirect(`/login?next=${encodeURIComponent(next)}`);
@@ -47,15 +48,4 @@ export async function GET(request: NextRequest): Promise<Response> {
   // Outside the try: `redirect` works by throwing, and caught here it would be
   // read as a failed refresh and end the session it just renewed.
   redirect(mustResetPassword ? "/account/password?reason=required" : next);
-}
-
-/**
- * `next` comes from the URL, so it is attacker-controllable. Only a bare
- * same-origin path is honoured — `//evil.example` is a valid URL that browsers
- * treat as protocol-relative, which is how a redirector becomes a phishing page.
- */
-function safeNext(value: string | null): string {
-  if (value === null) return "/dashboard";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  return value;
 }

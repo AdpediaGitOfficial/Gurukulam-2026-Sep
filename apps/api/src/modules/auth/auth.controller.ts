@@ -53,6 +53,9 @@ export class AuthController {
   }
 
   @Public()
+  // Unauthenticated because a caller with a dead access token must still be
+  // able to end its session. Limited because that makes it a free write.
+  @RateLimit({ limit: 60, windowSeconds: 60 })
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Body(zodBody(refreshSchema)) body: RefreshInput): Promise<void> {

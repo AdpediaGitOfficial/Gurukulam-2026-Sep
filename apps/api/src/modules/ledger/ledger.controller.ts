@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Inject, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   contractQuerySchema, createContractSchema, ledgerQuerySchema, recordPaymentSchema,
   reversePaymentSchema, setScheduleSchema, updateContractSchema,
@@ -12,6 +13,7 @@ import { zodBody } from "../../common/pipes/zod-validation.pipe";
 import { CurrentPrincipal, Public, RequirePermission } from "../../common/decorators/principal.decorator";
 import { ENV, type Env } from "../../config/env";
 import { ApiException } from "../../common/errors";
+import { RateLimit } from "../../common/guards/rate-limit.guard";
 
 @Controller("fee-ledger")
 export class LedgerController {
@@ -107,6 +109,20 @@ export class LedgerController {
  * The nightly run, behind a shared secret rather than a user session — an
  * external scheduler has no principal to present.
  */
+/**
+ * A constant-time comparison of two secrets of unknown length.
+ *
+ * `timingSafeEqual` throws on a length mismatch, and the lengths themselves
+ * would leak, so both sides are hashed first: the digests are always the same
+ * size and reveal nothing about the inputs.
+ */
+function secretsMatch(presented: string | undefined, expected: string): boolean {
+  if (presented === undefined) return false;
+  const a = createHash("sha256").update(presented).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
 @Controller("cron")
 export class CronController {
   constructor(
@@ -115,6 +131,10 @@ export class CronController {
   ) {}
 
   @Public()
+  // Unauthenticated and expensive — it re-derives every ledger. The limit is
+  // what stops a stranger from making the box do that work repeatedly, since
+  // the secret check happens after the request has already arrived.
+  @RateLimit({ limit: 10, windowSeconds: 60 })
   @Post("fee-reminders")
   @HttpCode(HttpStatus.OK)
   async feeReminders(@Headers("x-cron-secret") secret?: string) {
@@ -124,7 +144,10 @@ export class CronController {
     if (!expected) {
       throw ApiException.forbidden("CRON_SHARED_SECRET is not configured on this deployment");
     }
-    if (secret !== expected) throw ApiException.unauthenticated("Bad cron secret");
+    // Compared in constant time. `!==` returns as soon as two bytes differ, so
+    // the time it takes leaks how much of the secret was right — enough to
+    // recover it one character at a time from off the box.
+    if (!secretsMatch(secret, expected)) throw ApiException.unauthenticated("Bad cron secret");
     return this.cron.run();
   }
 }

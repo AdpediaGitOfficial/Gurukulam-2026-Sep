@@ -80,6 +80,17 @@ DATABASE_URL=postgresql://gurukulam:a-real-password-here@localhost:5432/gurukula
 API_PORT=4000
 API_BASE_PATH=/api/v1
 
+# Loopback. The console is a BFF and reaches the API over 127.0.0.1, so nothing
+# else needs to. See §6a before changing this.
+API_HOST=127.0.0.1
+
+# Name the proxy — do not set `true`, and do not use a hop count. See §6a.
+TRUST_PROXY=127.0.0.1
+
+# The Swagger page and OpenAPI document bypass the auth guard. Off in
+# production unless a third-party integrator actually needs them.
+API_DOCS_ENABLED=false
+
 # Generate BOTH, and never reuse one for the other:
 #   openssl rand -base64 48
 JWT_ACCESS_SECRET=<48 random bytes>
@@ -225,12 +236,73 @@ it needs its own vhost and `CORS_ALLOWED_ORIGINS` set to match.
 
 ---
 
+## 6a. What is listening, and who is believed
+
+Two settings decide the API's exposure, and both default to the safe answer —
+so this section is about not undoing them.
+
+**`API_HOST=127.0.0.1`.** After `systemctl start`, check what is actually open:
+
+```bash
+ss -tulpn | grep -E ':(3000|4000|5432|6379)'
+```
+
+Expect the console on `0.0.0.0:3000` — that is the public surface, behind nginx
+— and the API, PostgreSQL and Redis on `127.0.0.1`. If the API shows `0.0.0.0`,
+it is reachable from anywhere that can route to the box, and every request then
+arrives without passing nginx. It logs a warning at boot when you do that
+deliberately.
+
+**`TRUST_PROXY=127.0.0.1`.** This names the proxy whose `X-Forwarded-For` may be
+believed, and it is a security control rather than a convenience:
+
+* `false` — nobody is believed. `req.ip` is the socket peer. Correct when
+  nothing fronts the API, but behind nginx every request then looks like it came
+  from `127.0.0.1`, so the whole office shares one rate-limit bucket.
+* `127.0.0.1` — believe the hop that nginx added, discard anything the caller
+  wrote themselves. This is what you want for the deployment in §6.
+* `true` — believe anybody. **The API refuses to start with this in
+  production**, and it is worth knowing why. The per-caller rate limit on
+  `/auth/login` keys on `req.ip`; with `true`, `req.ip` is whatever the caller
+  put in the header, so a credential-spraying script sends a different address
+  on each request and never trips the limit. Measured on this codebase before
+  the default changed: 40 of 40 attempts landed against a limit of 30.
+* A bare number is refused too. `trustProxy: <number>` was a hop count until
+  fastify 5.12.3, which made it trust nobody — a hop count cannot check who the
+  immediate peer is. Left accepted, it would look configured and do nothing.
+
+Nginx must be the one setting the header for this to hold. The config in §6
+uses `proxy_add_x_forwarded_for`, which appends the real peer to whatever the
+client sent — the appended entry is the one `TRUST_PROXY=127.0.0.1` reads.
+
+Verify it end to end after deploying, from another machine:
+
+```bash
+# Both should be refused after the limit, NOT let through.
+for i in $(seq 1 40); do
+  curl -s -o /dev/null -w '%{http_code} ' -X POST https://uat.example.com/api/v1/auth/login     -H 'content-type: application/json' -H "x-forwarded-for: 203.0.113.$i"     -d '{"email":"probe-'$i'@example.invalid","password":"wrong","actor":"ADMIN_USER"}'
+done; echo
+```
+
+Or run the suite that does exactly this, against a dev box: `npm run
+verify:security --workspace @gurukulam/api`.
+
+---
+
 ## 7. Redis, and when to leave it out
 
 Redis backs login lockout only. Without `REDIS_URL` the API falls back to an
 in-process store and logs that it has done so — fine for a single-replica UAT,
 wrong for more than one, because five failed attempts spread across replicas
 never trip a lockout.
+
+Without it, both stores are also **bounded**: they sweep expired entries and
+clear themselves at fifty thousand live keys rather than growing without limit.
+That bound exists because the keys are chosen by the caller — an address for the
+rate limiter, a typed-in email for the lockout — so an unbounded map is a
+memory-exhaustion handle on an endpoint that is unauthenticated by design. It
+is a backstop, not a plan: a cleared rate-limit store lets a burst through, and
+an evicted lockout is a lockout that stopped.
 
 **A configured but unreachable Redis is worse than no Redis.** The lockout
 check awaits Redis without a fallback, so if the URL is set and the server is
@@ -269,6 +341,17 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/srv/gurukulam
+# The API writes nothing to disk at runtime — it talks to PostgreSQL and Redis.
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# It only ever needs loopback and the database socket.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]
 WantedBy=multi-user.target
@@ -392,6 +475,11 @@ npm run verify:paging   --workspace @gurukulam/api   # 33 — no row lost or rep
 npm run verify:rollups  --workspace @gurukulam/api   # 18 — the cross-college views
 npm run verify:inhouse  --workspace @gurukulam/api   # 19 — in-house allocation
 npm run verify:contracts --workspace @gurukulam/api  # every response matches its schema
+
+# This one is read-mostly and worth running against a staging box as well: it
+# attacks the controls rather than asserting about the code. It does create
+# lockout state for invented addresses, which expires on its own.
+npm run verify:security --workspace @gurukulam/api   # 15 — see §6a
 ```
 
 On UAT, §9 is the smoke test. `prisma migrate status` and the three `curl`s are

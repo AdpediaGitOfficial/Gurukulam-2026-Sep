@@ -23,6 +23,15 @@ export class LockoutService implements OnModuleDestroy {
   private readonly redis: Redis | null;
   private readonly memory = new Map<string, { count: number; expiresAt: number; lockedUntil: number }>();
 
+  /**
+   * Keyed by the address someone TYPED, so an attacker chooses the keys. Every
+   * failed login against an invented address would otherwise add an entry that
+   * nothing removes — a flood of unique addresses is then a memory-exhaustion
+   * handle, from an endpoint that is unauthenticated by design.
+   */
+  private static readonly MEMORY_LIMIT = 50_000;
+  private sweptAt = 0;
+
   constructor(@Inject(ENV) private readonly env: Env) {
     if (env.REDIS_URL) {
       this.redis = new Redis(env.REDIS_URL, { lazyConnect: false, maxRetriesPerRequest: 2 });
@@ -78,6 +87,8 @@ export class LockoutService implements OnModuleDestroy {
     }
 
     const now = Date.now();
+    this.sweep(now);
+
     const entry = this.memory.get(key);
     if (!entry || entry.expiresAt <= now) {
       this.memory.set(key, {
@@ -105,6 +116,39 @@ export class LockoutService implements OnModuleDestroy {
       return;
     }
     this.memory.delete(key);
+  }
+
+  /**
+   * Drops entries that are neither counting nor locking any more, at most once
+   * a second.
+   *
+   * A live lock outlives its window, so both have to be past before an entry
+   * can go — dropping a lock early would hand an attacker the reset. If the
+   * map is still at its limit after sweeping, the oldest entries go: that can
+   * release a lock early under a flood, which is the lesser of the two harms
+   * and is exactly the case REDIS_URL exists for.
+   */
+  private sweep(now: number): void {
+    if (now - this.sweptAt < 1000 && this.memory.size < LockoutService.MEMORY_LIMIT) return;
+    this.sweptAt = now;
+
+    for (const [key, entry] of this.memory) {
+      if (entry.expiresAt <= now && entry.lockedUntil <= now) this.memory.delete(key);
+    }
+
+    if (this.memory.size >= LockoutService.MEMORY_LIMIT) {
+      this.logger.warn(
+        `In-memory lockout store hit ${LockoutService.MEMORY_LIMIT} live entries — dropping the ` +
+          "oldest. Set REDIS_URL: a lockout this store has evicted is a lockout that stopped.",
+      );
+      const excess = this.memory.size - Math.floor(LockoutService.MEMORY_LIMIT / 2);
+      let dropped = 0;
+      for (const key of this.memory.keys()) {
+        if (dropped >= excess) break;
+        this.memory.delete(key);
+        dropped += 1;
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

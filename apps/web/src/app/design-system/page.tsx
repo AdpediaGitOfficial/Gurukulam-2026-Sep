@@ -43,6 +43,7 @@ import {
   SwatchGrid,
 } from "@/features/design-system/components/showcase";
 import { cn } from "@/lib/cn";
+import { requirePrincipal } from "@/server/principal";
 
 export const metadata: Metadata = {
   title: "Design System",
@@ -135,7 +136,19 @@ const DEMO_ROWS: DemoRow[] = [
  * Every token and component the console ships, rendered from the real source.
  * If something is not on this page, it is not part of the system yet.
  */
-export default function DesignSystemPage() {
+/**
+ * Behind a session, like everything else.
+ *
+ * It renders no data, so this is not about leaking records — it is that an
+ * unauthenticated page tells a stranger the console exists, what it is built
+ * with, and how it is put together, before they have any credential at all.
+ */
+export default async function DesignSystemPage() {
+  await requirePrincipal();
+  return <DesignSystem />;
+}
+
+function DesignSystem() {
   return (
     <PageBody>
       <PageHeader
