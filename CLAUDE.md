@@ -18,6 +18,7 @@ writing code.
 | `docs/prototype/index.html` | Clickable prototype — 60 routes, all screens. **Open it in a browser.** This is the design reference |
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
 | `docs/notifications-and-reports.md` | The notification catalogue and report grammar |
+| `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and the gaps |
 | `docs/design-system.md` | UI layer rules |
 | `docs/brand-guidelines.md` | Visual language |
 

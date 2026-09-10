@@ -10,6 +10,8 @@ Companion documents — [`architecture.md`](architecture.md) for the domain mode
 
 **Portal scope:** Admin only. Trainer, Student and College portals are deferred — but every action
 they will perform is performable by an admin today, permanently (§1.2 of the architecture doc).
+The student portal is specified in `student-portal-plan.md`: what each module below becomes when
+read by the person it is about, and the two decisions that shape it.
 
 ---
 
