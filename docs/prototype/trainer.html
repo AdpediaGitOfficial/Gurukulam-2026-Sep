@@ -215,7 +215,72 @@ ul{padding:0;list-style:none}
 .week .d .lv{font-size:10px;line-height:13px;font-weight:700;letter-spacing:.3px;
   text-transform:uppercase;color:var(--ink-subtle);text-align:center;margin-top:auto}
 
+/* ── dashboard: tiles, then the one thing that earns a chart ──────────── */
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media (min-width:720px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-well);
+  padding:15px 16px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile dt{color:var(--ink-muted);font-size:11px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase}
+.tile dd{margin:0;font-variant-numeric:tabular-nums;font-size:26px;line-height:32px;
+  font-weight:700;letter-spacing:-.6px}
+.tile .of{font-size:14px;font-weight:600;color:var(--ink-subtle);letter-spacing:0}
+.tile small{color:var(--ink-subtle);font-size:12px;line-height:17px}
+.tile.act{border-color:#ffd9bd;background:#fff8f2}
+.tile.act dd{color:var(--warning-s)}
+
+/* One series, one hue, magnitude by batch — the brand blue the guide already
+   names for chart marks. Below-floor is a STATUS, so it carries an icon and a
+   word as well as a colour. */
+.bars{display:flex;flex-direction:column;gap:14px}
+.bar{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:baseline}
+.bar .bl{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.bar .bv{font-variant-numeric:tabular-nums;font-size:13px;font-weight:700}
+.bar .track{grid-column:1/-1;position:relative;height:10px;border-radius:9999px;
+  background:var(--muted);overflow:hidden}
+.bar .track i{display:block;height:100%;border-radius:9999px;background:var(--brand)}
+.bar.low .track i{background:var(--warning)}
+.bar .floor{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink-subtle);
+  border-radius:1px}
+.bar .note{grid-column:1/-1;display:flex;align-items:center;gap:5px;color:var(--warning-s);
+  font-size:12px;font-weight:600}
+.bar .note.ok{color:var(--ink-subtle);font-weight:500}
+.barkey{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:14px;padding-top:12px;
+  border-top:1px solid var(--hairline);color:var(--ink-subtle);font-size:12px}
+.barkey span{display:flex;align-items:center;gap:6px}
+.barkey i{display:block;width:2px;height:12px;background:var(--ink-subtle);border-radius:1px}
+
+/* ── month calendar ───────────────────────────────────────────────────── */
+.calhead{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px}
+.calhead span{text-align:center;font-size:10px;font-weight:700;letter-spacing:.5px;
+  text-transform:uppercase;color:var(--ink-subtle)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+/* min-width:0 or the grid item takes its content's width and the month pushes
+   the page sideways on a phone — an event chip's text is what does it. */
+.cal .c{border:1px solid var(--hairline);border-radius:var(--r-tile);background:var(--surface);
+  min-width:0;min-height:78px;padding:6px 5px;display:flex;flex-direction:column;gap:3px;
+  text-align:left;overflow:hidden}
+.cal .c.dim{background:var(--sunken);opacity:.5}
+.cal .c.today{border-color:#bfe3cb;background:#eef8f1}
+.cal .c.leave{background:var(--muted);border-color:#dcdcdc}
+.cal .c.sel{outline:2px solid var(--brand);outline-offset:1px}
+.cal .c .n{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.cal .c.today .n{color:var(--success-s)}
+.cal .c .e{border-radius:var(--r-chip);padding:2px 4px;font-size:9px;line-height:12px;
+  font-weight:700;background:#e6f0fb;color:var(--brand);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.cal .c .e.done{background:#e7f6ec;color:var(--success-s)}
+.cal .c .lv{margin-top:auto;font-size:9px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--ink-subtle)}
+@media (max-width:620px){
+  .cal,.calhead{gap:3px}
+  .cal .c{min-height:62px;padding:4px 3px}
+  .cal .c .e{font-size:8px;line-height:11px;padding:1px 2px}
+}
+
 /* ── the two annotations this prototype exists to make ────────────────── */
+
 .rule{display:flex;gap:10px;padding:13px 16px;border-radius:var(--r-well);
   background:#12241a;color:#e3ece6;font-size:13px;line-height:19px}
 .rule b{color:#7fd79b;font-weight:700}
@@ -282,8 +347,9 @@ ul{padding:0;list-style:none}
 
 <div class="protobar">
   <b>Prototype</b>
-  <p>Static screens, no back end. Switch the engagement to see what an in-house trainer does
-     not have — the same mechanism the student portal uses for fees.</p>
+  <p>Static screens, no back end. Four sections: how delivery is going, the cohorts, the
+     sessions, and when you are away. Switch the engagement to see what an in-house trainer
+     does not have.</p>
   <div class="segswitch" role="group" aria-label="View as">
     <button id="seg-freelance" type="button" onclick="setSeg('freelance')">Freelance</button>
     <button id="seg-inhouse" type="button" onclick="setSeg('inhouse')">In-house</button>
@@ -303,8 +369,9 @@ ul{padding:0;list-style:none}
 /* =========================================================================
    Gurukulam TMS — trainer portal prototype.
 
-   Standalone: this file touches nothing in apps/. It is a design reference in
-   the same shape as the admin prototype next to it.
+   Standalone: this file touches nothing in apps/. Four sections, in the order
+   a trainer actually asks the questions — how is delivery going, which
+   cohorts, which sessions, and when am I not available.
 
    The rail is Google green, which is a LIGHT surface — so selection is the
    darkest thing in it rather than the brightest, and the brandmark inverts.
@@ -323,6 +390,7 @@ const I={
   inbox:'<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14l2 8v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"/>',
   bell:'<path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
   acct:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6 19a6.5 6.5 0 0 1 12 0"/>',
+  chart:'<path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/>',
   more:'<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>',
   mark:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
   back:'<path d="M19 12H5M11 6l-6 6 6 6"/>',
@@ -353,32 +421,45 @@ const PEOPLE={
   },
 };
 
-const TODAY=[
-  {code:'SES-0418',t:'10:00 – 13:00',title:'Feature engineering for tabular data',
-   batch:'BTC-DS-OCT-A',topic:'Topic 6 · Modelling',mode:'Online',place:'Zoom',
-   roster:18,state:'now'},
-  {code:'SES-0419',t:'14:30 – 17:30',title:'Joins and reshaping, practical',
-   batch:'BTC-SNC-DS-01',topic:'Topic 5 · Data wrangling',mode:'Offline',
-   place:'Kochi · Room 2',roster:34,state:'later'},
-];
-
-const WEEK=[
-  {day:'Mon',d:'15',ev:[{t:'10:00 Modelling',k:'done'}]},
-  {day:'Tue',d:'16',ev:[{t:'10:00 Feature eng.',k:''},{t:'14:30 Joins',k:''}],today:true},
-  {day:'Wed',d:'17',ev:[]},
-  {day:'Thu',d:'18',ev:[{t:'10:00 Cross-val.',k:''}]},
-  {day:'Fri',d:'19',ev:[],leave:'Leave'},
-  {day:'Sat',d:'20',ev:[{t:'09:30 Workshop',k:''}]},
-  {day:'Sun',d:'21',ev:[]},
-];
-
+/* Attendance per batch against the course's certificate floor. One series, one
+   hue, magnitude by category — the only thing on the dashboard that is a chart
+   rather than a number. Below-floor is a STATUS, so each row carries an icon
+   and a word as well as a colour. */
 const BATCHES=[
   {code:'BTC-DS-OCT-A',course:'Data Science & Analytics',kind:'Retail',roster:18,
-   done:11,total:24,next:'Tue 16 Sep, 10:00',status:'In progress'},
+   done:11,total:24,att:86,floor:75,next:'Tue 16 Sep, 10:00',status:'In progress',
+   toMark:6,segment:'retail'},
   {code:'BTC-SNC-DS-01',course:'Data Science & Analytics',kind:'Sree Narayana College',
-   roster:34,done:7,total:24,next:'Tue 16 Sep, 14:30',status:'In progress'},
+   roster:34,done:7,total:24,att:68,floor:75,next:'Tue 16 Sep, 14:30',status:'In progress',
+   toMark:0,segment:'college'},
   {code:'BTC-PY-JUL-C',course:'Python for Data Analysis',kind:'Retail',roster:15,
-   done:20,total:20,next:'—',status:'Completed'},
+   done:20,total:20,att:91,floor:70,next:'—',status:'Completed',toMark:0,segment:'retail'},
+];
+
+/* Every session across every batch. The Sessions screen reads this flat; a
+   batch page reads the same rows filtered to itself. */
+const SESSIONS=[
+  {code:'SES-0418',d:'16',m:'Sep',day:'Tue',t:'10:00 – 13:00',batch:'BTC-DS-OCT-A',
+   title:'Feature engineering for tabular data',topic:'Topic 6 · Modelling',
+   mode:'Online',place:'Zoom',roster:18,state:'today'},
+  {code:'SES-0419',d:'16',m:'Sep',day:'Tue',t:'14:30 – 17:30',batch:'BTC-SNC-DS-01',
+   title:'Joins and reshaping, practical',topic:'Topic 5 · Data wrangling',
+   mode:'Offline',place:'Kochi · Room 2',roster:34,state:'today'},
+  {code:'SES-0421',d:'18',m:'Sep',day:'Thu',t:'10:00 – 13:00',batch:'BTC-DS-OCT-A',
+   title:'Model evaluation and cross-validation',topic:'Topic 6 · Modelling',
+   mode:'Online',place:'Zoom',roster:18,state:'scheduled'},
+  {code:'SES-0423',d:'20',m:'Sep',day:'Sat',t:'09:30 – 12:30',batch:'BTC-SNC-DS-01',
+   title:'Workshop — cleaning a real extract',topic:'Topic 5 · Data wrangling',
+   mode:'Offline',place:'Kochi · Room 2',roster:34,state:'scheduled'},
+  {code:'SES-0415',d:'11',m:'Sep',day:'Thu',t:'10:00 – 13:00',batch:'BTC-DS-OCT-A',
+   title:'Pandas: reshaping and joins',topic:'Topic 5 · Data wrangling',
+   mode:'Online',place:'Zoom',roster:18,state:'delivered',att:'16 / 18',rec:false,asg:'ASG-0142'},
+  {code:'SES-0412',d:'09',m:'Sep',day:'Tue',t:'10:00 – 13:00',batch:'BTC-DS-OCT-A',
+   title:'Reading messy data',topic:'Topic 5 · Data wrangling',
+   mode:'Online',place:'Zoom',roster:18,state:'delivered',att:'17 / 18',rec:true,asg:null},
+  {code:'SES-0409',d:'04',m:'Sep',day:'Thu',t:'10:00 – 13:00',batch:'BTC-DS-OCT-A',
+   title:'NumPy foundations',topic:'Topic 4 · Numerical Python',
+   mode:'Online',place:'Zoom',roster:18,state:'delivered',att:'18 / 18',rec:true,asg:'ASG-0139'},
 ];
 
 const ROSTER=[
@@ -388,15 +469,6 @@ const ROSTER=[
   {n:'Nikhil Das',c:'STU-2026-0937',a:'P'},{n:'Priya Sundaram',c:'STU-2026-0944',a:'P'},
 ];
 
-const WORK=[
-  {code:'ASG-0142',title:'Clean the retail transactions dataset',batch:'BTC-DS-OCT-A',
-   due:'Due Fri 19 Sep',state:'grading',pending:6,of:18},
-  {code:'ASG-0141',title:'Joins practice set',batch:'BTC-SNC-DS-01',
-   due:'Due Mon 22 Sep',state:'open',pending:0,of:34},
-  {code:'ASG-0139',title:'NumPy broadcasting exercises',batch:'BTC-DS-OCT-A',
-   due:'Closed Mon 15 Sep',state:'done',pending:0,of:18},
-];
-
 const SUBMISSIONS=[
   {n:'Aarav Menon',c:'STU-2026-0891',when:'Submitted Thu 18 Sep, 21:14',mark:null},
   {n:'Divya Nair',c:'STU-2026-0904',when:'Submitted Thu 18 Sep, 22:40',mark:null},
@@ -404,8 +476,15 @@ const SUBMISSIONS=[
   {n:'Karthik Pillai',c:'STU-2026-0925',when:'Submitted Wed 17 Sep, 18:55',mark:'17 / 20'},
 ];
 
+/* September 2026 starts on a Tuesday. 1 = Mon. */
+const CAL={month:'September 2026',lead:1,days:30,today:16,
+  events:{4:[{t:'NumPy',k:'done'}],9:[{t:'Messy data',k:'done'}],11:[{t:'Pandas',k:'done'}],
+    16:[{t:'Feature eng.'},{t:'Joins'}],18:[{t:'Cross-val.'}],20:[{t:'Workshop'}],
+    23:[{t:'Time series'}],25:[{t:'Forecasting'}],30:[{t:'Review'}]},
+  leave:{19:'Leave'}};
+
 const LEAVE=[
-  {from:'Fri 19 Sep',to:'Fri 19 Sep',type:'Leave',why:'Family commitment',clash:false},
+  {from:'Fri 19 Sep',to:'',type:'Leave',why:'Family commitment',clash:false},
   {from:'Mon 06 Oct',to:'Fri 10 Oct',type:'Leave',why:'Annual leave',clash:true,
    clashWith:'3 sessions on BTC-DS-OCT-A are confirmed in that week'},
   {from:'Every Sun',to:'',type:'Blocked',why:'Not available on Sundays',clash:false},
@@ -424,7 +503,7 @@ const NOTICES=[
   {c:'alert',t:'Leave collides with three confirmed sessions',
    b:'Your leave for 06 – 10 Oct overlaps sessions on BTC-DS-OCT-A that are already committed.',
    w:'Yesterday',unread:true},
-  {c:'act',t:'Recording not attached — Joins and reshaping',
+  {c:'act',t:'Recording not attached — Pandas: reshaping and joins',
    b:'Delivered Thu 11 Sep. A recording has been outstanding for two days.',
    w:'2 hours ago',unread:true},
   {c:'fyi',t:'Six submissions waiting on ASG-0142',
@@ -438,12 +517,14 @@ let SEG=localStorage.getItem('gk-trainer-seg')||'freelance';
 const me=()=>PEOPLE[SEG];
 function setSeg(s){SEG=s;try{localStorage.setItem('gk-trainer-seg',s)}catch(e){}paint();}
 
+/* Four sections, as the delivery chain reads: how am I doing, what am I
+   teaching, when is it, and when am I not available. Marking is not a section
+   — it belongs to the session whose assignment it grades. */
 const NAV=[
-  {h:'#/',l:'Today',i:'today'},
-  {h:'#/schedule',l:'Schedule',i:'cal'},
+  {h:'#/',l:'Dashboard',i:'chart'},
   {h:'#/batches',l:'Batches',i:'batch'},
-  {h:'#/work',l:'Work',i:'task',count:6},
-  {h:'#/availability',l:'Availability',i:'away',deskOnly:true},
+  {h:'#/sessions',l:'Sessions',i:'cal'},
+  {h:'#/availability',l:'Availability',i:'away'},
   {h:'#/invitations',l:'Invitations',i:'inbox',count:1,freelanceOnly:true,deskOnly:true},
   {h:'#/updates',l:'Updates',i:'bell',deskOnly:true},
   {h:'#/account',l:'Account',i:'acct',deskOnly:true},
@@ -454,42 +535,89 @@ const head=(eyebrow,title,note)=>`<div class="pagehead">
   <span class="eyebrow">${eyebrow}</span><h1>${title}</h1>
   ${note?`<p>${note}</p>`:''}</div>`;
 const rule=(t,kind='')=>`<div class="rule ${kind}">${svg(kind==='gap'?I.warn:I.info,18)}<div>${t}</div></div>`;
+const batchOf=(code)=>BATCHES.find(b=>b.code===code)||BATCHES[0];
+
+function statePill(s){
+  if(s.state==='today') return '<span class="pill ok">Today</span>';
+  if(s.state==='scheduled') return '<span class="pill info">Scheduled</span>';
+  if(s.state==='delivered'&&!s.rec) return '<span class="pill warn">Recording due</span>';
+  return '<span class="pill mute">Delivered</span>';
+}
+
+function sessionRow(s,link='#/session'){
+  const past=s.state==='delivered';
+  return `<div class="row tap" onclick="location.hash='${link}'">
+    <div class="datechip${s.state==='today'?' today':past?' past':''}"><b>${s.d}</b><span>${s.m}</span></div>
+    <div class="lead"><b>${s.title}</b>
+      <span>${s.day} ${s.d} ${s.m} · ${s.t} · ${s.mode} · ${s.place}</span>
+      <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${s.batch} · ${s.topic}</span></div>
+    <div class="trail">${statePill(s)}
+      <span class="sub">${past&&s.att?s.att+' present':s.roster+' students'}</span></div></div>`;
+}
 
 /* ------------------------------ screens ------------------------------- */
 const V={};
 
+/* ── 1. Dashboard — overall analytics ─────────────────────────────────── */
 V['#/']=()=>{
   const p=me();
-  const s=TODAY[0];
+  const next=SESSIONS.find(s=>s.state==='today');
+  const live=BATCHES.filter(b=>b.status!=='Completed');
+  const delivered=BATCHES.reduce((a,b)=>a+b.done,0);
+  const scheduled=BATCHES.reduce((a,b)=>a+b.total,0);
+  const toMark=BATCHES.reduce((a,b)=>a+b.toMark,0);
+  const recDue=SESSIONS.filter(s=>s.state==='delivered'&&!s.rec).length;
+
   return `
-  ${head('Today','Tue 16 September',
-    'Two sessions. Mark each one delivered when it ends — that is what opens attendance, the recording and any assignment against it.')}
+  ${head('Dashboard','Hello, '+p.name.split(' ')[0],
+    'How delivery is going across your cohorts, and the next thing you have to do about it.')}
+
+  <dl class="tiles">
+    <div class="tile"><dt>Sessions delivered</dt>
+      <dd>${delivered} <span class="of">/ ${scheduled}</span></dd>
+      <small>Across ${BATCHES.length} batches</small></div>
+    <div class="tile"><dt>Hours taught</dt><dd>114</dd>
+      <small>This quarter</small></div>
+    <div class="tile ${toMark?'act':''}"><dt>To mark</dt><dd>${toMark}</dd>
+      <small>${toMark?'Submissions waiting':'Nothing waiting'}</small></div>
+    <div class="tile ${recDue?'act':''}"><dt>Recordings due</dt><dd>${recDue}</dd>
+      <small>${recDue?'Delivered, no link yet':'All attached'}</small></div>
+  </dl>
 
   <div class="now">
-    <div class="when"><strong>${s.t}</strong><em>starts in 40 minutes</em></div>
-    <h3>${s.title}</h3>
+    <div class="when"><strong>${next.t}</strong><em>starts in 40 minutes</em></div>
+    <h3>${next.title}</h3>
     <div class="meta">
-      <span>${svg(I.pin,15)} ${s.mode} · ${s.place}</span>
-      <span>${svg(I.users,15)} ${s.roster} on the roster</span>
-      <span class="mono">${s.batch}</span>
+      <span>${svg(I.pin,15)} ${next.mode} · ${next.place}</span>
+      <span>${svg(I.users,15)} ${next.roster} on the roster</span>
+      <span class="mono">${next.batch}</span>
     </div>
     <div class="cta">
       <a class="btn go" href="#/session">${svg(I.check,17)} Mark delivered</a>
-      <a class="btn sec" href="#/attendance">${svg(I.users,17)} Take attendance</a>
+      <a class="btn sec" href="#/sessions">All sessions</a>
     </div>
   </div>
 
-  <div class="card tight">
-    <div class="card pad0"><div class="sechead"><h2>Later today</h2>
-      <a href="#/schedule">Full schedule</a></div></div>
-    <div class="rows">
-      ${TODAY.slice(1).map(x=>`<div class="row tap" onclick="location.hash='#/session'">
-        <div class="datechip today"><b>16</b><span>Sep</span></div>
-        <div class="lead"><b>${x.title}</b>
-          <span>${x.t} · ${x.mode} · ${x.place}</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${x.batch} · ${x.topic}</span></div>
-        <div class="trail"><span class="pill mute">${x.roster} students</span></div></div>`).join('')}
+  <div class="card">
+    <div class="sechead"><h2>Attendance by batch</h2>
+      <span class="sub">Against each course’s certificate floor</span></div>
+    <div class="bars">
+      ${BATCHES.map(b=>{
+        const low=b.att<b.floor;
+        return `<div class="bar${low?' low':''}">
+          <span class="bl">${b.code}</span>
+          <span class="bv">${b.att}%</span>
+          <span class="track" title="${b.code}: ${b.att}% attendance, floor ${b.floor}%">
+            <i style="width:${b.att}%"></i>
+            <span class="floor" style="left:${b.floor}%"></span></span>
+          <span class="note${low?'':' ok'}">
+            ${low?svg(I.warn,13)+' Below the '+b.floor+'% floor — certificates would be held'
+                 :'Clear of the '+b.floor+'% floor'}</span>
+        </div>`;
+      }).join('')}
     </div>
+    <div class="barkey"><span><i></i> Certificate floor for that course</span>
+      <span>Attendance is what a batch has recorded so far, not a forecast</span></div>
   </div>
 
   <div class="card tight">
@@ -504,50 +632,246 @@ V['#/']=()=>{
     </div>
   </div>
 
-  ${rule('A session must be <b>marked delivered</b> before attendance, a recording or an assignment can hang off it — invariant 10. It is the one action on this screen that unlocks the others, which is why it is the primary button.')}`;
+  ${rule('One chart, because one question here is a comparison — <b>which cohort is at risk of missing its certificate floor</b>. Everything else is a single number, and a single number is a tile, not a plot. Below-floor carries an icon and a sentence as well as a colour, so it does not depend on seeing red.')}`;
 };
 
-V['#/session']=()=>`
-  <a class="back" href="#/">${svg(I.back,16)} Today</a>
-  ${head('Session · SES-0418','Feature engineering for tabular data',
-    'BTC-DS-OCT-A · Topic 6 · Modelling · Tue 16 Sep, 10:00 – 13:00')}
+/* ── 2. Batches ───────────────────────────────────────────────────────── */
+V['#/batches']=()=>{
+  const live=BATCHES.filter(b=>b.status!=='Completed');
+  const students=BATCHES.reduce((a,b)=>a+b.roster,0);
+  return `
+  ${head('Batches','Cohorts you teach',
+    'Reached through your confirmed assignments. Open one to see its sessions and set work against them.')}
+
+  <dl class="tiles">
+    <div class="tile"><dt>Active</dt><dd>${live.length}</dd><small>In progress now</small></div>
+    <div class="tile"><dt>Students</dt><dd>${students}</dd><small>Across all cohorts</small></div>
+    <div class="tile"><dt>Completed</dt><dd>${BATCHES.length-live.length}</dd><small>This year</small></div>
+    <div class="tile"><dt>Courses</dt><dd>${new Set(BATCHES.map(b=>b.course)).size}</dd>
+      <small>Of ${me().courses.length} you may take</small></div>
+  </dl>
+
+  <div class="card tight"><div class="rows">
+    ${BATCHES.map(b=>`<div class="row tap" onclick="location.hash='#/batch'">
+      <div class="lead"><b>${b.course}</b>
+        <span>${b.kind} · ${b.roster} students · next ${b.next}</span>
+        <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${b.code}</span></div>
+      <div class="trail">
+        <span class="pill ${b.status==='Completed'?'mute':'ok'}">${b.status}</span>
+        <span class="sub">${b.done} of ${b.total} sessions · ${b.att}% attendance</span>
+      </div></div>`).join('')}
+  </div></div>
+
+  ${rule('No <b>Students</b> section in the nav, deliberately. A trainer reaches a student through a roster, which is also the only place the permission question has an answer — “which of these may I write about” is always “the ones on my rosters”.')}`;
+};
+
+V['#/batch']=()=>{
+  const b=BATCHES[0];
+  const mine=SESSIONS.filter(s=>s.batch===b.code);
+  const upcoming=mine.filter(s=>s.state!=='delivered');
+  const past=mine.filter(s=>s.state==='delivered');
+  return `
+  <a class="back" href="#/batches">${svg(I.back,16)} Batches</a>
+  ${head(b.code,b.course,`${b.kind} cohort · ${b.roster} students · ${b.done} of ${b.total} sessions delivered`)}
+
+  <dl class="tiles">
+    <div class="tile"><dt>Delivered</dt><dd>${b.done} <span class="of">/ ${b.total}</span></dd>
+      <small>${Math.round(b.done/b.total*100)}% through</small></div>
+    <div class="tile"><dt>Attendance</dt><dd>${b.att}%</dd><small>Floor is ${b.floor}%</small></div>
+    <div class="tile ${b.toMark?'act':''}"><dt>To mark</dt><dd>${b.toMark}</dd>
+      <small>On ASG-0142</small></div>
+    <div class="tile"><dt>Roster</dt><dd>${b.roster}</dd><small>All active</small></div>
+  </dl>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Sessions to come</h2>
+      <span class="sub">${upcoming.length} scheduled</span></div></div>
+    <div class="rows">${upcoming.map(s=>sessionRow(s)).join('')}</div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Delivered</h2>
+      <span class="sub">Set work or attach a recording against any of these</span></div></div>
+    <div class="rows">${past.map(s=>`
+      <div class="row">
+        <div class="datechip past"><b>${s.d}</b><span>${s.m}</span></div>
+        <div class="lead"><b>${s.title}</b>
+          <span>${s.day} ${s.d} ${s.m} · ${s.att} present</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${s.code} · ${s.topic}</span></div>
+        <div class="trail">
+          <div class="btnrow" style="justify-content:flex-end">
+            ${s.asg
+              ? `<a class="btn sm sec" href="#/grade">${svg(I.task,15)} ${s.asg}</a>`
+              : `<a class="btn sm sec" href="#/assign">${svg(I.plus,15)} Set work</a>`}
+            ${s.rec
+              ? `<span class="pill ok">${svg(I.play,12)} Recording</span>`
+              : `<a class="btn sm pri" href="#/recording">${svg(I.play,15)} Add video</a>`}
+          </div>
+        </div></div>`).join('')}</div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Roster</h2>
+      <span class="sub">Showing 8 of ${b.roster}</span></div></div>
+    <div class="rows">
+      ${ROSTER.map(r=>`<div class="row">
+        <div class="lead"><b>${r.n}</b>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${r.c}</span></div>
+        <div class="trail"><span class="sub">3 of 4 submitted</span></div></div>`).join('')}
+    </div>
+  </div>
+
+  ${rule('What is <b>not</b> on this screen: the price this cohort pays, anyone’s ledger, or the contract behind a college batch. A trainer reads batches through the same service an admin does, so the projection that drops commercial fields is the thing that has to be right — and tested.')}`;
+};
+
+/* ── 3. Sessions ──────────────────────────────────────────────────────── */
+V['#/sessions']=()=>{
+  const today=SESSIONS.filter(s=>s.state==='today');
+  const ahead=SESSIONS.filter(s=>s.state==='scheduled');
+  const past=SESSIONS.filter(s=>s.state==='delivered');
+  return `
+  ${head('Sessions','Everything you are teaching',
+    'Across every batch. A session is the unit that actually happens on a day — attendance, the recording and any assignment all hang off it.')}
+
+  <div class="tabsrow" role="tablist">
+    <button role="tab" aria-selected="true" type="button">All</button>
+    <button role="tab" aria-selected="false" type="button">BTC-DS-OCT-A</button>
+    <button role="tab" aria-selected="false" type="button">BTC-SNC-DS-01</button>
+    <button role="tab" aria-selected="false" type="button">Needs something</button>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Today</h2>
+      <span class="sub">Tue 16 September</span></div></div>
+    <div class="rows">${today.map(s=>sessionRow(s)).join('')}</div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Coming up</h2></div></div>
+    <div class="rows">${ahead.map(s=>sessionRow(s)).join('')}</div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Delivered</h2>
+      <span class="sub">Newest first</span></div></div>
+    <div class="rows">${past.map(s=>sessionRow(s)).join('')}</div>
+  </div>`;
+};
+
+V['#/session']=()=>{
+  const s=SESSIONS[0];
+  return `
+  <a class="back" href="#/sessions">${svg(I.back,16)} Sessions</a>
+  ${head('Session · '+s.code,s.title,`${s.batch} · ${s.topic} · ${s.day} ${s.d} ${s.m}, ${s.t}`)}
 
   <div class="card">
     <div class="sechead"><h2>Delivery</h2><span class="pill warn">Scheduled</span></div>
     <dl class="kv">
-      <div><dt>Mode</dt><dd>Online · Zoom</dd></div>
-      <div><dt>Roster</dt><dd>18 students</dd></div>
-      <div><dt>Topic</dt><dd>Topic 6 · Modelling</dd></div>
+      <div><dt>Mode</dt><dd>${s.mode} · ${s.place}</dd></div>
+      <div><dt>Roster</dt><dd>${s.roster} students</dd></div>
+      <div><dt>Topic</dt><dd>${s.topic}</dd></div>
     </dl>
     <div class="btnrow" style="margin-top:16px">
       <button class="btn go" type="button">${svg(I.check,17)} Mark delivered</button>
-      <a class="btn sec" href="#/schedule">Request a reschedule</a>
+      <a class="btn sec" href="#/availability">Request a reschedule</a>
     </div>
-    <p class="sub" style="margin-top:12px">Marking it delivered is what opens the three things
-      below. Until then they are closed, not hidden — a trainer should be able to see what is
-      coming.</p>
+    <p class="sub" style="margin-top:12px">Marking it delivered opens the three below. Until then
+      they are closed, not hidden — a trainer should be able to see what is coming.</p>
   </div>
 
   <div class="card">
     <div class="sechead"><h2>Attendance</h2><span class="pill mute">Opens once delivered</span></div>
-    <p class="sub">18 students. Nothing recorded yet.</p>
+    <p class="sub">${s.roster} students. Nothing recorded yet.</p>
     <div class="btnrow" style="margin-top:14px">
-      <a class="btn sec" href="#/attendance">Open the roster</a>
-    </div>
+      <a class="btn sec" href="#/attendance">${svg(I.users,16)} Open the roster</a></div>
   </div>
 
   <div class="card">
     <div class="sechead"><h2>Recording</h2><span class="pill mute">Opens once delivered</span></div>
-    <div class="field"><label for="rec-url">YouTube link</label>
-      <input id="rec-url" type="url" placeholder="https://youtu.be/…" disabled>
-      <span class="hint">Attach it after the session. Students see it once it is published.</span></div>
+    <p class="sub">Students see the video once it is published, and only for a session that was
+      marked delivered.</p>
+    <div class="btnrow" style="margin-top:14px">
+      <a class="btn sec" href="#/recording">${svg(I.play,16)} Add a YouTube link</a></div>
   </div>
 
   <div class="card">
     <div class="sechead"><h2>Assignment</h2><span class="pill mute">Opens once delivered</span></div>
-    <p class="sub">No assignment set against this session yet.</p>
+    <p class="sub">No work set against this session yet.</p>
     <div class="btnrow" style="margin-top:14px">
-      <button class="btn sec" type="button" disabled>${svg(I.plus,16)} Set an assignment</button>
+      <a class="btn sec" href="#/assign">${svg(I.plus,16)} Set an assignment</a></div>
+  </div>
+
+  ${rule('A session must be <b>marked delivered</b> before an assignment or a recording can hang off it — invariant 10. That single act is what unlocks the rest of this screen, which is why it is the only primary button on it.')}`;
+};
+
+/* ── Setting work against a delivered session ─────────────────────────── */
+V['#/assign']=()=>`
+  <a class="back" href="#/batch">${svg(I.back,16)} Batch</a>
+  ${head('New assignment','Set work for BTC-DS-OCT-A',
+    'Against “Pandas: reshaping and joins”, delivered Thu 11 Sep. Published work reaches all 18 students on the roster.')}
+
+  <div class="card">
+    <div class="sechead"><h2>The assignment</h2></div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="as-title">Title</label>
+        <input id="as-title" type="text" placeholder="Clean the retail transactions dataset"></div>
+      <div class="field"><label for="as-brief">What to do</label>
+        <textarea id="as-brief" placeholder="What you want back, and what the marks are for."></textarea>
+        <span class="hint">Students read this as written. Say what is being assessed.</span></div>
+      <div class="grid2">
+        <div class="field"><label for="as-due">Due</label>
+          <input id="as-due" type="datetime-local" value="2026-09-19T18:00"></div>
+        <div class="field"><label for="as-marks">Out of</label>
+          <input id="as-marks" type="number" min="1" max="100" value="20"></div>
+      </div>
+      <div class="field"><label for="as-sess">Against which session</label>
+        <select id="as-sess">
+          <option>SES-0415 · Pandas: reshaping and joins · 11 Sep</option>
+          <option>SES-0412 · Reading messy data · 09 Sep</option>
+          <option>SES-0409 · NumPy foundations · 04 Sep</option>
+        </select>
+        <span class="hint">Only delivered sessions appear. One still to come cannot carry work.</span></div>
+    </div>
+    <div class="btnrow" style="margin-top:18px">
+      <button class="btn pri" type="button">Publish to the batch</button>
+      <button class="btn sec" type="button">Save as draft</button>
+    </div>
+  </div>
+
+  ${rule('Publishing is what students see — a draft is yours alone. Closing an assignment later stops submission but <b>keeps it visible</b>, because a student needs to see what they missed.')}`;
+
+V['#/recording']=()=>`
+  <a class="back" href="#/batch">${svg(I.back,16)} Batch</a>
+  ${head('Recording','Pandas: reshaping and joins',
+    'BTC-DS-OCT-A · SES-0415 · delivered Thu 11 Sep. Outstanding for two days.')}
+
+  <div class="card">
+    <div class="sechead"><h2>Attach the video</h2><span class="pill warn">Not attached</span></div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="rc-url">YouTube link</label>
+        <input id="rc-url" type="url" placeholder="https://youtu.be/…">
+        <span class="hint">A link, not an upload. Video is hosted on YouTube — nothing is stored
+          here, so an unlisted link is the right kind to paste.</span></div>
+      <div class="field"><label for="rc-title">Title students see</label>
+        <input id="rc-title" type="text" value="Pandas: reshaping and joins — 11 Sep"></div>
+      <div class="field">
+        <label for="rc-pub" style="display:flex;align-items:center;gap:10px">
+          <input id="rc-pub" type="checkbox" checked style="width:auto">
+          Publish to the batch now</label>
+        <span class="hint">Unpublished, it is attached but nobody can watch it yet.</span></div>
+    </div>
+    <div class="btnrow" style="margin-top:18px">
+      <button class="btn pri" type="button">${svg(I.link,16)} Attach recording</button>
+      <a class="btn sec" href="#/batch">Cancel</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Already attached on this batch</h2></div>
+    <div class="rows" style="margin:0 -18px -18px">
+      ${SESSIONS.filter(s=>s.rec).map(s=>`<div class="row">
+        <div class="lead"><b>${s.title}</b><span>${s.day} ${s.d} ${s.m}</span></div>
+        <div class="trail"><span class="pill ok">${svg(I.play,12)} Published</span></div></div>`).join('')}
     </div>
   </div>`;
 
@@ -582,121 +906,8 @@ V['#/attendance']=()=>{
   ${rule('Two checks authorise every mark here, not one: <b>is this session mine</b>, and <b>is this student on its roster</b>. The first alone would let a trainer mark any student against their own session; the second alone would let any trainer of the cohort write against a session they did not deliver.')}`;
 };
 
-V['#/schedule']=()=>`
-  ${head('Schedule','Week of 15 September',
-    'Your sessions, and the time you have declared away. Ops sees the same picture when they look for someone to take a batch.')}
-
-  <div class="card">
-    <div class="sechead"><h2>This week</h2><span class="sub">5 sessions · 1 day away</span></div>
-    <div class="week">
-      ${WEEK.map(d=>`<div class="d${d.leave?' leave':''}">
-        <div class="dh">${d.day}<b>${d.d}</b></div>
-        ${d.ev.map(e=>`<div class="ev ${e.k}">${e.t}</div>`).join('')}
-        ${d.leave?`<div class="lv">${d.leave}</div>`:''}
-      </div>`).join('')}
-    </div>
-  </div>
-
-  <div class="card tight">
-    <div class="card pad0"><div class="sechead"><h2>Next up</h2></div></div>
-    <div class="rows">
-      <div class="row tap" onclick="location.hash='#/session'">
-        <div class="datechip today"><b>16</b><span>Sep</span></div>
-        <div class="lead"><b>Feature engineering for tabular data</b>
-          <span>10:00 – 13:00 · Online · Zoom</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
-        <div class="trail"><span class="pill ok">Today</span></div></div>
-      <div class="row">
-        <div class="datechip today"><b>16</b><span>Sep</span></div>
-        <div class="lead"><b>Joins and reshaping, practical</b>
-          <span>14:30 – 17:30 · Offline · Kochi · Room 2</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-SNC-DS-01</span></div>
-        <div class="trail"><span class="pill ok">Today</span></div></div>
-      <div class="row">
-        <div class="datechip"><b>18</b><span>Sep</span></div>
-        <div class="lead"><b>Model evaluation and cross-validation</b>
-          <span>10:00 – 13:00 · Online · Zoom</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
-        <div class="trail"><span class="pill info">Scheduled</span></div></div>
-      <div class="row">
-        <div class="datechip past"><b>11</b><span>Sep</span></div>
-        <div class="lead"><b>Pandas: reshaping and joins</b>
-          <span>10:00 – 13:00 · delivered</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
-        <div class="trail"><span class="pill warn">Recording due</span></div></div>
-    </div>
-  </div>`;
-
-V['#/batches']=()=>`
-  ${head('Batches','Cohorts you teach',
-    'Reached through your confirmed assignments. A batch you were released from keeps its history but stops accepting new work from you.')}
-  <div class="card tight"><div class="rows">
-    ${BATCHES.map(b=>`<div class="row tap" onclick="location.hash='#/batch'">
-      <div class="lead"><b>${b.course}</b>
-        <span>${b.kind} · ${b.roster} students · next ${b.next}</span>
-        <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${b.code}</span></div>
-      <div class="trail">
-        <span class="pill ${b.status==='Completed'?'mute':'ok'}">${b.status}</span>
-        <span class="sub">${b.done} of ${b.total} sessions</span>
-      </div></div>`).join('')}
-  </div></div>
-  ${rule('No <b>Students</b> entry in the nav, deliberately. A trainer reaches a student through a roster, which is also the only place the permission question has an answer — “which of these may I write about” is always “the ones on my rosters”.')}`;
-
-V['#/batch']=()=>`
-  <a class="back" href="#/batches">${svg(I.back,16)} Batches</a>
-  ${head('BTC-DS-OCT-A','Data Science & Analytics','Retail cohort · 18 students · 11 of 24 sessions delivered')}
-
-  <div class="card">
-    <dl class="stats">
-      <div><dt>Roster</dt><dd>18</dd></div>
-      <div><dt>Delivered</dt><dd>11 / 24</dd></div>
-      <div><dt>Attendance</dt><dd>—</dd></div>
-      <div><dt>Submissions graded</dt><dd>12 / 18</dd></div>
-    </dl>
-    <div class="meter"><i style="width:46%"></i></div>
-    <p class="sub" style="margin-top:10px">Attendance shows a dash rather than 0% — nothing has
-      been recorded for this batch yet, and 0% would read as “nobody came”.</p>
-  </div>
-
-  <div class="card tight">
-    <div class="card pad0"><div class="sechead"><h2>Roster</h2>
-      <span class="sub">Showing 8 of 18</span></div></div>
-    <div class="rows">
-      ${ROSTER.map(r=>`<div class="row">
-        <div class="lead"><b>${r.n}</b>
-          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${r.c}</span></div>
-        <div class="trail"><span class="sub">3 of 4 submitted</span></div></div>`).join('')}
-    </div>
-  </div>
-
-  ${rule('What is <b>not</b> on this screen: the price this cohort pays, anyone’s ledger, or the contract behind the college batch. A trainer reads batches through the same service an admin does, so the projection that drops commercial fields is the thing that has to be right — and tested.')}`;
-
-V['#/work']=()=>`
-  ${head('Work','Assignments and marking',
-    'Set against sessions you have delivered. Six submissions are waiting.')}
-  <div class="card tight"><div class="rows">
-    ${WORK.map(w=>`<div class="row tap" onclick="location.hash='#/grade'">
-      <div class="lead"><b>${w.title}</b>
-        <span>${w.batch} · ${w.due}</span>
-        <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${w.code}</span></div>
-      <div class="trail">
-        ${w.state==='grading'?`<span class="pill warn">${w.pending} to grade</span>`
-          :w.state==='open'?'<span class="pill info">Open</span>'
-          :'<span class="pill ok">Done</span>'}
-        <span class="sub">${w.of} students</span>
-      </div></div>`).join('')}
-  </div></div>
-  <div class="card">
-    <div class="sechead"><h2>Set a new assignment</h2></div>
-    <p class="sub">Only against a session that has been marked delivered. Sessions still to come
-      do not appear in the list.</p>
-    <div class="btnrow" style="margin-top:14px">
-      <button class="btn pri" type="button">${svg(I.plus,16)} New assignment</button>
-    </div>
-  </div>`;
-
 V['#/grade']=()=>`
-  <a class="back" href="#/work">${svg(I.back,16)} Work</a>
+  <a class="back" href="#/batch">${svg(I.back,16)} Batch</a>
   ${head('Marking · ASG-0142','Clean the retail transactions dataset',
     'BTC-DS-OCT-A · out of 20 · 6 of 18 submitted, 1 graded')}
 
@@ -707,10 +918,8 @@ V['#/grade']=()=>`
       ${SUBMISSIONS.map(s=>`<div class="row">
         <div class="lead"><b>${s.n}</b><span>${s.when}</span>
           <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${s.c}</span></div>
-        <div class="trail">
-          ${s.mark?`<span class="pill ok">${s.mark}</span>`
-            :'<button class="btn sm pri" type="button">Grade</button>'}
-        </div></div>`).join('')}
+        <div class="trail">${s.mark?`<span class="pill ok">${s.mark}</span>`
+            :'<button class="btn sm pri" type="button">Grade</button>'}</div></div>`).join('')}
     </div>
   </div>
 
@@ -733,9 +942,33 @@ V['#/grade']=()=>`
 
   ${rule('<b>Grading has no endpoint yet either.</b> <code>assignment_submissions</code> carries marks_awarded, feedback, graded_by and graded_at, and nothing in the API writes them. The student portal shows a student their marks and feedback — this is where those would have to come from.','gap')}`;
 
-V['#/availability']=()=>`
-  ${head('Availability','Time you are away',
-    'This is not a private calendar. Free and busy is computed from your committed sessions plus what you declare here, and that is what Ops reads when they look for someone to take a batch.')}
+/* ── 4. Availability — a month, not a list ────────────────────────────── */
+V['#/availability']=()=>{
+  const cells=[];
+  for(let i=0;i<CAL.lead;i++) cells.push('<div class="c dim"></div>');
+  for(let d=1;d<=CAL.days;d++){
+    const ev=CAL.events[d]||[];
+    const lv=CAL.leave[d];
+    cells.push(`<div class="c${d===CAL.today?' today':''}${lv?' leave':''}">
+      <span class="n">${d}</span>
+      ${ev.map(e=>`<span class="e ${e.k||''}">${e.t}</span>`).join('')}
+      ${lv?`<span class="lv">${lv}</span>`:''}</div>`);
+  }
+  return `
+  ${head('Availability',CAL.month,
+    'Your sessions and the time you have declared away, on one calendar. This is not a private diary — Ops reads the same picture when they look for someone to take a batch.')}
+
+  <div class="card">
+    <div class="sechead"><h2>${CAL.month}</h2>
+      <div class="btnrow"><button class="btn sm sec" type="button">‹ Aug</button>
+        <button class="btn sm sec" type="button">Oct ›</button></div></div>
+    <div class="calhead">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')}</div>
+    <div class="cal">${cells.join('')}</div>
+    <div class="barkey">
+      <span>${svg(I.cal,13)} A session you are teaching</span>
+      <span>Shaded — time you have declared away</span>
+    </div>
+  </div>
 
   <div class="card">
     <div class="sechead"><h2>Declare time away</h2></div>
@@ -760,20 +993,18 @@ V['#/availability']=()=>`
     <div class="card pad0"><div class="sechead"><h2>Declared</h2></div></div>
     <div class="rows">
       ${LEAVE.map(l=>`<div class="row">
-        <div class="lead"><b>${l.from}${l.to&&l.to!==l.from?` – ${l.to}`:''}</b>
-          <span>${l.why}</span>
+        <div class="lead"><b>${l.from}${l.to?` – ${l.to}`:''}</b><span>${l.why}</span>
           ${l.clash?`<span style="color:var(--warning-s)">${l.clashWith}</span>`:''}</div>
-        <div class="trail">
-          <span class="pill ${l.type==='Blocked'?'mute':'info'}">${l.type}</span>
-          ${l.clash?'<span class="pill warn">Collides</span>':''}
-        </div></div>`).join('')}
+        <div class="trail"><span class="pill ${l.type==='Blocked'?'mute':'info'}">${l.type}</span>
+          ${l.clash?'<span class="pill warn">Collides</span>':''}</div></div>`).join('')}
     </div>
   </div>
 
   ${rule('Declaring leave <b>changes what the operations team is allowed to do</b> — invariant 8 computes free/busy from sessions plus this, and the trainer picker reads it. A collision with a confirmed session cannot silently succeed, so it is said here, at the point of declaring, rather than discovered by Ops later.')}`;
+};
 
+/* ── the rest ─────────────────────────────────────────────────────────── */
 V['#/invitations']=()=>{
-  const p=me();
   if(SEG!=='freelance') return `
     ${head('Invitations','Nothing to answer')}
     <div class="absent">
@@ -781,11 +1012,11 @@ V['#/invitations']=()=>{
       <p>Batches are allocated to you rather than offered. When Ops puts you on a cohort it is
          confirmed there and then, and it appears in your schedule — there is nothing to accept.</p>
     </div>
-    ${rule('In the shipped portal this entry is <b>not in the navigation at all</b> for an in-house trainer, the same way Fees is absent for a college student. An in-house assignment is created CONFIRMED because they are staff, not a counterparty — so there is no proposal to answer.')}`;
+    ${rule('In the shipped portal this entry is <b>not in the navigation at all</b> for an in-house trainer. Their assignment is created CONFIRMED because they are staff, not a counterparty — so there is no proposal to answer, and an empty inbox would imply one might arrive.')}`;
 
   return `
   ${head('Invitations','Batches proposed to you',
-    'Accepting makes it committed delivery and puts every session in your schedule. Declining asks for a reason, so Ops can propose someone else knowingly.')}
+    'Accepting makes it committed delivery and puts every session in your calendar. Declining asks for a reason, so Ops can propose someone else knowingly.')}
   ${INVITES.map(v=>`<div class="card">
     <div class="sechead"><h2>${v.course}</h2><span class="pill warn">Awaiting your answer</span></div>
     <dl class="kv">
@@ -898,9 +1129,9 @@ function paint(){
        ${svg(I.bell,21)}${unread?`<span class="dot">${unread}</span>`:''}</a>
      <a class="bellbtn" href="#/account" aria-label="Account">${svg(I.acct,21)}</a>`;
 
-  /* Five on a phone. Availability, Invitations, Updates and Account are behind
-     More — a trainer marking attendance is standing in a room holding a phone,
-     and five is what a thumb reaches. */
+  /* Five on a phone. Invitations, Updates and Account sit behind More — a
+     trainer marking attendance is standing in a room holding a phone, and five
+     is what a thumb reaches. */
   const phone=[...visible.filter(n=>!n.deskOnly),{h:'#/more',l:'More',i:'more'}];
   document.getElementById('tabs').innerHTML=phone.map(n=>
     `<a class="${hash===n.h?'on':''}" href="${n.h}">${svg(I[n.i],21)}<span>${n.l}</span></a>`).join('');

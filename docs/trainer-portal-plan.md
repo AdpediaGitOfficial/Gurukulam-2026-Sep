@@ -196,32 +196,40 @@ are still nominally teaching will simply not turn up.
 
 ## 3. The navigation
 
-### 3.1 Six entries, and what each answers
+### 3.1 Four sections, and what each answers
 
 A trainer opens this to answer a question, not to survey an estate. The rail
 reads as the day: what is happening now, what is coming, who it is for.
 
 | Entry | The question it answers |
 | --- | --- |
-| **Today** | What am I teaching today, where, and what do I have to do about it — mark it delivered, take attendance, attach the recording |
-| **Schedule** | What is coming, across weeks. The calendar the admin already has, seen from inside one trainer |
-| **Batches** | The cohorts I teach — roster, progress, how far through the course |
-| **Work** | Assignments to set, and submissions to grade |
-| **Availability** | Declare leave and blocked time. §2.3 — this is a write that changes what Ops can do |
+| **Dashboard** | How is delivery going — sessions delivered, hours taught, what is waiting to be marked, and which cohort is below its certificate floor. Plus the next session, because that is still the first question |
+| **Batches** | The cohorts I teach. A summary, then every batch; open one for its sessions, its roster, and the work set against each delivered session |
+| **Sessions** | Every session across every batch, flat. Today, coming up, delivered — and what each one still needs |
+| **Availability** | A month calendar of what I am teaching and what I have declared away. §2.3 — this is a write that changes what Ops can do |
 | **Invitations** | Batches proposed to me, to accept or decline. **Freelancers only** (§2.5) |
 
 Then, off the main list: **Updates** and **Account**.
 
-**Why Today is separate from Schedule.** They are different questions, and the
-merged version answers neither well: a calendar that opens on the month makes
-"am I teaching in twenty minutes, and where" a scroll away, and a day view makes
-"am I free on the 23rd" impossible. The console's own batch page has the same
-split — sessions upcoming vs delivered.
+**Why Batches and Sessions are both there.** They answer different questions and
+the same rows serve both. "How is BTC-SNC-DS-01 going" is a batch question —
+progress, roster, attendance against the floor. "What still needs a recording"
+is a session question that cuts across batches. Folding either into the other
+makes one of them a filter away.
+
+**Setting work and attaching a recording live on the session**, reached from
+either — from the batch's delivered list, or from the session itself. Both are
+gated on the session being marked delivered (invariant 10), which is why the
+session screen shows them closed rather than hidden.
+
+**Marking is not a section.** A submission belongs to the assignment, which
+belongs to the session. The dashboard carries the backlog count and links
+straight to it; a top-level Work entry would be the sessions list with a second
+purpose.
 
 **Why attendance is not an entry.** Attendance belongs to a session, not to the
-trainer. It is reached from the session on Today or Schedule, in the moment it
-is taken. A top-level Attendance entry would be a list of sessions with a second
-purpose, which is the same list twice.
+trainer. It is reached from the session, in the moment it is taken. A top-level
+Attendance entry would be the sessions list with a second purpose.
 
 **Why there is no Students entry.** A trainer's relationship with a student is
 through a batch (§2.1). A flat student list would have to answer "which of these
@@ -230,8 +238,8 @@ roster is the honest place to reach them.
 
 ### 3.2 On a phone
 
-Five tabs, same limit as the student portal: **Today · Schedule · Batches ·
-Work · More**. Availability, Invitations, Updates and Account live under More.
+Five tabs, same limit as the student portal: **Dashboard · Batches · Sessions ·
+Availability · More**. Invitations, Updates and Account live under More.
 A trainer marking attendance is standing in a room, on a phone, which puts a
 harder floor under tap targets than the console's 44px.
 

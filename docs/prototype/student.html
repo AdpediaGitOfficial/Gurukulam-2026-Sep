@@ -217,6 +217,10 @@ ul{padding:0;list-style:none}
 .rule{display:flex;gap:10px;padding:13px 16px;border-radius:var(--r-well);
   background:#1f2937;color:#e5e7eb;font-size:13px;line-height:19px}
 .rule b{color:var(--accent);font-weight:700}
+/* Amber marks a GAP — something the product does not do yet — as against the
+   blue-grey rules, which explain a rule it already enforces. */
+.rule.gap{background:#2a1a12;color:#f0e3da}
+.rule.gap b,.rule.gap svg{color:var(--accent)}
 .rule svg{flex-shrink:0;margin-top:2px;color:var(--accent)}
 
 .grid2{display:grid;grid-template-columns:1fr;gap:14px}
@@ -249,11 +253,11 @@ ul{padding:0;list-style:none}
 
 <div class="protobar">
   <b>Prototype</b>
-  <p>Static screens, no back end. Switch the segment to see the two rules that make a college
-     student's portal different — not smaller.</p>
+  <p>Static screens, no back end. The portal is for <b>retail students only</b> — switch the
+     segment to see what a college student gets instead.</p>
   <div class="segswitch" role="group" aria-label="View as">
     <button id="seg-retail" type="button" onclick="setSeg('retail')">Retail student</button>
-    <button id="seg-college" type="button" onclick="setSeg('college')">College student</button>
+    <button id="seg-college" type="button" onclick="setSeg('college')">College student — no access</button>
   </div>
 </div>
 
@@ -414,7 +418,7 @@ const head=(eyebrow,title,note)=>`<div class="pagehead">
   <span class="eyebrow">${eyebrow}</span><h1>${title}</h1>
   ${note?`<p>${note}</p>`:''}</div>`;
 
-const rule=(text)=>`<div class="rule">${svg(I.info,18)}<div>${text}</div></div>`;
+const rule=(text,kind='')=>`<div class="rule ${kind}">${svg(kind==='gap'?I.warn:I.info,18)}<div>${text}</div></div>`;
 
 function sessionRow(s,link){
   const off=s.state==='cancelled';
@@ -440,6 +444,38 @@ function sessionRow(s,link){
 
 /* ------------------------------ screens ------------------------------- */
 const V={};
+
+/* ── the decision, as a screen ────────────────────────────────────────────
+   A college student does not get a portal. Their institution enrols them, is
+   billed for them, and collects their certificate — so there was never a page
+   here that was theirs to read.
+
+   Shown as a sign-in refusal rather than an empty shell, because a refusal is
+   what the person would actually meet. */
+V['#!noaccess']=()=>{
+  const p=me();
+  return `
+  ${head('Sign in','Your college manages your training')}
+  <div class="absent">
+    <h3>${p.college} holds your record</h3>
+    <p>You were enrolled by your institution, it is billed for your course, and it collects
+       your certificate. There is no separate student account for you — your schedule,
+       materials and results all come through your college.</p>
+    <p style="margin-top:14px"><b>Ask your placement office</b> for your timetable, session
+       recordings or your certificate.</p>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>What a retail student sees instead</h2></div>
+    <p class="sub">Switch the segment above to walk the portal as Aarav Menon — a walk-in who
+      negotiated his own price, pays his own instalments and downloads his own certificate.
+      Every screen there exists because he is the one we deal with directly.</p>
+  </div>
+
+  ${rule('This replaces the earlier design, where a college student signed in and found <b>Fees</b> absent and their certificate held by the college. Removing the account is cleaner than a portal with the two things a student most wants taken out of it — and it matches how the engagement actually runs: <b>the college is the customer</b>.')}
+
+  ${rule('Two consequences to settle. <b>Allocation issues credentials for both segments today</b> — the code says so in a comment, and that has to change. And a trainer can still set an assignment against a college cohort, which would now have nowhere for those students to submit it.','gap')}`;
+};
 
 V['#/']=()=>{
   const p=me();
@@ -773,7 +809,9 @@ function paint(){
   document.getElementById('tabs').innerHTML=navFor('tabs').map(n=>
     `<a class="${hash===n.h?'on':''}" href="${n.h}">${svg(I[n.i],21)}<span>${n.l}</span></a>`).join('');
 
-  const render=V[hash]||V['#/'];
+  // One gate, not a check on every screen. A college student has no portal at
+  // all, so nothing past this point is theirs to read.
+  const render=(SEG==='college')?V['#!noaccess']:(V[hash]||V['#/']);
   document.getElementById('view').innerHTML=render()
     +`<p class="foot">Gurukulam TMS · student portal prototype · static screens, no back end</p>`;
   window.scrollTo(0,0);

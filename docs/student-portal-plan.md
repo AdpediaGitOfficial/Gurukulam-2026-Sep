@@ -55,7 +55,32 @@ The duplicated query logic is real and is the price. It is bounded — the reads
 are simple, and the *rules* (which batch is mine, which assignment is published)
 stay in one service each.
 
-### 1.2 The retail/college split runs through the portal, not around it
+### 1.2 The portal is for RETAIL students only
+
+**Decided: a college student gets no portal account at all.**
+
+The reasoning is the engagement, not the screens. A college enrols its own
+students, is billed for them under its contract, and collects their
+certificates. Strip fees and certificate download out of a student portal — as
+invariants 3 and 7 require — and what is left is a schedule and some
+recordings, for a person who is not our customer and whose institution already
+holds everything.
+
+Two consequences, both of which need action rather than agreement:
+
+- **Allocation issues credentials for both segments today.** The comment in
+  `allocation.service.ts` says so explicitly — *"Issued for BOTH segments: a
+  college student still needs the schedule, materials and recordings"*. That is
+  now wrong, and `issueCredentials` has to be gated on segment.
+- **A trainer can still set an assignment against a college cohort**, and those
+  students would have nowhere to submit it. Either college batches do not use
+  assignments, or submission goes through the college portal, or it is
+  collected offline. **Unresolved** — see §6.
+
+What follows in §1.3 is kept because it is still the rule the API enforces, and
+because the college portal will meet the same two invariants when it is built.
+
+### 1.3 The retail/college split runs through the product, if not the portal
 
 Two invariants become visible features rather than internal rules:
 
@@ -376,6 +401,8 @@ landing page, not a dashboard of metrics — a student has no fleet to survey.
 | **No file storage** | Assignment uploads, certificate PDFs | v1 submissions are a link plus text |
 | **Attendance has no writer** | The attendance view renders empty | Lands with the admin or trainer attendance UI |
 | **No job application record** | "Applied" state, admin visibility of interest | Schema addition. Worth deciding alongside the Naukri feed |
+| **Assignments on a college cohort have no submitter** | A trainer can set work for a batch whose students have no account (§1.2) | **Unresolved.** Either college batches do not use assignments, submission goes through the college portal, or it is collected offline |
+| **Allocation still issues college credentials** | The decision in §1.2 | `allocation.service.ts` — gate `issueCredentials` on segment |
 | **No `emit()` beside `sweep()`** | Every session and assignment notice in §4 | The engine only evaluates conditions. Events need writing at the moment they happen |
 | **`reminder_sent_flag` is a boolean** | The 5-day reminder ladder | §4.3 — needs `fee_installment_reminders`, keyed on (installment, offset) so the nightly run stays idempotent |
 
