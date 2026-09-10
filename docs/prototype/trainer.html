@@ -1,0 +1,916 @@
+<title>Gurukulam Trainer Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* Tokens are the console's — brand-guidelines.md §1 — with one substitution:
+   the rail. Google green #34A853 is a LIGHT surface. White on it measures
+   3.05:1 and fails AA for a 14px nav label, so everything sitting on the rail
+   is dark, and what goes there is named here rather than left as opacities
+   over white. Same treatment the student portal's yellow rail needed, which
+   makes the two portals a family: the admin rail is dark with light text,
+   both portal rails are light with dark text. */
+:root{
+  --canvas:#f8f9fa; --surface:#fff; --sunken:#f8f9fa; --muted:#ebebeb; --soft:#fffbf2;
+  --hairline:#dfeeff; --hairline-strong:#758fab;
+  --ink:#191c1d; --ink-muted:#524533; --ink-subtle:#6b7280; --on-accent:#5c3d00;
+  --brand:#0058bb; --accent:#f9ab00; --accent-glow:#ffddb0; --gold:#805600;
+
+  --rail:#34a853;                    /* Google green */
+  --on-rail:#0d2415;                 /* 5.4:1 — resting labels */
+  --on-rail-strong:#05170c;          /* 6.1:1 — selection, headings, icons */
+  --rail-hover:rgb(5 23 12/.10); --rail-active:rgb(5 23 12/.18);
+  --rail-line:rgb(5 23 12/.20);
+
+  --success:#16a34a; --success-s:#166534; --warning:#ea580c; --warning-s:#9a3412;
+  --danger:#ba1a1a; --danger-soft:#ffedea;
+  --r-chip:4px; --r-control:8px; --r-tile:12px; --r-well:16px; --r-card:24px;
+  --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  --ease:cubic-bezier(.2,0,0,1);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:24px;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+h1,h2,h3,h4,p,ul,ol{margin:0}
+ul{padding:0;list-style:none}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ── prototype chrome, not the product's ──────────────────────────────── */
+.protobar{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;
+  padding:10px 20px;background:var(--ink);color:#fff;font-size:13px;line-height:18px}
+.protobar b{font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--rail)}
+.protobar p{color:rgb(255 255 255/.72);margin:0;max-width:50ch}
+.segswitch{display:flex;gap:2px;margin-left:auto;padding:3px;border-radius:9999px;background:rgb(255 255 255/.12)}
+.segswitch button{padding:5px 14px;border-radius:9999px;font-size:12px;font-weight:600;
+  color:rgb(255 255 255/.75);white-space:nowrap}
+.segswitch button[aria-pressed="true"]{background:var(--rail);color:var(--on-rail-strong)}
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+.shell{min-height:100dvh;display:flex;flex-direction:column}
+.side{display:none}
+.main{flex:1;min-width:0;padding:20px 16px 96px}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+
+.topbar{display:flex;align-items:center;gap:14px;padding:14px 16px;
+  background:var(--rail);color:var(--on-rail-strong);position:sticky;top:0;z-index:40}
+.topbar .mark{width:38px;height:38px;flex-shrink:0;display:grid;place-items:center;
+  border-radius:var(--r-tile);background:var(--on-rail-strong);color:var(--rail)}
+.topbar .who{min-width:0;flex:1}
+.topbar .who b{display:block;font-size:15px;font-weight:700;line-height:20px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .who span{display:block;font-size:11px;font-weight:600;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--on-rail)}
+.bellbtn{position:relative;width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;
+  border-radius:9999px;color:var(--on-rail-strong)}
+.bellbtn:hover{background:var(--rail-hover)}
+.bellbtn .dot{position:absolute;top:5px;right:5px;min-width:17px;height:17px;padding:0 4px;
+  border-radius:9999px;background:var(--ink);color:#fff;
+  font-size:10px;font-weight:700;line-height:17px;text-align:center}
+
+.tabs{position:fixed;inset:auto 0 0 0;z-index:50;display:flex;
+  background:var(--surface);border-top:1px solid var(--hairline);
+  padding-bottom:env(safe-area-inset-bottom,0)}
+.tabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 8px;
+  color:var(--ink-subtle);font-size:10px;font-weight:600}
+.tabs a.on{color:var(--success-s)}
+.tabs a.on svg{stroke-width:2}
+
+@media (min-width:900px){
+  .shell{flex-direction:row}
+  .topbar,.tabs{display:none}
+  .side{display:flex;flex-direction:column;gap:4px;width:238px;flex-shrink:0;
+    padding:22px 12px;background:var(--rail);color:var(--on-rail-strong);
+    position:sticky;top:0;height:100dvh;overflow-y:auto}
+  .side .brandmark{display:flex;align-items:center;gap:12px;padding:0 8px 18px}
+  .side .brandmark i{width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;
+    border-radius:var(--r-tile);background:var(--on-rail-strong);color:var(--rail)}
+  .side .brandmark b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;line-height:20px}
+  .side .brandmark span{display:block;font-size:10px;font-weight:700;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--on-rail)}
+  .side a.nav{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;
+    border-radius:var(--r-tile);color:var(--on-rail);font-size:14px;font-weight:500}
+  .side a.nav:hover{background:var(--rail-hover);color:var(--on-rail-strong)}
+  .side a.nav.on{background:var(--rail-active);color:var(--on-rail-strong);font-weight:700}
+  .side a.nav .count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:9999px;
+    background:var(--on-rail-strong);color:var(--rail);font-size:11px;font-weight:700;
+    line-height:20px;text-align:center}
+  .side .sidefoot{margin-top:auto;padding-top:12px;border-top:1px solid var(--rail-line)}
+  .side .me{display:flex;align-items:center;gap:10px;padding:10px 12px;min-width:0}
+  .side .me .av{width:36px;height:36px;flex-shrink:0;border-radius:9999px;display:grid;place-items:center;
+    background:var(--surface);color:var(--success-s);font-weight:700;font-size:13px}
+  .side .me b{display:block;font-size:13px;font-weight:600;line-height:17px;color:var(--on-rail-strong);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .side .me span{display:block;font-size:10px;font-weight:600;letter-spacing:.4px;
+    text-transform:uppercase;color:var(--on-rail)}
+  .main{padding:32px 32px 48px}
+}
+
+/* ── page furniture ────────────────────────────────────────────────────── */
+.pagehead{display:flex;flex-direction:column;gap:4px}
+.pagehead .eyebrow{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--success-s)}
+.pagehead h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.4px;text-wrap:balance}
+.pagehead p{color:var(--ink-muted);font-size:14px;line-height:21px;max-width:62ch}
+@media (min-width:900px){.pagehead h1{font-size:31px;line-height:38px}}
+
+.card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);padding:20px}
+.card.tight{padding:0;overflow:hidden}
+.card.pad0{padding:18px 18px 0}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+.sechead h2{font-size:17px;line-height:23px;font-weight:700;letter-spacing:-.2px}
+.sechead a,.sechead button.lnk{color:var(--brand);font-size:13px;font-weight:600}
+.sub{color:var(--ink-muted);font-size:13px;line-height:19px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;
+  border-radius:var(--r-control);font-size:14px;font-weight:600;white-space:nowrap}
+.btn.pri{background:var(--brand);color:#fff}
+.btn.pri:hover{background:#00479a}
+.btn.go{background:var(--success-s);color:#fff}
+.btn.sec{background:var(--muted);color:var(--ink)}
+.btn.sec:hover{background:#e0e0e0}
+.btn.sm{height:36px;padding:0 13px;font-size:13px}
+.btn.full{width:100%}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btnrow{display:flex;flex-wrap:wrap;gap:10px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:9999px;
+  font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+.pill.ok{background:#e7f6ec;color:var(--success-s)}
+.pill.warn{background:#fff1e6;color:var(--warning-s)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+.pill.info{background:#e6f0fb;color:var(--brand)}
+.pill.mute{background:var(--muted);color:var(--ink-muted)}
+
+/* ── "now" — the one thing a trainer opens this for ───────────────────── */
+.now{position:relative;overflow:hidden;background:#eef8f1;border:1px solid #bfe3cb;
+  border-radius:var(--r-card);padding:20px}
+.now::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:var(--success-s)}
+.now .when{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+.now .when strong{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.3px}
+.now .when em{font-style:normal;color:var(--success-s);font-size:13px;font-weight:700}
+.now h3{margin-top:6px;font-size:17px;line-height:23px;font-weight:600}
+.now .meta{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink-muted);font-size:13px}
+.now .cta{margin-top:16px;display:flex;flex-wrap:wrap;gap:10px}
+
+/* ── rows ──────────────────────────────────────────────────────────────── */
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:flex-start;gap:14px;padding:15px 18px;border-bottom:1px solid var(--hairline)}
+.row:last-child{border-bottom:0}
+.row.tap{cursor:pointer}
+.row.tap:hover{background:var(--sunken)}
+.row .lead{min-width:0;flex:1}
+.row .lead b{display:block;font-size:15px;font-weight:600;line-height:21px}
+.row .lead span{display:block;color:var(--ink-muted);font-size:13px;line-height:19px}
+.row .trail{flex-shrink:0;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.datechip{flex-shrink:0;width:52px;padding:7px 0;border-radius:var(--r-tile);text-align:center;
+  background:var(--sunken);border:1px solid var(--hairline)}
+.datechip b{display:block;font-size:18px;line-height:22px;font-weight:700;letter-spacing:-.3px}
+.datechip span{display:block;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--ink-muted)}
+.datechip.past{opacity:.55}
+.datechip.today{background:#eef8f1;border-color:#bfe3cb}
+.datechip.today b,.datechip.today span{color:var(--success-s)}
+.datechip.off{background:var(--danger-soft);border-color:#ffd7d0}
+.datechip.off b,.datechip.off span{color:var(--danger)}
+.struck{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--ink-subtle)}
+
+/* ── attendance: the screen with no server side yet ───────────────────── */
+.att{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--hairline)}
+.att:last-child{border-bottom:0}
+.att .nm{min-width:0;flex:1}
+.att .nm b{display:block;font-size:14px;font-weight:600;line-height:20px}
+.att .nm span{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-subtle)}
+.mark3{display:flex;gap:3px;flex-shrink:0;padding:3px;border-radius:9999px;background:var(--muted)}
+.mark3 button{width:38px;height:30px;border-radius:9999px;font-size:11px;font-weight:700;
+  letter-spacing:.3px;color:var(--ink-muted)}
+.mark3 button[aria-pressed="true"][data-v="P"]{background:var(--success-s);color:#fff}
+.mark3 button[aria-pressed="true"][data-v="L"]{background:var(--warning);color:#fff}
+.mark3 button[aria-pressed="true"][data-v="A"]{background:var(--danger);color:#fff}
+
+.stickybar{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  padding:14px 18px;background:var(--surface);border-top:1px solid var(--hairline)}
+.stickybar .tally{font-size:13px;color:var(--ink-muted);margin-right:auto}
+.stickybar .tally b{color:var(--ink)}
+
+/* ── schedule strip ────────────────────────────────────────────────────── */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.week .d{border:1px solid var(--hairline);border-radius:var(--r-tile);background:var(--surface);
+  padding:8px 6px;min-height:76px;display:flex;flex-direction:column;gap:4px}
+.week .d.off{background:var(--danger-soft);border-color:#ffd7d0}
+.week .d.leave{background:var(--muted);border-color:#dcdcdc}
+.week .d .dh{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ink-subtle);text-align:center}
+.week .d .dh b{display:block;font-size:15px;line-height:19px;color:var(--ink);letter-spacing:-.2px}
+.week .d .ev{border-radius:var(--r-chip);padding:3px 5px;font-size:10px;line-height:13px;font-weight:600;
+  background:#e6f0fb;color:var(--brand)}
+.week .d .ev.done{background:#e7f6ec;color:var(--success-s)}
+.week .d .ev.off{background:#ffd7d0;color:var(--danger)}
+.week .d .lv{font-size:10px;line-height:13px;font-weight:700;letter-spacing:.3px;
+  text-transform:uppercase;color:var(--ink-subtle);text-align:center;margin-top:auto}
+
+/* ── the two annotations this prototype exists to make ────────────────── */
+.rule{display:flex;gap:10px;padding:13px 16px;border-radius:var(--r-well);
+  background:#12241a;color:#e3ece6;font-size:13px;line-height:19px}
+.rule b{color:#7fd79b;font-weight:700}
+.rule svg{flex-shrink:0;margin-top:2px;color:#7fd79b}
+.rule.gap{background:#2a1a12;color:#f0e3da}
+.rule.gap b,.rule.gap svg{color:var(--accent)}
+
+.absent{border:1px dashed var(--hairline-strong);border-radius:var(--r-card);padding:24px;
+  background:var(--surface);text-align:center}
+.absent h3{font-size:16px;font-weight:700}
+.absent p{margin-top:6px;color:var(--ink-muted);font-size:14px;line-height:21px;
+  max-width:48ch;margin-left:auto;margin-right:auto}
+
+.warnbox{display:flex;gap:11px;padding:14px 16px;border-radius:var(--r-well);
+  background:#fff1e6;border:1px solid #ffd9bd;color:var(--warning-s);font-size:13px;line-height:19px}
+.warnbox b{font-weight:700}
+.warnbox svg{flex-shrink:0;margin-top:2px}
+
+.grid2{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:720px){.grid2{grid-template-columns:1fr 1fr}}
+.stats{display:flex;flex-wrap:wrap;gap:18px 30px}
+.stats div{min-width:104px}
+.stats dt{color:var(--ink-muted);font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.stats dd{margin:2px 0 0;font-variant-numeric:tabular-nums;font-size:22px;line-height:28px;
+  font-weight:700;letter-spacing:-.4px}
+.meter{margin-top:14px;height:8px;border-radius:9999px;background:var(--muted);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:9999px;background:var(--success)}
+
+.kv{display:flex;flex-direction:column}
+.kv div{display:flex;justify-content:space-between;gap:16px;padding:11px 0;
+  border-bottom:1px solid var(--hairline)}
+.kv div:last-child{border-bottom:0}
+.kv dt{color:var(--ink-muted);font-size:13px}
+.kv dd{margin:0;font-size:14px;font-weight:500;text-align:right}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:600}
+.field input,.field textarea,.field select{width:100%;padding:11px 13px;border-radius:var(--r-control);
+  border:1px solid var(--hairline-strong);background:var(--surface);font:inherit;color:var(--ink)}
+.field textarea{min-height:88px;resize:vertical}
+.field .hint{color:var(--ink-subtle);font-size:12px;line-height:17px}
+.locked{padding:11px 13px;border-radius:var(--r-control);background:var(--muted);
+  color:var(--ink-muted);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:9999px;
+  background:var(--sunken);border:1px solid var(--hairline);font-size:12px;font-weight:600}
+
+.notice{display:flex;gap:12px;padding:15px 18px;border-bottom:1px solid var(--hairline)}
+.notice:last-child{border-bottom:0}
+.notice.unread{background:#f2faf5}
+.notice .ic{width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;border-radius:9999px}
+.notice .ic.fyi{background:#e6f0fb;color:var(--brand)}
+.notice .ic.act{background:#fff1e6;color:var(--warning-s)}
+.notice .ic.alert{background:var(--danger-soft);color:var(--danger)}
+.notice .bd{min-width:0;flex:1}
+.notice .bd b{display:block;font-size:14px;font-weight:600;line-height:20px}
+.notice .bd p{color:var(--ink-muted);font-size:13px;line-height:19px;margin-top:2px}
+.notice .bd time{display:block;margin-top:5px;color:var(--ink-subtle);font-size:11px;font-weight:600;
+  letter-spacing:.3px;text-transform:uppercase}
+
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-size:13px;font-weight:600}
+.foot{color:var(--ink-subtle);font-size:12px;line-height:18px;text-align:center;padding-top:8px}
+</style>
+
+<div class="protobar">
+  <b>Prototype</b>
+  <p>Static screens, no back end. Switch the engagement to see what an in-house trainer does
+     not have — the same mechanism the student portal uses for fees.</p>
+  <div class="segswitch" role="group" aria-label="View as">
+    <button id="seg-freelance" type="button" onclick="setSeg('freelance')">Freelance</button>
+    <button id="seg-inhouse" type="button" onclick="setSeg('inhouse')">In-house</button>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="side" id="side" aria-label="Sections"></nav>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header class="topbar" id="topbar"></header>
+    <main class="main"><div class="wrap" id="view"></div></main>
+  </div>
+</div>
+<nav class="tabs" id="tabs" aria-label="Sections"></nav>
+
+<script>
+/* =========================================================================
+   Gurukulam TMS — trainer portal prototype.
+
+   Standalone: this file touches nothing in apps/. It is a design reference in
+   the same shape as the admin prototype next to it.
+
+   The rail is Google green, which is a LIGHT surface — so selection is the
+   darkest thing in it rather than the brightest, and the brandmark inverts.
+   See the token block above for the measured contrast.
+   ====================================================================== */
+const I={
+  today:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  /* Distinct from the calendar. Schedule is when; Batches is who — a stack of
+     cohorts, not a second month view. Two identical glyphs in a six-entry rail
+     is a nav you have to read rather than recognise. */
+  batch:'<path d="M12 3l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5"/><path d="M3 16.5L12 21l9-4.5"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.5 3.5 0 0 1 0 5.6M17.5 20a6.5 6.5 0 0 0-2.2-4.9"/>',
+  task:'<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 13l2 2 4-4"/>',
+  away:'<path d="M12 3v9M8 6l4-3 4 3"/><rect x="3" y="12" width="18" height="9" rx="2"/>',
+  inbox:'<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14l2 8v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"/>',
+  bell:'<path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
+  acct:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6 19a6.5 6.5 0 0 1 12 0"/>',
+  more:'<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>',
+  mark:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+  back:'<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  check:'<path d="M4 12.5l5 5L20 6.5"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  pin:'<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>',
+  warn:'<path d="M12 3l9.5 16.5H2.5z"/><path d="M12 10v4M12 17.5v.01"/>',
+  play:'<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+};
+const svg=(p,s=22)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+
+/* ------------------------------- data -------------------------------- */
+const PEOPLE={
+  freelance:{
+    name:'Ravi Kulkarni', initials:'RK', code:'TRN-0042', engagement:'Freelance',
+    login:'trn-0042@gurukulam.com', email:'ravi.kulkarni@example.com',
+    phone:'+91 98860 33107', city:'Kochi', pay:'₹2,400 per session',
+    courses:['Data Science & Analytics','Python for Data Analysis','Applied Statistics'],
+  },
+  inhouse:{
+    name:'Meera Iyer', initials:'MI', code:'TRN-0058', engagement:'In-house',
+    login:'trn-0058@gurukulam.com', email:'meera.iyer@example.com',
+    phone:'+91 94470 82219', city:'Kochi', pay:'Monthly · staff',
+    courses:['Data Science & Analytics','Full Stack Engineering'],
+  },
+};
+
+const TODAY=[
+  {code:'SES-0418',t:'10:00 – 13:00',title:'Feature engineering for tabular data',
+   batch:'BTC-DS-OCT-A',topic:'Topic 6 · Modelling',mode:'Online',place:'Zoom',
+   roster:18,state:'now'},
+  {code:'SES-0419',t:'14:30 – 17:30',title:'Joins and reshaping, practical',
+   batch:'BTC-SNC-DS-01',topic:'Topic 5 · Data wrangling',mode:'Offline',
+   place:'Kochi · Room 2',roster:34,state:'later'},
+];
+
+const WEEK=[
+  {day:'Mon',d:'15',ev:[{t:'10:00 Modelling',k:'done'}]},
+  {day:'Tue',d:'16',ev:[{t:'10:00 Feature eng.',k:''},{t:'14:30 Joins',k:''}],today:true},
+  {day:'Wed',d:'17',ev:[]},
+  {day:'Thu',d:'18',ev:[{t:'10:00 Cross-val.',k:''}]},
+  {day:'Fri',d:'19',ev:[],leave:'Leave'},
+  {day:'Sat',d:'20',ev:[{t:'09:30 Workshop',k:''}]},
+  {day:'Sun',d:'21',ev:[]},
+];
+
+const BATCHES=[
+  {code:'BTC-DS-OCT-A',course:'Data Science & Analytics',kind:'Retail',roster:18,
+   done:11,total:24,next:'Tue 16 Sep, 10:00',status:'In progress'},
+  {code:'BTC-SNC-DS-01',course:'Data Science & Analytics',kind:'Sree Narayana College',
+   roster:34,done:7,total:24,next:'Tue 16 Sep, 14:30',status:'In progress'},
+  {code:'BTC-PY-JUL-C',course:'Python for Data Analysis',kind:'Retail',roster:15,
+   done:20,total:20,next:'—',status:'Completed'},
+];
+
+const ROSTER=[
+  {n:'Aarav Menon',c:'STU-2026-0891',a:'P'},{n:'Divya Nair',c:'STU-2026-0904',a:'P'},
+  {n:'Farhan Qureshi',c:'STU-2026-0912',a:'P'},{n:'Ishita Rao',c:'STU-2026-0918',a:'L'},
+  {n:'Karthik Pillai',c:'STU-2026-0925',a:'P'},{n:'Lakshmi Warrier',c:'STU-2026-0931',a:'A'},
+  {n:'Nikhil Das',c:'STU-2026-0937',a:'P'},{n:'Priya Sundaram',c:'STU-2026-0944',a:'P'},
+];
+
+const WORK=[
+  {code:'ASG-0142',title:'Clean the retail transactions dataset',batch:'BTC-DS-OCT-A',
+   due:'Due Fri 19 Sep',state:'grading',pending:6,of:18},
+  {code:'ASG-0141',title:'Joins practice set',batch:'BTC-SNC-DS-01',
+   due:'Due Mon 22 Sep',state:'open',pending:0,of:34},
+  {code:'ASG-0139',title:'NumPy broadcasting exercises',batch:'BTC-DS-OCT-A',
+   due:'Closed Mon 15 Sep',state:'done',pending:0,of:18},
+];
+
+const SUBMISSIONS=[
+  {n:'Aarav Menon',c:'STU-2026-0891',when:'Submitted Thu 18 Sep, 21:14',mark:null},
+  {n:'Divya Nair',c:'STU-2026-0904',when:'Submitted Thu 18 Sep, 22:40',mark:null},
+  {n:'Ishita Rao',c:'STU-2026-0918',when:'Submitted Fri 19 Sep, 09:02',mark:null},
+  {n:'Karthik Pillai',c:'STU-2026-0925',when:'Submitted Wed 17 Sep, 18:55',mark:'17 / 20'},
+];
+
+const LEAVE=[
+  {from:'Fri 19 Sep',to:'Fri 19 Sep',type:'Leave',why:'Family commitment',clash:false},
+  {from:'Mon 06 Oct',to:'Fri 10 Oct',type:'Leave',why:'Annual leave',clash:true,
+   clashWith:'3 sessions on BTC-DS-OCT-A are confirmed in that week'},
+  {from:'Every Sun',to:'',type:'Blocked',why:'Not available on Sundays',clash:false},
+];
+
+const INVITES=[
+  {batch:'BTC-FS-NOV-A',course:'Full Stack Engineering',kind:'Retail',
+   starts:'Starts Mon 03 Nov',sessions:'28 sessions · Tue & Thu, 18:00 – 21:00',
+   city:'Kochi · Online',proposed:'Proposed 2 days ago'},
+];
+
+const NOTICES=[
+  {c:'act',t:'You have been proposed for BTC-FS-NOV-A',
+   b:'Full Stack Engineering, 28 sessions from Mon 03 Nov. Accept or decline so Ops can plan.',
+   w:'2 days ago',unread:true,freelanceOnly:true},
+  {c:'alert',t:'Leave collides with three confirmed sessions',
+   b:'Your leave for 06 – 10 Oct overlaps sessions on BTC-DS-OCT-A that are already committed.',
+   w:'Yesterday',unread:true},
+  {c:'act',t:'Recording not attached — Joins and reshaping',
+   b:'Delivered Thu 11 Sep. A recording has been outstanding for two days.',
+   w:'2 hours ago',unread:true},
+  {c:'fyi',t:'Six submissions waiting on ASG-0142',
+   b:'Clean the retail transactions dataset, BTC-DS-OCT-A.',w:'Today'},
+  {c:'fyi',t:'You were confirmed on BTC-SNC-DS-01',
+   b:'Sree Narayana College of Engineering, from Mon 25 Aug.',w:'3 weeks ago'},
+];
+
+/* ------------------------------ state -------------------------------- */
+let SEG=localStorage.getItem('gk-trainer-seg')||'freelance';
+const me=()=>PEOPLE[SEG];
+function setSeg(s){SEG=s;try{localStorage.setItem('gk-trainer-seg',s)}catch(e){}paint();}
+
+const NAV=[
+  {h:'#/',l:'Today',i:'today'},
+  {h:'#/schedule',l:'Schedule',i:'cal'},
+  {h:'#/batches',l:'Batches',i:'batch'},
+  {h:'#/work',l:'Work',i:'task',count:6},
+  {h:'#/availability',l:'Availability',i:'away',deskOnly:true},
+  {h:'#/invitations',l:'Invitations',i:'inbox',count:1,freelanceOnly:true,deskOnly:true},
+  {h:'#/updates',l:'Updates',i:'bell',deskOnly:true},
+  {h:'#/account',l:'Account',i:'acct',deskOnly:true},
+];
+
+/* ---------------------------- fragments ------------------------------ */
+const head=(eyebrow,title,note)=>`<div class="pagehead">
+  <span class="eyebrow">${eyebrow}</span><h1>${title}</h1>
+  ${note?`<p>${note}</p>`:''}</div>`;
+const rule=(t,kind='')=>`<div class="rule ${kind}">${svg(kind==='gap'?I.warn:I.info,18)}<div>${t}</div></div>`;
+
+/* ------------------------------ screens ------------------------------- */
+const V={};
+
+V['#/']=()=>{
+  const p=me();
+  const s=TODAY[0];
+  return `
+  ${head('Today','Tue 16 September',
+    'Two sessions. Mark each one delivered when it ends — that is what opens attendance, the recording and any assignment against it.')}
+
+  <div class="now">
+    <div class="when"><strong>${s.t}</strong><em>starts in 40 minutes</em></div>
+    <h3>${s.title}</h3>
+    <div class="meta">
+      <span>${svg(I.pin,15)} ${s.mode} · ${s.place}</span>
+      <span>${svg(I.users,15)} ${s.roster} on the roster</span>
+      <span class="mono">${s.batch}</span>
+    </div>
+    <div class="cta">
+      <a class="btn go" href="#/session">${svg(I.check,17)} Mark delivered</a>
+      <a class="btn sec" href="#/attendance">${svg(I.users,17)} Take attendance</a>
+    </div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Later today</h2>
+      <a href="#/schedule">Full schedule</a></div></div>
+    <div class="rows">
+      ${TODAY.slice(1).map(x=>`<div class="row tap" onclick="location.hash='#/session'">
+        <div class="datechip today"><b>16</b><span>Sep</span></div>
+        <div class="lead"><b>${x.title}</b>
+          <span>${x.t} · ${x.mode} · ${x.place}</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${x.batch} · ${x.topic}</span></div>
+        <div class="trail"><span class="pill mute">${x.roster} students</span></div></div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Needs you</h2>
+      <a href="#/updates">All updates</a></div></div>
+    <div class="rows">
+      ${NOTICES.filter(n=>!(n.freelanceOnly&&SEG!=='freelance')).slice(0,3).map(n=>`
+        <div class="notice${n.unread?' unread':''}">
+          <div class="ic ${n.c}">${svg(n.c==='alert'?I.warn:n.c==='act'?I.bell:I.info,17)}</div>
+          <div class="bd"><b>${n.t}</b><p>${n.b}</p><time>${n.w}</time></div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  ${rule('A session must be <b>marked delivered</b> before attendance, a recording or an assignment can hang off it — invariant 10. It is the one action on this screen that unlocks the others, which is why it is the primary button.')}`;
+};
+
+V['#/session']=()=>`
+  <a class="back" href="#/">${svg(I.back,16)} Today</a>
+  ${head('Session · SES-0418','Feature engineering for tabular data',
+    'BTC-DS-OCT-A · Topic 6 · Modelling · Tue 16 Sep, 10:00 – 13:00')}
+
+  <div class="card">
+    <div class="sechead"><h2>Delivery</h2><span class="pill warn">Scheduled</span></div>
+    <dl class="kv">
+      <div><dt>Mode</dt><dd>Online · Zoom</dd></div>
+      <div><dt>Roster</dt><dd>18 students</dd></div>
+      <div><dt>Topic</dt><dd>Topic 6 · Modelling</dd></div>
+    </dl>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn go" type="button">${svg(I.check,17)} Mark delivered</button>
+      <a class="btn sec" href="#/schedule">Request a reschedule</a>
+    </div>
+    <p class="sub" style="margin-top:12px">Marking it delivered is what opens the three things
+      below. Until then they are closed, not hidden — a trainer should be able to see what is
+      coming.</p>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Attendance</h2><span class="pill mute">Opens once delivered</span></div>
+    <p class="sub">18 students. Nothing recorded yet.</p>
+    <div class="btnrow" style="margin-top:14px">
+      <a class="btn sec" href="#/attendance">Open the roster</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Recording</h2><span class="pill mute">Opens once delivered</span></div>
+    <div class="field"><label for="rec-url">YouTube link</label>
+      <input id="rec-url" type="url" placeholder="https://youtu.be/…" disabled>
+      <span class="hint">Attach it after the session. Students see it once it is published.</span></div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Assignment</h2><span class="pill mute">Opens once delivered</span></div>
+    <p class="sub">No assignment set against this session yet.</p>
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn sec" type="button" disabled>${svg(I.plus,16)} Set an assignment</button>
+    </div>
+  </div>`;
+
+V['#/attendance']=()=>{
+  const tally=ROSTER.reduce((a,r)=>(a[r.a]=(a[r.a]||0)+1,a),{});
+  return `
+  <a class="back" href="#/session">${svg(I.back,16)} Session</a>
+  ${head('Attendance','Feature engineering for tabular data',
+    'BTC-DS-OCT-A · Tue 16 Sep · 18 on the roster. Showing 8.')}
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Roster</h2>
+      <button class="lnk" type="button">Mark all present</button></div></div>
+    ${ROSTER.map((r,i)=>`
+      <div class="att">
+        <div class="nm"><b>${r.n}</b><span>${r.c}</span></div>
+        <div class="mark3" role="group" aria-label="Attendance for ${r.n}">
+          ${['P','L','A'].map(v=>`<button type="button" data-v="${v}"
+            aria-pressed="${String(r.a===v)}"
+            onclick="mark(${i},'${v}')">${v}</button>`).join('')}
+        </div>
+      </div>`).join('')}
+    <div class="stickybar">
+      <span class="tally"><b>${tally.P||0}</b> present · <b>${tally.L||0}</b> late ·
+        <b>${tally.A||0}</b> absent</span>
+      <button class="btn go" type="button">Save attendance</button>
+    </div>
+  </div>
+
+  ${rule('<b>This screen has no server side yet.</b> <code>student_attendance</code> exists and certificate eligibility reads it — reporting NOT_EVALUATED rather than 0% precisely because nothing writes any rows. The trainer portal is where attendance is born, so this is a write path built from scratch, not a screen over an existing endpoint.','gap')}
+
+  ${rule('Two checks authorise every mark here, not one: <b>is this session mine</b>, and <b>is this student on its roster</b>. The first alone would let a trainer mark any student against their own session; the second alone would let any trainer of the cohort write against a session they did not deliver.')}`;
+};
+
+V['#/schedule']=()=>`
+  ${head('Schedule','Week of 15 September',
+    'Your sessions, and the time you have declared away. Ops sees the same picture when they look for someone to take a batch.')}
+
+  <div class="card">
+    <div class="sechead"><h2>This week</h2><span class="sub">5 sessions · 1 day away</span></div>
+    <div class="week">
+      ${WEEK.map(d=>`<div class="d${d.leave?' leave':''}">
+        <div class="dh">${d.day}<b>${d.d}</b></div>
+        ${d.ev.map(e=>`<div class="ev ${e.k}">${e.t}</div>`).join('')}
+        ${d.leave?`<div class="lv">${d.leave}</div>`:''}
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Next up</h2></div></div>
+    <div class="rows">
+      <div class="row tap" onclick="location.hash='#/session'">
+        <div class="datechip today"><b>16</b><span>Sep</span></div>
+        <div class="lead"><b>Feature engineering for tabular data</b>
+          <span>10:00 – 13:00 · Online · Zoom</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
+        <div class="trail"><span class="pill ok">Today</span></div></div>
+      <div class="row">
+        <div class="datechip today"><b>16</b><span>Sep</span></div>
+        <div class="lead"><b>Joins and reshaping, practical</b>
+          <span>14:30 – 17:30 · Offline · Kochi · Room 2</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-SNC-DS-01</span></div>
+        <div class="trail"><span class="pill ok">Today</span></div></div>
+      <div class="row">
+        <div class="datechip"><b>18</b><span>Sep</span></div>
+        <div class="lead"><b>Model evaluation and cross-validation</b>
+          <span>10:00 – 13:00 · Online · Zoom</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
+        <div class="trail"><span class="pill info">Scheduled</span></div></div>
+      <div class="row">
+        <div class="datechip past"><b>11</b><span>Sep</span></div>
+        <div class="lead"><b>Pandas: reshaping and joins</b>
+          <span>10:00 – 13:00 · delivered</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">BTC-DS-OCT-A</span></div>
+        <div class="trail"><span class="pill warn">Recording due</span></div></div>
+    </div>
+  </div>`;
+
+V['#/batches']=()=>`
+  ${head('Batches','Cohorts you teach',
+    'Reached through your confirmed assignments. A batch you were released from keeps its history but stops accepting new work from you.')}
+  <div class="card tight"><div class="rows">
+    ${BATCHES.map(b=>`<div class="row tap" onclick="location.hash='#/batch'">
+      <div class="lead"><b>${b.course}</b>
+        <span>${b.kind} · ${b.roster} students · next ${b.next}</span>
+        <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${b.code}</span></div>
+      <div class="trail">
+        <span class="pill ${b.status==='Completed'?'mute':'ok'}">${b.status}</span>
+        <span class="sub">${b.done} of ${b.total} sessions</span>
+      </div></div>`).join('')}
+  </div></div>
+  ${rule('No <b>Students</b> entry in the nav, deliberately. A trainer reaches a student through a roster, which is also the only place the permission question has an answer — “which of these may I write about” is always “the ones on my rosters”.')}`;
+
+V['#/batch']=()=>`
+  <a class="back" href="#/batches">${svg(I.back,16)} Batches</a>
+  ${head('BTC-DS-OCT-A','Data Science & Analytics','Retail cohort · 18 students · 11 of 24 sessions delivered')}
+
+  <div class="card">
+    <dl class="stats">
+      <div><dt>Roster</dt><dd>18</dd></div>
+      <div><dt>Delivered</dt><dd>11 / 24</dd></div>
+      <div><dt>Attendance</dt><dd>—</dd></div>
+      <div><dt>Submissions graded</dt><dd>12 / 18</dd></div>
+    </dl>
+    <div class="meter"><i style="width:46%"></i></div>
+    <p class="sub" style="margin-top:10px">Attendance shows a dash rather than 0% — nothing has
+      been recorded for this batch yet, and 0% would read as “nobody came”.</p>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Roster</h2>
+      <span class="sub">Showing 8 of 18</span></div></div>
+    <div class="rows">
+      ${ROSTER.map(r=>`<div class="row">
+        <div class="lead"><b>${r.n}</b>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${r.c}</span></div>
+        <div class="trail"><span class="sub">3 of 4 submitted</span></div></div>`).join('')}
+    </div>
+  </div>
+
+  ${rule('What is <b>not</b> on this screen: the price this cohort pays, anyone’s ledger, or the contract behind the college batch. A trainer reads batches through the same service an admin does, so the projection that drops commercial fields is the thing that has to be right — and tested.')}`;
+
+V['#/work']=()=>`
+  ${head('Work','Assignments and marking',
+    'Set against sessions you have delivered. Six submissions are waiting.')}
+  <div class="card tight"><div class="rows">
+    ${WORK.map(w=>`<div class="row tap" onclick="location.hash='#/grade'">
+      <div class="lead"><b>${w.title}</b>
+        <span>${w.batch} · ${w.due}</span>
+        <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${w.code}</span></div>
+      <div class="trail">
+        ${w.state==='grading'?`<span class="pill warn">${w.pending} to grade</span>`
+          :w.state==='open'?'<span class="pill info">Open</span>'
+          :'<span class="pill ok">Done</span>'}
+        <span class="sub">${w.of} students</span>
+      </div></div>`).join('')}
+  </div></div>
+  <div class="card">
+    <div class="sechead"><h2>Set a new assignment</h2></div>
+    <p class="sub">Only against a session that has been marked delivered. Sessions still to come
+      do not appear in the list.</p>
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn pri" type="button">${svg(I.plus,16)} New assignment</button>
+    </div>
+  </div>`;
+
+V['#/grade']=()=>`
+  <a class="back" href="#/work">${svg(I.back,16)} Work</a>
+  ${head('Marking · ASG-0142','Clean the retail transactions dataset',
+    'BTC-DS-OCT-A · out of 20 · 6 of 18 submitted, 1 graded')}
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Submissions</h2>
+      <span class="sub">Newest first</span></div></div>
+    <div class="rows">
+      ${SUBMISSIONS.map(s=>`<div class="row">
+        <div class="lead"><b>${s.n}</b><span>${s.when}</span>
+          <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${s.c}</span></div>
+        <div class="trail">
+          ${s.mark?`<span class="pill ok">${s.mark}</span>`
+            :'<button class="btn sm pri" type="button">Grade</button>'}
+        </div></div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Grading Aarav Menon</h2><span class="pill info">Submitted</span></div>
+    <p class="sub" style="margin-bottom:14px">
+      ${svg(I.link,14)} <a style="color:var(--brand);font-weight:600" href="#/grade">github.com/aaravm/retail-clean</a>
+      — “Left the returns as negative rows rather than a separate table; happy to change it.”</p>
+    <div class="grid2">
+      <div class="field"><label for="mk">Marks out of 20</label>
+        <input id="mk" type="number" min="0" max="20" placeholder="0 – 20"></div>
+      <div class="field"><label for="fb">Feedback</label>
+        <textarea id="fb" placeholder="What was right, and what to look at again."></textarea></div>
+    </div>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn pri" type="button">Save and open the next</button>
+      <button class="btn sec" type="button">Save</button>
+    </div>
+  </div>
+
+  ${rule('<b>Grading has no endpoint yet either.</b> <code>assignment_submissions</code> carries marks_awarded, feedback, graded_by and graded_at, and nothing in the API writes them. The student portal shows a student their marks and feedback — this is where those would have to come from.','gap')}`;
+
+V['#/availability']=()=>`
+  ${head('Availability','Time you are away',
+    'This is not a private calendar. Free and busy is computed from your committed sessions plus what you declare here, and that is what Ops reads when they look for someone to take a batch.')}
+
+  <div class="card">
+    <div class="sechead"><h2>Declare time away</h2></div>
+    <div class="grid2">
+      <div class="field"><label for="av-from">From</label><input id="av-from" type="date" value="2026-10-06"></div>
+      <div class="field"><label for="av-to">To</label><input id="av-to" type="date" value="2026-10-10"></div>
+      <div class="field"><label for="av-type">Type</label>
+        <select id="av-type"><option>Leave</option><option>Blocked — recurring</option></select></div>
+      <div class="field"><label for="av-why">Reason</label><input id="av-why" type="text" value="Annual leave"></div>
+    </div>
+    <div class="warnbox" style="margin-top:16px">${svg(I.warn,18)}
+      <div><b>Three confirmed sessions fall in that week.</b> BTC-DS-OCT-A has sessions on
+        06, 08 and 10 October that are already committed. Declaring this will not move them —
+        it raises an alert for Ops, who will need to arrange cover.</div></div>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn pri" type="button">Declare anyway, and notify Ops</button>
+      <button class="btn sec" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <div class="card tight">
+    <div class="card pad0"><div class="sechead"><h2>Declared</h2></div></div>
+    <div class="rows">
+      ${LEAVE.map(l=>`<div class="row">
+        <div class="lead"><b>${l.from}${l.to&&l.to!==l.from?` – ${l.to}`:''}</b>
+          <span>${l.why}</span>
+          ${l.clash?`<span style="color:var(--warning-s)">${l.clashWith}</span>`:''}</div>
+        <div class="trail">
+          <span class="pill ${l.type==='Blocked'?'mute':'info'}">${l.type}</span>
+          ${l.clash?'<span class="pill warn">Collides</span>':''}
+        </div></div>`).join('')}
+    </div>
+  </div>
+
+  ${rule('Declaring leave <b>changes what the operations team is allowed to do</b> — invariant 8 computes free/busy from sessions plus this, and the trainer picker reads it. A collision with a confirmed session cannot silently succeed, so it is said here, at the point of declaring, rather than discovered by Ops later.')}`;
+
+V['#/invitations']=()=>{
+  const p=me();
+  if(SEG!=='freelance') return `
+    ${head('Invitations','Nothing to answer')}
+    <div class="absent">
+      <h3>You are in-house</h3>
+      <p>Batches are allocated to you rather than offered. When Ops puts you on a cohort it is
+         confirmed there and then, and it appears in your schedule — there is nothing to accept.</p>
+    </div>
+    ${rule('In the shipped portal this entry is <b>not in the navigation at all</b> for an in-house trainer, the same way Fees is absent for a college student. An in-house assignment is created CONFIRMED because they are staff, not a counterparty — so there is no proposal to answer.')}`;
+
+  return `
+  ${head('Invitations','Batches proposed to you',
+    'Accepting makes it committed delivery and puts every session in your schedule. Declining asks for a reason, so Ops can propose someone else knowingly.')}
+  ${INVITES.map(v=>`<div class="card">
+    <div class="sechead"><h2>${v.course}</h2><span class="pill warn">Awaiting your answer</span></div>
+    <dl class="kv">
+      <div><dt>Batch</dt><dd class="mono">${v.batch}</dd></div>
+      <div><dt>Segment</dt><dd>${v.kind}</dd></div>
+      <div><dt>Runs</dt><dd>${v.starts}</dd></div>
+      <div><dt>Sessions</dt><dd>${v.sessions}</dd></div>
+      <div><dt>Where</dt><dd>${v.city}</dd></div>
+    </dl>
+    <p class="sub" style="margin-top:12px">${v.proposed}. Nothing clashes with what you already
+      have, and you are approved for this course.</p>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn go" type="button">${svg(I.check,17)} Accept</button>
+      <button class="btn sec" type="button">Decline</button>
+    </div>
+  </div>`).join('')}
+  ${rule('Confirming this is the <b>same write</b> an admin makes when recording your answer on your behalf — one endpoint, not two. What has to be added is a check nobody needed before: that the proposal being answered is <b>yours</b>.')}`;
+};
+
+V['#/updates']=()=>`
+  ${head('Updates','What needs you',
+    'Proposals waiting, recordings outstanding, marking piling up, and anything Ops has changed on your batches.')}
+  <div class="card tight"><div class="rows">
+    ${NOTICES.filter(n=>!(n.freelanceOnly&&SEG!=='freelance')).map(n=>`
+      <div class="notice${n.unread?' unread':''}">
+        <div class="ic ${n.c}">${svg(n.c==='alert'?I.warn:n.c==='act'?I.bell:I.info,17)}</div>
+        <div class="bd"><b>${n.t}</b><p>${n.b}</p><time>${n.w}</time></div>
+      </div>`).join('')}
+  </div></div>`;
+
+V['#/account']=()=>{
+  const p=me();
+  return `
+  ${head('Account','You')}
+  <div class="card">
+    <div class="sechead"><h2>Your details</h2></div>
+    <div class="grid2">
+      <div class="field"><label>Name</label><div class="locked">${p.name}</div></div>
+      <div class="field"><label>Trainer ID</label><div class="locked mono">${p.code}</div></div>
+      <div class="field"><label for="tr-phone">Phone</label><input id="tr-phone" type="tel" value="${p.phone}"></div>
+      <div class="field"><label for="tr-city">Based in</label><input id="tr-city" type="text" value="${p.city}"></div>
+      <div class="field"><label>Email</label><div class="locked">${p.email}</div></div>
+      <div class="field"><label>You sign in as</label><div class="locked mono">${p.login}</div></div>
+    </div>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn pri" type="button">Save changes</button>
+      <button class="btn sec" type="button">Change password</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Engagement</h2><span class="pill ${SEG==='inhouse'?'info':'mute'}">${p.engagement}</span></div>
+    <div class="grid2">
+      <div class="field"><label>Type</label><div class="locked">${p.engagement}</div>
+        <span class="hint">${SEG==='inhouse'
+          ? 'Batches are allocated to you and confirmed on the spot.'
+          : 'Batches are proposed to you, and you may decline.'} Ops sets this.</span></div>
+      <div class="field"><label>Pay</label><div class="locked">${p.pay}</div>
+        <span class="hint">Shown because it is yours. No other commercial figure appears anywhere in this portal.</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sechead"><h2>Courses you may take</h2><span class="sub">${p.courses.length} approved</span></div>
+    <div class="chips">${p.courses.map(c=>`<span class="chip">${c}</span>`).join('')}</div>
+    <p class="sub" style="margin-top:12px">You can only be put on a batch of a course you are
+      approved for — invariant 15. Ops grants an approval; it is not something you set.</p>
+  </div>`;
+};
+
+V['#/more']=()=>{
+  const items=NAV.filter(n=>n.deskOnly&&!(n.freelanceOnly&&SEG!=='freelance'));
+  return `
+  ${head('More','Everything else')}
+  <div class="card tight"><div class="rows">
+    ${items.map(n=>`<div class="row tap" onclick="location.hash='${n.h}'">
+      <div class="lead"><b>${n.l}</b></div>
+      <div class="trail">${n.count?`<span class="pill warn">${n.count}</span>`:''}</div></div>`).join('')}
+  </div></div>`;
+};
+
+/* attendance marks are local to the prototype */
+function mark(i,v){ROSTER[i].a=v;paint();}
+
+/* ------------------------------- shell -------------------------------- */
+function paint(){
+  const hash=location.hash||'#/';
+  const p=me();
+
+  document.getElementById('seg-freelance').setAttribute('aria-pressed',String(SEG==='freelance'));
+  document.getElementById('seg-inhouse').setAttribute('aria-pressed',String(SEG==='inhouse'));
+
+  const visible=NAV.filter(n=>!(n.freelanceOnly&&SEG!=='freelance'));
+
+  document.getElementById('side').innerHTML=
+    `<div class="brandmark"><i>${svg(I.mark,22)}</i>
+       <div><b>Gurukulam</b><span>Trainer</span></div></div>`
+    +visible.map(n=>`<a class="nav${hash===n.h?' on':''}" href="${n.h}">
+        ${svg(I[n.i],20)}<span>${n.l}</span>
+        ${n.count?`<span class="count">${n.count}</span>`:''}</a>`).join('')
+    +`<div class="sidefoot"><a class="me" href="#/account">
+        <span class="av">${p.initials}</span>
+        <span style="min-width:0"><b>${p.name}</b><span>${p.engagement}</span></span></a></div>`;
+
+  const unread=NOTICES.filter(n=>n.unread&&!(n.freelanceOnly&&SEG!=='freelance')).length;
+  document.getElementById('topbar').innerHTML=
+    `<span class="mark">${svg(I.mark,20)}</span>
+     <span class="who"><b>${p.name}</b><span>${p.engagement} · ${p.code}</span></span>
+     <a class="bellbtn" href="#/updates" aria-label="Updates, ${unread} unread">
+       ${svg(I.bell,21)}${unread?`<span class="dot">${unread}</span>`:''}</a>
+     <a class="bellbtn" href="#/account" aria-label="Account">${svg(I.acct,21)}</a>`;
+
+  /* Five on a phone. Availability, Invitations, Updates and Account are behind
+     More — a trainer marking attendance is standing in a room holding a phone,
+     and five is what a thumb reaches. */
+  const phone=[...visible.filter(n=>!n.deskOnly),{h:'#/more',l:'More',i:'more'}];
+  document.getElementById('tabs').innerHTML=phone.map(n=>
+    `<a class="${hash===n.h?'on':''}" href="${n.h}">${svg(I[n.i],21)}<span>${n.l}</span></a>`).join('');
+
+  const render=V[hash]||V['#/'];
+  document.getElementById('view').innerHTML=render()
+    +`<p class="foot">Gurukulam TMS · trainer portal prototype · static screens, no back end</p>`;
+  if(hash!=='#/attendance') window.scrollTo(0,0);
+}
+
+addEventListener('hashchange',paint);
+paint();
+</script>

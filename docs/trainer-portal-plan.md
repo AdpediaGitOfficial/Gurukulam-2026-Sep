@@ -4,6 +4,11 @@ Scoped deliberately to two questions: **what shape is it**, and **what is in the
 nav**. The screen-by-screen breakdown comes after those are settled, because
 both answers move it.
 
+**There is a clickable prototype:** `prototype/trainer.html`. Open it in a
+browser. Its engagement switch — freelance, in-house — shows §2.5's segment
+split, and the two orange annotations mark the screens that have no server side
+at all (§2.4).
+
 Read `architecture.md` §4 and `student-portal-plan.md` §1 first. The student
 portal's two design decisions are the reference point — the trainer portal
 answers the same two questions differently, and the differences are the whole
