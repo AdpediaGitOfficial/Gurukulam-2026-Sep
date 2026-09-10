@@ -6,7 +6,9 @@ admin console already does, through a different lens, with two rules that make
 it more than a filtered copy.
 
 Read `architecture.md` §4 first. This document assumes the nineteen invariants
-and only calls out the ones the portal changes the shape of.
+and only calls out the ones the portal changes the shape of. The trainer portal
+is specified separately in `trainer-portal-plan.md`, and answers §1's two
+questions differently — deliberately.
 
 **There is a clickable prototype:** `prototype/student.html`. Open it in a
 browser. Its segment switch — retail student, college student — is the fastest

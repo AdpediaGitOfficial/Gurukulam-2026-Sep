@@ -20,6 +20,7 @@ writing code.
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
 | `docs/notifications-and-reports.md` | The notification catalogue and report grammar |
 | `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and the gaps |
+| `docs/trainer-portal-plan.md` | The trainer portal — its scope axis, why it is a write surface, and the nav |
 | `docs/design-system.md` | UI layer rules |
 | `docs/brand-guidelines.md` | Visual language |
 
