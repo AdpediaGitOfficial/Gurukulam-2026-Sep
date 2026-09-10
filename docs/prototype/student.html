@@ -13,7 +13,15 @@
   --hairline:#dfeeff; --hairline-strong:#758fab;
   --ink:#191c1d; --ink-muted:#524533; --ink-subtle:#6b7280; --on-accent:#5c3d00;
   --brand:#0058bb; --accent:#f9ab00; --accent-glow:#ffddb0; --gold:#805600;
-  --rail:#b63a13;
+  /* Google yellow. A light rail cannot carry white text — #fff on this lands
+     at 1.7:1 — so what sits ON the rail is named here rather than left as
+     opacities over white. The resting label reuses the system's own
+     text-on-amber (#5c3d00, 5.7:1); anything that has to assert itself goes to
+     ink (9.9:1). */
+  --rail:#fbbc04;
+  --on-rail:#5c3d00; --on-rail-strong:#191c1d;
+  --rail-hover:rgb(25 28 29/.10); --rail-active:rgb(25 28 29/.16);
+  --rail-line:rgb(25 28 29/.18);
   --success:#16a34a; --success-s:#166534; --warning:#ea580c; --warning-s:#9a3412;
   --danger:#ba1a1a; --danger-soft:#ffedea;
   --r-chip:4px; --r-control:8px; --r-tile:12px; --r-well:16px; --r-card:24px;
@@ -52,19 +60,21 @@ ul{padding:0;list-style:none}
 .wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 
 .topbar{display:flex;align-items:center;gap:14px;padding:14px 16px;
-  background:var(--rail);color:#fff;position:sticky;top:0;z-index:40}
+  background:var(--rail);color:var(--on-rail-strong);position:sticky;top:0;z-index:40}
+/* The mark was amber on terracotta. Amber on yellow is no mark at all, so it
+   inverts: ink tile, yellow glyph. */
 .topbar .mark{width:38px;height:38px;flex-shrink:0;display:grid;place-items:center;border-radius:var(--r-tile);
-  background:var(--accent);color:var(--on-accent)}
+  background:var(--ink);color:var(--rail)}
 .topbar .who{min-width:0;flex:1}
 .topbar .who b{display:block;font-size:15px;font-weight:600;line-height:20px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar .who span{display:block;font-size:11px;font-weight:600;letter-spacing:.4px;
-  text-transform:uppercase;color:rgb(255 255 255/.72)}
+  text-transform:uppercase;color:var(--on-rail)}
 .bellbtn{position:relative;width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;
-  border-radius:9999px;color:#fff}
-.bellbtn:hover{background:rgb(255 255 255/.16)}
+  border-radius:9999px;color:var(--on-rail-strong)}
+.bellbtn:hover{background:var(--rail-hover)}
 .bellbtn .dot{position:absolute;top:6px;right:6px;min-width:17px;height:17px;padding:0 4px;
-  border-radius:9999px;background:var(--accent);color:var(--on-accent);
+  border-radius:9999px;background:var(--ink);color:#fff;
   font-size:10px;font-weight:700;line-height:17px;text-align:center}
 
 /* Bottom tabs: five, thumb-height, because the portal is read on a phone
@@ -82,26 +92,28 @@ ul{padding:0;list-style:none}
   .topbar{display:none}
   .tabs{display:none}
   .side{display:flex;flex-direction:column;gap:4px;width:236px;flex-shrink:0;
-    padding:22px 12px;background:var(--rail);color:#fff;
+    padding:22px 12px;background:var(--rail);color:var(--on-rail-strong);
     position:sticky;top:0;height:100dvh;overflow-y:auto}
   .side .brandmark{display:flex;align-items:center;gap:12px;padding:0 8px 18px}
   .side .brandmark i{width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;
-    border-radius:var(--r-tile);background:var(--accent);color:var(--on-accent)}
+    border-radius:var(--r-tile);background:var(--ink);color:var(--rail)}
   .side .brandmark b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;line-height:20px}
   .side .brandmark span{display:block;font-size:10px;font-weight:700;letter-spacing:.5px;
-    text-transform:uppercase;color:rgb(255 255 255/.7)}
+    text-transform:uppercase;color:var(--on-rail)}
   .side a.nav{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;
-    border-radius:var(--r-tile);color:#fff;opacity:.75;font-size:14px;font-weight:500}
-  .side a.nav:hover{opacity:1;background:rgb(255 255 255/.14)}
-  .side a.nav.on{opacity:1;background:rgb(255 255 255/.2);font-weight:600}
-  .side .sidefoot{margin-top:auto;padding-top:12px;border-top:1px solid rgb(255 255 255/.16)}
+    border-radius:var(--r-tile);color:var(--on-rail);font-size:14px;font-weight:500}
+  .side a.nav:hover{background:var(--rail-hover);color:var(--on-rail-strong)}
+  /* Selection was a white wash and amber. On a yellow ground neither reads, so
+     the selected item is the darkest thing in the rail. */
+  .side a.nav.on{background:var(--rail-active);color:var(--on-rail-strong);font-weight:700}
+  .side .sidefoot{margin-top:auto;padding-top:12px;border-top:1px solid var(--rail-line)}
   .side .me{display:flex;align-items:center;gap:10px;padding:10px 12px;min-width:0}
   .side .me .av{width:36px;height:36px;flex-shrink:0;border-radius:9999px;display:grid;place-items:center;
-    background:var(--accent-glow);color:var(--gold);font-weight:700;font-size:13px}
-  .side .me b{display:block;font-size:13px;font-weight:600;line-height:17px;
+    background:var(--surface);color:var(--gold);font-weight:700;font-size:13px}
+  .side .me b{display:block;font-size:13px;font-weight:600;line-height:17px;color:var(--on-rail-strong);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .side .me span{display:block;font-size:10px;font-weight:600;letter-spacing:.4px;
-    text-transform:uppercase;color:rgb(255 255 255/.66)}
+    text-transform:uppercase;color:var(--on-rail)}
   .main{padding:32px 32px 48px}
 }
 
@@ -262,7 +274,9 @@ ul{padding:0;list-style:none}
    docs/brand-guidelines.md). One deliberate departure: the shell. The console
    is a desk instrument with a nine-entry rail; a student reads this on a phone
    between classes, so it is five bottom tabs on a phone and a slim rail only
-   once there is room for one.
+   once there is room for one. The rail is Google yellow, which makes it a LIGHT
+   surface — so everything on it is dark, and selection is the darkest thing
+   there rather than the brightest.
 
    The segment switch is prototype furniture, not a product feature. It exists
    because the two rules most likely to be built wrong are invisible until you
