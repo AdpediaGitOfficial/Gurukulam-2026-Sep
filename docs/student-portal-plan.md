@@ -8,6 +8,11 @@ it more than a filtered copy.
 Read `architecture.md` §4 first. This document assumes the nineteen invariants
 and only calls out the ones the portal changes the shape of.
 
+**There is a clickable prototype:** `prototype/student.html`. Open it in a
+browser. Its segment switch — retail student, college student — is the fastest
+way to see §1.2, because the two rules it demonstrates are invisible until you
+look at the other segment.
+
 ---
 
 ## 1. The two things that decide the whole design

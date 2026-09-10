@@ -16,6 +16,7 @@ writing code.
 | `docs/architecture.md` | Domain model, the 19 invariants, transactional flows, extension contract. **Start here.** |
 | `docs/modules.md` | Every module, screen, route, entity and operation |
 | `docs/prototype/index.html` | Clickable prototype — 60 routes, all screens. **Open it in a browser.** This is the design reference |
+| `docs/prototype/student.html` | The student portal, clickable. Same tokens, phone-first shell. Its segment switch shows invariants 3 and 7 as screens rather than prose |
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
 | `docs/notifications-and-reports.md` | The notification catalogue and report grammar |
 | `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and the gaps |
