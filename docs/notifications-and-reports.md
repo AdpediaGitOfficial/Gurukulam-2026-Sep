@@ -16,7 +16,7 @@ notification centres end up ignored:
 
 | | **Console notifications** (the bell) | **Outbound messages** |
 | --- | --- | --- |
-| Audience | Admin operators | Students, colleges, trainers |
+| Audience | Admin operators — **and, since the student portal, the person a row is about** | Students, colleges, trainers |
 | Channel | In-app, optional email digest | Email · WhatsApp · SMS |
 | Purpose | *You need to do something* | *Here is information you need* |
 | Success measure | Reaches zero | Delivered and read |
@@ -99,6 +99,32 @@ FYI wearing a costume.
 | B10 | Batch completed — students now certificate-eligible | Action | Academic |
 | B11 | Session rescheduled by another operator | FYI | Ops |
 | B12 | Sessions scheduled past the batch's projected end date | FYI | Academic |
+
+#### Sessions and money, addressed to a STUDENT
+
+Emitted rather than swept — see `student-portal-plan.md` §4 for why the two are
+different mechanisms and why an emitted row must never carry a situation's
+`groupKey`. Recipients are the students with a live, active mapping to the
+batch.
+
+| # | Trigger | Class | Recipient |
+| --- | --- | --- | --- |
+| P1 | Session added to my batch (future-dated only — backdating a history must not fire) | FYI | Student |
+| P2 | Session rescheduled — only when date, time, mode or venue actually changed, and the message says what it moved from | FYI | Student |
+| P3 | Session cancelled | Alert | Student |
+| P4 | Recording published for a session on my batch | FYI | Student |
+| P5 | Session starts tomorrow | FYI | Student |
+| P6 | Assignment published on my batch | Action | Student |
+| P7 | Assignment due tomorrow, not yet submitted — swept, and clears on submission | Action | Student |
+| P8 | Submission graded | FYI | Student |
+| P9 | Installment due in 5 days · 3 days · 1 day | FYI → Action | Student, **retail only** |
+| P10 | Installment due today | Action | Student, retail only |
+| P11 | Installment overdue — 3 days, 7 days, then weekly | Alert | Student, retail only |
+
+P9–P11 replace the single three-day reminder the cron sends today. The recipient
+is resolved from the installment's **parent** every time (invariant 6), which is
+what guarantees a college's students never receive an invoice reminder: their
+fees hang off the college's contract, not off them.
 
 #### Assignments & content
 

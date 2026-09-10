@@ -205,8 +205,7 @@ oversight — `job_postings` already carries `source`, `external_ref` and
 
 ### 3.9 Notifications → **My notifications**
 
-The table already carries `recipientType` / `recipientId`. Fee reminders are
-written for students today. A bell that reaches zero, same as the admin's.
+Big enough to have its own section. See §4.
 
 ### 3.10 Account
 
@@ -215,7 +214,135 @@ which are deliberately different. Already served by `/account`.
 
 ---
 
-## 4. The nav
+## 4. Notifications — and why the current engine cannot produce them
+
+A student should be told when a session is **added**, **rescheduled** or
+**cancelled**, and when a **payment falls due**. Both are reasonable and neither
+is a small addition, because the notification system that exists today is the
+wrong shape for them.
+
+### 4.1 Two different things called "a notification"
+
+What `NotificationsService.sweep()` does now: it evaluates **situations** — "how
+many students are unallocated", "how many installments are overdue" — and
+upserts one grouped row per situation. A count of zero *resolves* the row. It is
+an operator work queue, and its whole design goal is to reach zero.
+
+What a student needs is not a situation. "Your Tuesday session was cancelled" is
+a **fact about a moment**. It cannot be swept for, because by the time the
+nightly run happens the session row simply says `CANCELLED` — nothing records
+that it *changed*, or that this student has not been told. And it must never
+auto-resolve: there is no condition to clear, and a cancellation notice that
+disappeared on its own would be the worst possible behaviour.
+
+So the portal needs a second mechanism alongside the sweep:
+
+| | **Swept** (exists) | **Emitted** (new) |
+| --- | --- | --- |
+| Shape | A condition, counted | An event, at the moment it happened |
+| Written by | The nightly run | The service that made the change, in the same transaction |
+| Recipient | Nobody in particular — an operator queue | One person, by `recipientType` + `recipientId` |
+| Grouped | Yes, by `groupKey` | No |
+| Resolves | Automatically, when the count hits zero | Never. Read, or not read |
+
+The `notifications` table already models both: `recipientType`, `recipientId`,
+`class`, `readAt`, `status`. What is missing is an `emit()` beside `sweep()`.
+
+**One rule that has to be written down now:** an emitted row must never carry a
+situation's `groupKey`. The sweep resolves rows by group key, so an event that
+borrowed one would be silently deleted by the next nightly run.
+
+### 4.2 Session lifecycle
+
+Emitted from `sessions.service.ts`, which currently emits nothing. Recipients
+are every student with a live, active mapping to that session's batch.
+
+| Trigger | Where it goes in | Class |
+| --- | --- | --- |
+| Session added to my batch | `create` | FYI |
+| Session rescheduled — date, time, mode or venue changed | `reschedule`, `update` | FYI |
+| Session cancelled | `cancel` | ALERT — it removes something they had planned around |
+| Recording published for a session I attended | `linkRecording` | FYI |
+| Session starts tomorrow | the nightly run — this one genuinely is a condition | FYI |
+
+Three details that will otherwise be found the hard way:
+
+1. **Do not notify for a session scheduled in the past.** Backdating is
+   deliberate — it is how a cohort that started two months ago gets its history
+   recorded — and a bulk backfill of twenty historical sessions would fire
+   twenty notices at every student on the roster. Emit only when the session is
+   in the future.
+2. **Reschedule must compare, not assume.** `update` is also how a venue typo
+   gets corrected. Emit only when the scheduled date, start or end time, mode or
+   venue actually changed, and say what it changed *from* — "moved from Tue 14
+   Oct to Thu 16 Oct" is the message; "your session was updated" is noise.
+3. **Allocation is not an event storm.** A student allocated to a batch with
+   fifteen scheduled sessions must not receive fifteen "session added" notices.
+   Their joining the batch is the event; the schedule is something they read.
+
+### 4.3 Payment reminders, starting five days out
+
+Today's cron sends **one** reminder, at **three** days, guarded by
+`fee_installments.reminder_sent_flag` — a boolean. A ladder cannot be built on a
+boolean: it can only record that *something* was sent, not which rungs.
+
+**Proposed ladder**, for a `PENDING` or `PARTIALLY_PAID` installment:
+
+| Offset | Class |
+| --- | --- |
+| 5 days before | FYI |
+| 3 days before | FYI |
+| 1 day before | ACTION_REQUIRED |
+| Due today | ACTION_REQUIRED |
+| 3 days overdue, 7 days overdue, then weekly | ALERT |
+
+**Schema:** add `fee_installment_reminders` — `installmentId`, `offsetDays`,
+`sentAt`, `recipientType`, `recipientId`, `channel` — with a unique key on
+`(installmentId, offsetDays)`. That key is what makes the nightly run
+idempotent: running it twice in a day cannot double-send, which a stage counter
+would not guarantee. It also answers the question finance will actually ask —
+*did we remind them, and when* — which a flag cannot.
+
+Keep `reminder_sent_flag` and `reminder_sent_at` set on the first rung, so
+anything already reading them keeps working.
+
+**Invariant 6 does not bend here.** The recipient resolves from the
+installment's parent, every time. A college student's fees hang off the
+college's **contract**, not off them — so a college student must receive no
+payment reminder at all, in the portal or anywhere else. They have no ledger and
+no dues; a reminder would be telling them about someone else's invoice. This is
+the same rule that makes §3.6 absent rather than empty for them.
+
+**One thing this makes true for the first time:** the reminder run currently
+*logs* its dispatch and stops — there is no email or WhatsApp integration, so
+today nothing actually reaches a student. An in-portal notification would be the
+first real delivery channel these reminders have ever had.
+
+### 4.4 Assignments
+
+| Trigger | Where | Class |
+| --- | --- | --- |
+| Assignment published on my batch | `createAssignment` / publish | ACTION_REQUIRED — there is something to do |
+| Due tomorrow, not yet submitted | the nightly run — a condition | ACTION_REQUIRED |
+| Submission graded | the grading write | FYI |
+
+The first and third are emitted; the second is swept, and it is the one case
+where a student row *should* auto-resolve — submitting clears it, which is
+exactly the work-queue behaviour the existing engine already implements.
+
+### 4.5 What the student's bell is, and is not
+
+Read the same way the admin's is: `ACTION_REQUIRED` badges, `FYI` auto-reads
+once seen, `ALERT` persists. `GET /notifications` and `markRead` already scope
+by principal, so the read side is largely there.
+
+It is **in-portal only**. Email, WhatsApp and SMS are not integrated and are not
+in this scope — see `notifications-and-reports.md` §1.1 for why outbound
+messaging is a separate problem with a different failure mode.
+
+---
+
+## 5. The nav
 
 Nine entries was right for an operations console. A student needs five:
 
@@ -232,7 +359,7 @@ landing page, not a dashboard of metrics — a student has no fleet to survey.
 
 ---
 
-## 5. Gaps that need a decision or new code
+## 6. Gaps that need a decision or new code
 
 | Gap | What it blocks | Note |
 | --- | --- | --- |
@@ -242,10 +369,12 @@ landing page, not a dashboard of metrics — a student has no fleet to survey.
 | **No file storage** | Assignment uploads, certificate PDFs | v1 submissions are a link plus text |
 | **Attendance has no writer** | The attendance view renders empty | Lands with the admin or trainer attendance UI |
 | **No job application record** | "Applied" state, admin visibility of interest | Schema addition. Worth deciding alongside the Naukri feed |
+| **No `emit()` beside `sweep()`** | Every session and assignment notice in §4 | The engine only evaluates conditions. Events need writing at the moment they happen |
+| **`reminder_sent_flag` is a boolean** | The 5-day reminder ladder | §4.3 — needs `fee_installment_reminders`, keyed on (installment, offset) so the nightly run stays idempotent |
 
 ---
 
-## 6. Suggested sequence
+## 7. Suggested sequence
 
 Each step is usable on its own, which matters: a portal that only becomes useful
 at the end cannot be tested by a real student until the end.
@@ -259,12 +388,20 @@ at the end cannot be tested by a real student until the end.
 4. **Assignments.** The first place a student *writes*. Submission, status,
    marks, feedback.
 5. **Certificates and jobs.** Both mostly exist server-side; both are reads.
-6. **Notifications and attendance.** Both render what other parts of the system
-   write, so both are best last.
+6. **Notifications.** No longer "last because it is easy" — §4 makes it a piece
+   of engine work. Split it:
+   - **6a. `emit()`**, and the student bell that reads it. Wire session
+     added / rescheduled / cancelled first: they are the ones a student notices
+     the absence of, and they prove the mechanism.
+   - **6b. The reminder ladder.** The `fee_installment_reminders` table, the
+     five rungs, and the cron change. Retail only, by invariant 6.
+   - **6c. Assignment notices**, once 4 has landed.
+7. **Attendance.** Renders what the deferred admin or trainer UI will write, so
+   it is genuinely last.
 
 ---
 
-## 7. What this deliberately is not
+## 8. What this deliberately is not
 
 Not a learning-management system. There is no content library, no quiz engine,
 no discussion, no progress gamification. The delivery chain is
