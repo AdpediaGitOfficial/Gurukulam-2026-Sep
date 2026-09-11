@@ -18,6 +18,7 @@ writing code.
 | `docs/prototype/index.html` | Clickable prototype — 60 routes, all screens. **Open it in a browser.** This is the design reference |
 | `docs/prototype/student.html` | The student portal, clickable. Same tokens, phone-first shell. Its segment switch shows invariants 3 and 7 as screens rather than prose |
 | `docs/prototype/trainer.html` | The trainer portal, clickable. Green rail. Shows the two screens with no server side — attendance and marking — and what an in-house trainer does not have |
+| `docs/prototype/check.mjs` | Walks all three prototypes — every route, every segment, both widths — and fails on a dead link, a blank screen or sideways scroll. `CHROME=… node docs/prototype/check.mjs` |
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
 | `docs/notifications-and-reports.md` | The notification catalogue and report grammar |
 | `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and the gaps |
