@@ -1,0 +1,79 @@
+import { Module } from "@nestjs/common";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { AuthModule } from "./modules/auth/auth.module";
+import { HealthController } from "./modules/health/health.controller";
+import { PrismaModule } from "./modules/prisma/prisma.module";
+import { IdsModule } from "./modules/ids/ids.module";
+import { CoursesModule } from "./modules/courses/courses.module";
+import { TrainersModule } from "./modules/trainers/trainers.module";
+import { CollegesModule } from "./modules/colleges/colleges.module";
+import { QuestionsModule } from "./modules/questions/questions.module";
+import { HiringModule } from "./modules/hiring/hiring.module";
+import { BatchesModule } from "./modules/batches/batches.module";
+import { StudentsModule } from "./modules/students/students.module";
+import { LedgerModule } from "./modules/ledger/ledger.module";
+import { CertificatesModule } from "./modules/certificates/certificates.module";
+import { DashboardModule } from "./modules/dashboard/dashboard.module";
+import { LocalisationModule } from "./modules/localisation/localisation.module";
+import { RequirementsModule } from "./modules/requirements/requirements.module";
+import { AccessModule } from "./modules/access/access.module";
+import { ReportsModule } from "./modules/reports/reports.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { AuthGuard } from "./common/guards/auth.guard";
+import { RateLimitGuard } from "./common/guards/rate-limit.guard";
+import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { SerialiseInterceptor } from "./common/interceptors/serialise.interceptor";
+import { ConfigModule } from "./config/config.module";
+
+@Module({
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    IdsModule,
+    AuthModule,
+    // The five independent tracks from admin-portal-plan.md §5 — the widest
+    // point in the build. None of them depends on another.
+    CoursesModule,
+    TrainersModule,
+    CollegesModule,
+    QuestionsModule,
+    HiringModule,
+    // M6 — delivery. Needs courses, trainers and (for college batches)
+    // colleges, so it sits downstream of the five parallel tracks.
+    BatchesModule,
+    // M7 — enrolment. Needs M6, and carries the allocation transaction.
+    StudentsModule,
+    // M8 — money. Needs M7's allocation seam and M4's standard market value.
+    LedgerModule,
+    // M12 — outcomes. Needs M7 plus the attendance signal from M6.
+    CertificatesModule,
+    // M11 — last, because it aggregates over everything above. Building it
+    // earlier would mean computing every number twice.
+    DashboardModule,
+    // M2 — set-up-once configuration. Cities are the unit operators scope to.
+    LocalisationModule,
+    // M3's remaining half — the college engagement's entry point, and the
+    // college portal's server side.
+    RequirementsModule,
+    // M1's management half — roles, administrators and the account screen.
+    // The module that can lock an organisation out of its own system.
+    AccessModule,
+    // Reports — one grammar, four built. A report is the easiest place to leak
+    // another region's data, because it feels like just numbers.
+    ReportsModule,
+    // The bell — a work queue that reaches zero, swept by the nightly run.
+    NotificationsModule,
+  ],
+  controllers: [HealthController],
+  providers: [
+    // Authentication is global and opt-OUT. A new route is protected the
+    // moment it exists; forgetting @Public() fails closed.
+    // Before AuthGuard: an unauthenticated flood should be turned away without
+    // costing a password hash or a database round trip.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_INTERCEPTOR, useClass: SerialiseInterceptor },
+  ],
+})
+export class AppModule {}
