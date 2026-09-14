@@ -1,0 +1,80 @@
+name: Deploy Gurukulam App
+
+on:
+  push:
+    branches:
+      - main
+      - claude/project-analysis-6t08cr
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Pre-Deployment Backup, Branch Verification, and Prisma Migration
+        run: |
+          set -e
+
+          # 1. Configuration variables
+          PROJECT_DIR="/var/www/html/gurukulam/gurukulam-claude/Gurukulam-2026-Sep"
+          BACKUP_DIR="/var/www/html/gurukulam/db-bakup"
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          BACKUP_FILE="${BACKUP_DIR}/gurukulamdbbackup_${TIMESTAMP}.sql"
+          DB_NAME="gurukulam"
+          TARGET_BRANCH="claude/project-analysis-6t08cr"
+          SCHEMA_PATH="./packages/db/prisma/schema.prisma"
+
+          # 2. Database Backup BEFORE applying any updates
+          echo "Starting pre-deployment PostgreSQL database backup..."
+          sudo mkdir -p "${BACKUP_DIR}"
+          sudo -u postgres pg_dump "${DB_NAME}" | sudo tee "${BACKUP_FILE}" > /dev/null
+
+          if [ -s "${BACKUP_FILE}" ]; then
+            echo "Database backup successfully generated at: ${BACKUP_FILE}"
+          else
+            echo "ERROR: Backup file is empty or failed to create!" >&2
+            exit 1
+          fi
+
+          # Clean up backups older than 14 days
+          sudo find "${BACKUP_DIR}" -name "gurukulamdbbackup_*.sql" -type f -mtime +14 -delete
+
+          # 3. Navigate to application path
+          echo "Navigating to project directory: ${PROJECT_DIR}"
+          cd "${PROJECT_DIR}"
+
+          # 4. Fetch and checkout specific target branch
+          echo "Fetching latest changes from remote..."
+          git fetch origin
+
+          echo "Checking out branch: ${TARGET_BRANCH}"
+          git checkout -B "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
+          git pull origin "${TARGET_BRANCH}"
+
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Active branch confirmed: ${CURRENT_BRANCH}"
+
+          if [ "${CURRENT_BRANCH}" != "${TARGET_BRANCH}" ]; then
+            echo "ERROR: Failed to switch to target branch '${TARGET_BRANCH}'. Aborting!" >&2
+            exit 1
+          fi
+
+          # 5. Install dependencies
+          echo "Installing dependencies using npm ci..."
+          npm ci
+
+          # 6. Check and safely execute pending Prisma migrations
+          echo "Checking Prisma migration status..."
+          STATUS=$(npx prisma migrate status --schema="${SCHEMA_PATH}" 2>&1 || true)
+
+          if echo "${STATUS}" | grep -q "Following migration(s) have not yet been applied"; then
+            echo "New database migrations detected. Executing npx prisma migrate deploy..."
+            npx prisma migrate deploy --schema="${SCHEMA_PATH}"
+          else
+            echo "No pending migrations found. Skipping migration deployment."
+          fi
+
+          echo "Deployment script completed successfully!"
