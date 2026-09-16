@@ -109,8 +109,17 @@ async function main(): Promise<void> {
       brokenPages.push(`${route} — HTTP ${status}`);
       continue;
     }
-    // Server Components stream; the actions are in the payload, not the shell.
+    // Server Components stream, and React attaches click handlers during
+    // hydration. Asking before that lands reports every client component as
+    // inert — so wait until React has attached props to something.
     await page.waitForLoadState("load");
+    await page
+      .waitForFunction(() => {
+        const buttons = [...document.querySelectorAll("button")];
+        if (buttons.length === 0) return true;
+        return buttons.some((el) => Object.keys(el).some((k) => k.startsWith("__reactProps$")));
+      }, undefined, { timeout: 10000 })
+      .catch(() => undefined);
 
     const found = await page.evaluate(() => {
       const links: string[] = [];
@@ -134,7 +143,11 @@ async function main(): Promise<void> {
           ? null
           : (button as unknown as Record<string, { onClick?: unknown }>)[key];
         if (props && typeof props.onClick === "function") return;
-        inert.push((button.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 44));
+        const name = (button.textContent ?? "").trim().replace(/\s+/g, " ")
+          || button.getAttribute("aria-label")
+          || button.getAttribute("title")
+          || `<icon-only ${button.className.slice(0, 40)}>`;
+        inert.push(name.slice(0, 60));
       });
 
       const forms = [...document.querySelectorAll("form")].map((form) => ({

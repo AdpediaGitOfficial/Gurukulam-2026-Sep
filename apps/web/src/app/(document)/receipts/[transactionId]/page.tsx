@@ -75,6 +75,14 @@ export default async function ReceiptPage({
           </p>
         ) : null}
 
+        {/* The document's own name, for anything reading its structure rather
+            than its layout: a screen reader, a print stylesheet, the tab. The
+            issuer's name is the masthead, which is a different thing. */}
+        <h1 className="sr-only">
+          {isReversal ? "Credit note" : "Payment receipt"} {receipt.receiptNumber} —{" "}
+          {receipt.issuer.name}
+        </h1>
+
         <header className="flex flex-wrap items-start justify-between gap-6 border-b border-hairline pb-6">
           <div>
             <p className="text-h2 text-ink">{receipt.issuer.name}</p>

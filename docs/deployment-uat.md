@@ -459,12 +459,22 @@ written and each was a "there is no option to…" on the review:
 
 ## 9a. The verification suites are not a UAT smoke test
 
-The repository carries sixteen `verify:*` scripts, and they are genuinely
+The repository carries eighteen `verify:*` scripts, and they are genuinely
 useful — but **every one of them writes to the database it is pointed at**.
 They sign in, create records through the API, assert on what came back, and
 several delete rows directly to tear their fixtures down. `verify:inhouse`
 goes further: it allocates a trainer to a real batch and then releases them, and
-`verify:upload` loads sessions into a real batch before removing them again.
+`verify:upload` loads sessions into a real batch before removing them again, and
+`verify:forms` edits a real record and puts it back. `verify:actions` is the one
+exception: it only reads, so it is safe to point anywhere you can sign in.
+
+**Two questions, not one.** `verify:actions` asks whether every screen renders,
+every link resolves and every control is wired — looking for React's handler
+property, because React never writes an `onclick` attribute and a check that
+asks for one passes everything. `verify:forms` asks the different question:
+whether Edit actually *saves*, by driving the real form and then reading the row
+back out of the database. A form can render, submit, redirect, and change
+nothing.
 
 Run them against a **seeded development database only**. Never against UAT once
 testers have put real content in it, and never against production.
@@ -478,6 +488,11 @@ npm run verify:inhouse  --workspace @gurukulam/api   # 19 — in-house allocatio
 npm run verify:contracts --workspace @gurukulam/api  # every response matches its schema
 npm run verify:upload   --workspace @gurukulam/api   # 10 — an upload adds, never replaces
 npm run verify:receipt  --workspace @gurukulam/api   # 9  — the receipt, and its scope
+
+# The console, driven rather than reasoned about. Start it first
+# (npm run start --workspace @gurukulam/web), then:
+npm run verify:actions  --workspace @gurukulam/web   # 67 routes — read-only
+npm run verify:forms    --workspace @gurukulam/web   # 9  — does Edit actually save?
 
 # This one is read-mostly and worth running against a staging box as well: it
 # attacks the controls rather than asserting about the code. It does create

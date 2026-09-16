@@ -18,3 +18,6 @@ pnpm-debug.log*
 
 # Written by apps/web verify:render — a verification artefact, not a source file.
 design-system.png
+
+# Redis writes its snapshot into whatever directory it was started from.
+dump.rdb
