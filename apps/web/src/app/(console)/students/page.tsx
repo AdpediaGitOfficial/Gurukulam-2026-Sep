@@ -4,6 +4,7 @@ import type { Student } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
@@ -11,8 +12,10 @@ import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
+import { formatCount } from "@/lib/format";
 import { SegmentTag } from "@/components/patterns/segment-tag";
-import { listStudents } from "@/features/students/server/students-service";
+import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
+import { getStudentSummary, listStudents } from "@/features/students/server/students-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -87,7 +90,7 @@ export default async function StudentsPage({
 }) {
   await requireModule("students");
   const params = await searchParams;
-  const page = await listStudents(params);
+  const [page, summary] = await Promise.all([listStudents(params), getStudentSummary()]);
 
   return (
     <ListPage
@@ -100,11 +103,52 @@ export default async function StudentsPage({
         </Link>
       }
       summary={
-        params["created"] === "1" ? (
-          <Alert intent="success" title="Added">
-            Student added.
-          </Alert>
-        ) : null
+        <>
+          {/* The denominator the filtered table is read against, so these are
+              deliberately NOT narrowed by the toolbar — and they carry the same
+              scope the list does, or a sub-admin would read the estate's totals
+              over their own city's rows. */}
+          <StatTileGrid>
+            <StatTile
+              label="Total students"
+              value={formatCount(summary.total)}
+              caption="Enrolled across all terms"
+              icon="users"
+              color={domainTokens.students}
+            />
+            <StatTile
+              label="Retail"
+              value={formatCount(summary.retail)}
+              caption="Walk-in and inbound"
+              icon="acct"
+              color={brandTokens.gold}
+              href="/students?segment=RETAIL"
+            />
+            <StatTile
+              label="College"
+              value={formatCount(summary.college)}
+              caption={`Across ${formatCount(summary.collegesRepresented)} institution${
+                summary.collegesRepresented === 1 ? "" : "s"
+              }`}
+              icon="college"
+              color={domainTokens.colleges}
+              href="/students?segment=COLLEGE"
+            />
+            <StatTile
+              label="Unallocated"
+              value={formatCount(summary.unallocated)}
+              caption="Onboarded, no batch yet"
+              icon="warn"
+              color={summary.unallocated === 0 ? brandTokens.inkMuted : feedbackTokens.warning}
+              href="/students/unallocated"
+            />
+          </StatTileGrid>
+          {params["created"] === "1" ? (
+            <Alert intent="success" title="Added">
+              Student added.
+            </Alert>
+          ) : null}
+        </>
       }
       toolbar={
         <ListFilters

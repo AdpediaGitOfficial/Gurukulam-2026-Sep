@@ -288,6 +288,42 @@ export class StudentsService {
    * Every count is a live query rather than a stored figure — a stored one
    * goes stale the moment a mapping or an installment changes.
    */
+  /**
+   * The headline figures for the register's tiles.
+   *
+   * Scoped identically to `list`, and that is the whole contract: a tile that
+   * counts something the table below it cannot show is a number nobody can
+   * reconcile, and the operator ends up trusting neither.
+   */
+  async summary(principal: Principal): Promise<StudentSummary> {
+    const scope = {
+      ...liveOnly(),
+      ...cityScope(principal),
+      ...collegeScope(principal),
+    } satisfies Prisma.StudentWhereInput;
+
+    const [total, college, unallocated, colleges] = await this.prisma.$transaction([
+      this.prisma.student.count({ where: scope }),
+      // Segment is decided by the college link, not a stored flag — one fewer
+      // thing that can disagree with itself (invariant 1).
+      this.prisma.student.count({ where: { ...scope, collegeId: { not: null } } }),
+      this.prisma.student.count({ where: { ...scope, batchMappings: { none: { deletedAt: null } } } }),
+      this.prisma.student.findMany({
+        where: { ...scope, collegeId: { not: null } },
+        distinct: ["collegeId"],
+        select: { collegeId: true },
+      }),
+    ]);
+
+    return {
+      total,
+      retail: total - college,
+      college,
+      unallocated,
+      collegesRepresented: colleges.length,
+    };
+  }
+
   async unallocatedSummary(principal: Principal): Promise<UnallocatedSummary> {
     const scope = {
       ...liveOnly(),

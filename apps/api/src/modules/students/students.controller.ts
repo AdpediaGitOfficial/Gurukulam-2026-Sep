@@ -23,6 +23,14 @@ export class StudentsController {
   ) {}
 
   /** Declared before ":id" so it is never read as a student id. */
+  /** Headline figures for the register's tiles. Before ":id", like every
+      static segment, so it is never read as a student id. */
+  @Get("summary")
+  @RequirePermission("students", "read")
+  summary(@CurrentPrincipal() p: Principal) {
+    return this.students.summary(p);
+  }
+
   @Get("unallocated")
   @RequirePermission("students", "read")
   unallocated(@CurrentPrincipal() p: Principal) {

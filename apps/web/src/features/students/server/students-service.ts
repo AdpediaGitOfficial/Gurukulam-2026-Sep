@@ -11,7 +11,9 @@ import {
   type StudentDetail,
   type UnallocatedSummary,
   assignmentSubmissionSchema,
+  studentSummarySchema,
   type AssignmentSubmission,
+  type StudentSummary,
 } from "@gurukulam/contracts";
 
 import { BATCH_FILTERS } from "@/features/batches/server/batches-service";
@@ -95,4 +97,9 @@ export async function listStudentSubmissions(
     { ...params, studentId, pageSize: params["pageSize"] ?? "50" },
     SUBMISSION_FILTERS,
   );
+}
+
+/** The register's headline figures, scoped exactly as the list is. */
+export async function getStudentSummary(): Promise<StudentSummary> {
+  return studentSummarySchema.parse(await apiFetch("/students/summary"));
 }

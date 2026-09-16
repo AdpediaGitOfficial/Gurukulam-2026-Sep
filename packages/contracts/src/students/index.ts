@@ -234,6 +234,30 @@ export type AllocationResult = z.infer<typeof allocationResultSchema>;
  * The unallocated queue and its three sibling data-hygiene queues — the gap
  * between a record existing and revenue actually starting.
  */
+/**
+ * The register's own headline figures, for the tiles above the list.
+ *
+ * Counted under the SAME scope the list is, so a regional sub-admin's "3,420
+ * students" is their 3,420 and not the estate's. A tile that disagrees with
+ * the table beneath it is worse than no tile — it makes the operator distrust
+ * both, and they cannot tell which one lied.
+ *
+ * Deliberately NOT filtered by the caller's search or status: the tiles are
+ * the denominator the filtered table is read against.
+ */
+export const studentSummarySchema = z.object({
+  total: z.number().int(),
+  /** Segment split. Retail has no college and never will (invariant 1). */
+  retail: z.number().int(),
+  college: z.number().int(),
+  /** On no roster yet — the queue that costs money while it waits. */
+  unallocated: z.number().int(),
+  /** Distinct institutions represented, for the college tile's caption. */
+  collegesRepresented: z.number().int(),
+});
+
+export type StudentSummary = z.infer<typeof studentSummarySchema>;
+
 export const unallocatedSummarySchema = z.object({
   unallocated: z.object({
     total: z.number().int(),
