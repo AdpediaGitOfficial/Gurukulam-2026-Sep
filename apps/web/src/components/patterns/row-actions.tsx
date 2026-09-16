@@ -2,10 +2,20 @@ import Link from "next/link";
 
 import type { Column } from "@/components/ui/data-table";
 import { buttonVariants } from "@/components/ui/button";
+import { DeleteRecord } from "@/components/patterns/delete-record";
+import type { DeleteTarget } from "@/server/delete";
 
 export interface RowAction {
   label: string;
   href: string;
+}
+
+/** What removing THIS row would remove. */
+export interface RowDelete {
+  target: DeleteTarget;
+  id: string;
+  /** Named in the confirm — "Remove Sri Narayana College?" */
+  label: string;
 }
 
 /**
@@ -17,9 +27,16 @@ export interface RowAction {
  *
  * Returned as a `Column` so a list page adds it the way it adds any other
  * column — tables stay data, not markup.
+ *
+ * `remove` is where Delete lives, for the same reason Edit does. It is
+ * optional twice over: omitted entirely when the principal may not delete in
+ * this module, and able to return null for a row that is not deletable even
+ * when the module is. A page that omits it shows no Delete at all, which is
+ * the correct answer for a read-only operator — not a button that 403s.
  */
 export function rowActions<TRow>(
   actions: (row: TRow) => readonly RowAction[],
+  remove?: (row: TRow) => RowDelete | null,
 ): Column<TRow> {
   return {
     id: "actions",
@@ -28,18 +45,24 @@ export function rowActions<TRow>(
     header: <span className="sr-only">Actions</span>,
     align: "end",
     className: "w-px whitespace-nowrap",
-    cell: (row) => (
-      <span className="flex items-center justify-end gap-1">
-        {actions(row).map((action) => (
-          <Link
-            key={action.label}
-            href={action.href}
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            {action.label}
-          </Link>
-        ))}
-      </span>
-    ),
+    cell: (row) => {
+      const deletion = remove === undefined ? null : remove(row);
+      return (
+        <span className="flex items-center justify-end gap-1">
+          {actions(row).map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              {action.label}
+            </Link>
+          ))}
+          {deletion === null ? null : (
+            <DeleteRecord target={deletion.target} id={deletion.id} label={deletion.label} />
+          )}
+        </span>
+      );
+    },
   };
 }

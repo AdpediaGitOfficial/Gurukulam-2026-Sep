@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import type { AdminUser } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -25,7 +26,7 @@ const STATUS = {
   SUSPENDED: { intent: "danger", label: "Suspended" },
 } as const;
 
-const COLUMNS: Column<AdminUser>[] = [
+const columns = (mayDelete: boolean): Column<AdminUser>[] => [
   {
     id: "admin",
     header: "Name",
@@ -82,9 +83,12 @@ const COLUMNS: Column<AdminUser>[] = [
       );
     },
   },
-  rowActions((row) => [
-    { label: "Edit", href: `/settings/administrators/${row.adminUserId}/edit` },
-  ]),
+  rowActions(
+    (row) => [{ label: "Edit", href: `/settings/administrators/${row.adminUserId}/edit` }],
+    mayDelete
+      ? (row) => ({ target: "administrator" as const, id: row.adminUserId, label: row.name })
+      : undefined,
+  ),
 ];
 
 export default async function AdministratorsPage({
@@ -92,7 +96,10 @@ export default async function AdministratorsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("settings");
+  const principal = await requireModule("settings");
+  /* Not rendered at all without the permission — a button that answers
+     403 teaches people the console is broken, not that they lack the right. */
+  const mayDelete = can(principal, "settings", "delete");
   const params = await searchParams;
   const page = await listAdministrators(params);
 
@@ -127,7 +134,7 @@ export default async function AdministratorsPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.adminUserId}
         caption="Administrators by role, region scope and status"

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import type { Question } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -10,6 +11,7 @@ import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { listQuestions } from "@/features/questions/server/questions-service";
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -31,7 +33,7 @@ const DIFFICULTY = {
  * truncating either makes the bank unreviewable — which is the one thing this
  * page exists for.
  */
-function QuestionCard({ question }: { question: Question }) {
+function QuestionCard({ question, mayDelete }: { question: Question; mayDelete: boolean }) {
   const answers = new Set(question.correctAnswers ?? []);
 
   return (
@@ -50,6 +52,15 @@ function QuestionCard({ question }: { question: Question }) {
         <span className="ml-auto text-caption text-ink-subtle tabular-nums">
           {question.marks} {question.marks === 1 ? "mark" : "marks"}
         </span>
+        {/* Retiring a question is soft: papers already set from it still
+            explain themselves, which is why the API keeps the row. */}
+        {mayDelete ? (
+          <DeleteRecord
+            target="question"
+            id={question.questionId}
+            label="this question"
+          />
+        ) : null}
       </div>
 
       <p className="mb-2.5 text-body font-medium text-ink">{question.questionText}</p>
@@ -89,7 +100,8 @@ export default async function QuestionBankPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("courses");
+  const principal = await requireModule("courses");
+  const mayDelete = can(principal, "courses", "delete");
   const params = await searchParams;
   const page = await listQuestions(params);
 
@@ -128,7 +140,7 @@ export default async function QuestionBankPage({
         ) : (
           <ul className="flex flex-col gap-3">
             {page.rows.map((question) => (
-              <QuestionCard key={question.questionId} question={question} />
+              <QuestionCard key={question.questionId} question={question} mayDelete={mayDelete} />
             ))}
           </ul>
         )}

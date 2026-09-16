@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { City } from "@gurukulam/contracts";
+import { can, type City } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -19,7 +19,7 @@ import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Cities" };
 
-const COLUMNS: Column<City>[] = [
+const columns = (mayDelete: boolean): Column<City>[] => [
   {
     id: "city",
     header: "City",
@@ -67,7 +67,10 @@ const COLUMNS: Column<City>[] = [
       </StatusPill>
     ),
   },
-  rowActions((row) => [{ label: "Edit", href: `/settings/cities/${row.cityId}/edit` }]),
+  rowActions(
+    (row) => [{ label: "Edit", href: `/settings/cities/${row.cityId}/edit` }],
+    mayDelete ? (row) => ({ target: "city" as const, id: row.cityId, label: row.name }) : undefined,
+  ),
 ];
 
 export default async function CitiesPage({
@@ -75,7 +78,11 @@ export default async function CitiesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("settings");
+  const principal = await requireModule("settings");
+  /* The Delete verb is not rendered at all for an operator without the
+     permission — a button that answers 403 teaches people the console is
+     broken rather than that they lack the right. */
+  const mayDelete = can(principal, "settings", "delete");
   const params = await searchParams;
   const page = await listCities(params);
 
@@ -127,7 +134,7 @@ export default async function CitiesPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.cityId}
         caption="Operating cities with their parent country and footprint"

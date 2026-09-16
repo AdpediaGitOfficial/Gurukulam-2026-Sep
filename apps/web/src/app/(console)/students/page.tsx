@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Student } from "@gurukulam/contracts";
+import { can, type Student } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -32,7 +32,7 @@ const STATUS = {
 const fullName = (row: Student) =>
   row.lastName === null ? row.firstName : `${row.firstName} ${row.lastName}`;
 
-const COLUMNS: Column<Student>[] = [
+const columns = (mayDelete: boolean): Column<Student>[] => [
   {
     id: "student",
     header: "Student",
@@ -126,7 +126,16 @@ const COLUMNS: Column<Student>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  rowActions((row) => [{ label: "Edit", href: `/students/${row.studentId}/edit` }]),
+  rowActions(
+    (row) => [{ label: "Edit", href: `/students/${row.studentId}/edit` }],
+    mayDelete
+      ? (row) => ({
+          target: "student" as const,
+          id: row.studentId,
+          label: [row.firstName, row.lastName].filter(Boolean).join(" "),
+        })
+      : undefined,
+  ),
 ];
 
 export default async function StudentsPage({
@@ -134,7 +143,11 @@ export default async function StudentsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("students");
+  const principal = await requireModule("students");
+  /* The Delete verb is not rendered at all for an operator without the
+     permission — a button that answers 403 teaches people the console is
+     broken rather than that they lack the right. */
+  const mayDelete = can(principal, "students", "delete");
   const params = await searchParams;
   const [page, summary] = await Promise.all([listStudents(params), getStudentSummary()]);
 
@@ -255,7 +268,7 @@ export default async function StudentsPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.studentId}
         caption="Students by segment, college and allocation"

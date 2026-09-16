@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import { formatRupees, fromWire, type Contract } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
@@ -8,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
 import { listContracts } from "@/features/ledger/server/ledger-service";
+import { rowActions } from "@/components/patterns/row-actions";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -25,7 +27,7 @@ const STATUS = {
 const money = (minor: string | null) =>
   minor === null ? "—" : formatRupees(fromWire(minor), { paise: false });
 
-const COLUMNS: Column<Contract>[] = [
+const columns = (mayDelete: boolean): Column<Contract>[] => [
   {
     id: "contract",
     header: "Contract",
@@ -138,6 +140,19 @@ const COLUMNS: Column<Contract>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
+  /* Delete only. There is no contract edit screen yet, and the API refuses to
+     remove a contract that has collected money — it says to cancel it instead,
+     because a receipt is a financial record. That refusal appears on the row. */
+  rowActions(
+    () => [],
+    mayDelete
+      ? (row) => ({
+          target: "contract" as const,
+          id: row.contractId,
+          label: `${row.collegeName ?? "this college"}'s contract`,
+        })
+      : undefined,
+  ),
 ];
 
 export default async function ContractsPage({
@@ -145,7 +160,8 @@ export default async function ContractsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("feeLedger");
+  const principal = await requireModule("feeLedger");
+  const mayDelete = can(principal, "feeLedger", "delete");
   const params = await searchParams;
   const page = await listContracts(params);
 
@@ -183,7 +199,7 @@ export default async function ContractsPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.contractId}
         caption="College contracts by commercial basis, value and collection"

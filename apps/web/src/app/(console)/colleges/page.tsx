@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatRupees, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
+import { can, formatRupees, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -21,7 +21,7 @@ import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Colleges" };
 
-const COLUMNS: Column<College>[] = [
+const columns = (mayDelete: boolean): Column<College>[] => [
   {
     id: "college",
     header: "College",
@@ -105,7 +105,10 @@ const COLUMNS: Column<College>[] = [
       </StatusPill>
     ),
   },
-  rowActions((row) => [{ label: "Edit", href: `/colleges/${row.collegeId}/edit` }]),
+  rowActions(
+    (row) => [{ label: "Edit", href: `/colleges/${row.collegeId}/edit` }],
+    mayDelete ? (row) => ({ target: "college" as const, id: row.collegeId, label: row.name }) : undefined,
+  ),
 ];
 
 export default async function CollegesPage({
@@ -113,7 +116,11 @@ export default async function CollegesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("colleges");
+  const principal = await requireModule("colleges");
+  /* The Delete verb is not rendered at all for an operator without the
+     permission — a button that answers 403 teaches people the console is
+     broken rather than that they lack the right. */
+  const mayDelete = can(principal, "colleges", "delete");
   const params = await searchParams;
   const [page, summary] = await Promise.all([listColleges(params), getCollegeSummary()]);
 
@@ -216,7 +223,7 @@ export default async function CollegesPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.collegeId}
         caption="Colleges by city, disciplines and engagement"

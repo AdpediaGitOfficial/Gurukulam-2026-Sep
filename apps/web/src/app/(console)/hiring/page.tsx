@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 import { formatRupees, fromWire, type JobPosting } from "@gurukulam/contracts";
 
@@ -14,6 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
 import { getHiringSummary, listJobs } from "@/features/hiring/server/hiring-service";
+import { rowActions } from "@/components/patterns/row-actions";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -52,7 +54,7 @@ function experience(row: JobPosting): string | null {
   return min !== null ? `${min}+ yrs` : `up to ${max} yrs`;
 }
 
-const COLUMNS: Column<JobPosting>[] = [
+const columns = (mayDelete: boolean): Column<JobPosting>[] => [
   {
     id: "role",
     header: "Role",
@@ -128,6 +130,15 @@ const COLUMNS: Column<JobPosting>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
+  rowActions(
+    (row) => [
+      { label: "Open", href: `/hiring/${row.jobPostingId}` },
+      { label: "Edit", href: `/hiring/${row.jobPostingId}/edit` },
+    ],
+    mayDelete
+      ? (row) => ({ target: "jobPosting" as const, id: row.jobPostingId, label: row.roleTitle })
+      : undefined,
+  ),
 ];
 
 export default async function HiringPage({
@@ -135,7 +146,10 @@ export default async function HiringPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("hiring");
+  const principal = await requireModule("hiring");
+  /* Not rendered at all without the permission — a button that answers 403
+     teaches people the console is broken, not that they lack the right. */
+  const mayDelete = can(principal, "hiring", "delete");
   const params = await searchParams;
   const [page, summary] = await Promise.all([listJobs(params), getHiringSummary()]);
 
@@ -217,7 +231,7 @@ export default async function HiringPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.jobPostingId}
         caption="Job postings by role, audience and reach"

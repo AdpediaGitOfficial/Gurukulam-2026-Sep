@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 import { formatRupees, fromWire, type Course } from "@gurukulam/contracts";
 
@@ -19,7 +20,7 @@ import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Courses" };
 
-const COLUMNS: Column<Course>[] = [
+const columns = (mayDelete: boolean): Column<Course>[] => [
   {
     id: "course",
     header: "Course",
@@ -85,10 +86,13 @@ const COLUMNS: Column<Course>[] = [
       </StatusPill>
     ),
   },
-  rowActions((row) => [
-    { label: "Open", href: `/courses/${row.courseId}` },
-    { label: "Edit", href: `/courses/${row.courseId}/edit` },
-  ]),
+  rowActions(
+    (row) => [
+      { label: "Open", href: `/courses/${row.courseId}` },
+      { label: "Edit", href: `/courses/${row.courseId}/edit` },
+    ],
+    mayDelete ? (row) => ({ target: "course" as const, id: row.courseId, label: row.name }) : undefined,
+  ),
 ];
 
 export default async function CoursesPage({
@@ -96,7 +100,10 @@ export default async function CoursesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("courses");
+  const principal = await requireModule("courses");
+  /* Not rendered at all without the permission — a button that answers
+     403 teaches people the console is broken, not that they lack the right. */
+  const mayDelete = can(principal, "courses", "delete");
   const params = await searchParams;
   const page = await listCourses(params);
 
@@ -148,7 +155,7 @@ export default async function CoursesPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.courseId}
         caption="Courses by category, duration and standard value"

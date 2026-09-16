@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import { MODULES, type ModuleName, type Role } from "@gurukulam/contracts";
 
 import Link from "next/link";
@@ -9,6 +10,7 @@ import { PageBody } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { Icon } from "@/components/ui/icon";
 import { StatusPill } from "@/components/ui/status-pill";
 import { listRoles } from "@/features/settings/server/settings-service";
@@ -80,7 +82,8 @@ export default async function RolesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("settings");
+  const principal = await requireModule("settings");
+  const mayDelete = can(principal, "settings", "delete");
   const params = await searchParams;
   const page = await listRoles(params);
 
@@ -159,6 +162,13 @@ export default async function RolesPage({
                           {role.operatorCount === 1 ? "operator" : "operators"}
                         </span>
                       )}
+                      {/* A system role and a role somebody holds are both
+                          refused by the API; the operator count above is
+                          usually why. The verb is still offered so the refusal
+                          is readable rather than a missing control. */}
+                      {mayDelete && !role.isSystem ? (
+                        <DeleteRecord target="role" id={role.roleId} label={role.name} />
+                      ) : null}
                     </span>
                   </th>
                   {MODULES.map((module) => (

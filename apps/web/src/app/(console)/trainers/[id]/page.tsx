@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 import {
   formatRupees,
@@ -24,6 +25,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { listBatches, listSessions } from "@/features/batches/server/batches-service";
 import { getTrainer, listAvailability } from "@/features/trainers/server/trainers-service";
 import { reinstateTrainer, suspendTrainer } from "@/features/trainers/server/actions";
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
@@ -184,7 +186,7 @@ function ApprovedCourses({ courses }: { courses: readonly ApprovedCourse[] }) {
  * to, which is why nothing here is stored as "available". The batch service
  * reads both when checking a proposal for clashes.
  */
-function Away({ entries }: { entries: readonly Availability[] }) {
+function Away({ entries, mayDelete }: { entries: readonly Availability[]; mayDelete: boolean }) {
   if (entries.length === 0) {
     return (
       <Card>
@@ -224,6 +226,16 @@ function Away({ entries }: { entries: readonly Availability[] }) {
               <StatusPill intent={past ? "neutral" : "warning"}>
                 {past ? "past" : "upcoming"}
               </StatusPill>
+              {/* Withdrawing a declared absence frees the window again. Offered
+                  on past entries too — a wrongly recorded week of leave is
+                  exactly the thing somebody notices afterwards. */}
+              {mayDelete ? (
+                <DeleteRecord
+                  target="availability"
+                  id={entry.availabilityId}
+                  label="this window"
+                />
+              ) : null}
             </li>
           );
         })}
@@ -239,7 +251,8 @@ export default async function TrainerDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("trainers");
+  const principal = await requireModule("trainers");
+  const mayDelete = can(principal, "trainers", "delete");
   const { id } = await params;
   const query = await searchParams;
   const trainer = await getTrainer(id);
@@ -481,7 +494,7 @@ export default async function TrainerDetailPage({
         title="Declared leave and blocked time"
         description="Free/busy is computed from this plus committed sessions, never stored — which is why declaring leave over a session the trainer is already committed to is refused."
       >
-        <Away entries={away} />
+        <Away entries={away} mayDelete={mayDelete} />
       </PageSection>
     </PageBody>
   );

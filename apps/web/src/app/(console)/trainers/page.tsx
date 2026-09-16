@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 import { formatRupees, fromWire, type Trainer } from "@gurukulam/contracts";
 
@@ -30,7 +31,7 @@ const STATUS = {
 const payModelLabel = (model: string): string =>
   model.charAt(0) + model.slice(1).toLowerCase().replace(/_/g, " ");
 
-const COLUMNS: Column<Trainer>[] = [
+const columns = (mayDelete: boolean): Column<Trainer>[] => [
   {
     id: "trainer",
     header: "Trainer",
@@ -115,10 +116,13 @@ const COLUMNS: Column<Trainer>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  rowActions((row) => [
-    { label: "Open", href: `/trainers/${row.trainerId}` },
-    { label: "Edit", href: `/trainers/${row.trainerId}/edit` },
-  ]),
+  rowActions(
+    (row) => [
+      { label: "Open", href: `/trainers/${row.trainerId}` },
+      { label: "Edit", href: `/trainers/${row.trainerId}/edit` },
+    ],
+    mayDelete ? (row) => ({ target: "trainer" as const, id: row.trainerId, label: row.name }) : undefined,
+  ),
 ];
 
 export default async function TrainersPage({
@@ -126,7 +130,10 @@ export default async function TrainersPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("trainers");
+  const principal = await requireModule("trainers");
+  /* Not rendered at all without the permission — a button that answers
+     403 teaches people the console is broken, not that they lack the right. */
+  const mayDelete = can(principal, "trainers", "delete");
   const params = await searchParams;
   const page = await listTrainers(params);
 
@@ -196,7 +203,7 @@ export default async function TrainersPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.trainerId}
         caption="Trainers by qualification, skills and approved courses"

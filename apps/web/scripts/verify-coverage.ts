@@ -148,9 +148,30 @@ function consoleCalls(): Set<string> {
     while ((match = pattern.exec(text)) !== null) {
       const window = text.slice(match.index, match.index + WINDOW);
 
-      const paths = [...window.matchAll(/[`"'](\/[A-Za-z0-9\-_/]*)/g)]
+      let paths = [...window.matchAll(/[`"'](\/[A-Za-z0-9\-_/]*)/g)]
         .map((m) => (m[1] ?? "").replace(/\/+/g, "/"))
         .filter((path) => path !== "/");
+
+      /* A DISPATCHER builds its path rather than writing one: the shared
+         delete action does `apiFetch(config.path(id), { method: "DELETE" })`,
+         and its real paths live in a registry of `path:` builders at the top
+         of the file. Reading only the call's own window sees no literal and
+         reports every one of those endpoints as having no console control —
+         a dozen permanent false gaps, which is how a suite stops being read.
+
+         So when the call site names no path, read the file's PATH BUILDERS
+         specifically — `path: (id) => \`/colleges/${id}\`` — and nothing else.
+         Not every literal in the file: the registry also carries `revalidate`
+         arrays of CONSOLE routes, and treating those as API paths made the
+         suite report `DELETE /trainers/:x` as covered after I deleted its
+         entry, purely because "/trainers" survived in a neighbour's
+         revalidate list. A false gap wastes an afternoon; a false pass hides
+         a missing control forever. */
+      if (paths.length === 0) {
+        paths = [...text.matchAll(/\bpath:\s*\([^)]*\)\s*=>\s*[`"'](\/[A-Za-z0-9\-_/]*)/g)]
+          .map((m) => (m[1] ?? "").replace(/\/+/g, "/"))
+          .filter((path) => path !== "/");
+      }
       if (paths.length === 0) continue;
 
       /* Every quoted verb in the window, not just the first one after
@@ -178,10 +199,22 @@ const called = consoleCalls();
 /**
  * Covered when some console call of the same method reaches the same place.
  *
- * A template hole truncates the recorded path, so the test is a prefix test in
- * both directions. That is conservative in the right direction: it may call a
- * gap covered, but it will not invent one — and a suite that cries wolf is a
- * suite people stop reading.
+ * The comparison is on the LITERAL PREFIX — everything before the first path
+ * parameter — and it must match exactly. A template hole truncates the
+ * recorded path (`/students/${id}/suspend` is read as `/students/`), so the
+ * endpoint's own prefix is trimmed the same way and the two are compared whole.
+ *
+ * This was a prefix test in both directions and that was wrong. A call to
+ * `/trainers/availability/:id` startsWith `/trainers/`, so it silently covered
+ * `DELETE /trainers/:id` — I proved it by deleting the trainer entry from the
+ * delete registry and watching the suite still report zero gaps. A false gap
+ * wastes an afternoon; a FALSE PASS hides a missing control forever, which is
+ * the one failure this whole file exists to prevent.
+ *
+ * What remains imprecise is honest to state: once the hole truncates, two
+ * endpoints sharing a prefix — `/students/:id/suspend` and
+ * `/students/:id/allocate` — look identical here. Telling those apart needs a
+ * TypeScript parse rather than a regex, and both are covered in practice.
  */
 const covered = (endpoint: Endpoint): boolean => {
   if (called.has(endpoint.shape)) return true;
@@ -189,11 +222,7 @@ const covered = (endpoint: Endpoint): boolean => {
   for (const shape of called) {
     const [method, path] = shape.split(" ");
     if (method !== endpoint.method || path === undefined) continue;
-    const bare = path.replace(/\/$/, "");
-    if (bare === literal || bare.startsWith(`${literal}/`) || literal.startsWith(`${bare}/`)) {
-      return true;
-    }
-    if (path.endsWith("/") && literal === bare) return true;
+    if (path.replace(/\/$/, "") === literal) return true;
   }
   return false;
 };
