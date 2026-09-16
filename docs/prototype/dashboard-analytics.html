@@ -1,4 +1,4 @@
-<title>Course &amp; Trainer Analytics</title>
+<title>Portfolio &amp; Capacity Cards</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -6,14 +6,16 @@
 
 <style>
   /* ── Tokens ────────────────────────────────────────────────────────────
-     Lifted from apps/web/src/app/globals.css, not re-invented. The point of
-     this page is that the user can approve what the console will actually
-     look like, and a mock in its own palette cannot be approved for that. */
+     Lifted from apps/web/src/app/globals.css. What is approved here has to
+     be what the console renders, and a mock in its own palette cannot be
+     approved for that.
+
+     The two chart ramps are additions, both run through the palette
+     validator rather than eyeballed — see the notes on each. */
   :root {
     --canvas: #f8f9fa;
     --surface: #ffffff;
     --sunken: #f8f9fa;
-    --muted-fill: #ebebeb;
     --hairline: #dfeeff;
     --hairline-strong: #c9d6e4;
 
@@ -23,8 +25,6 @@
 
     --brand: #0058bb;
     --gold: #805600;
-    --retail: #0058bb;
-    --college: #b07a00;
 
     --success: #16a34a;
     --success-ink: #166534;
@@ -32,64 +32,58 @@
     --warning-ink: #9a3412;
     --danger: #ba1a1a;
 
+    /* Sequential, four ordered steps. Adjacent pairs ΔE 16.2 under protanopia
+       and 17.9 in normal vision — both clear of the floor. The two lightest
+       sit under 3:1 against the card, which the validator flags as needing
+       relief, so every segment carries a label AND a count in the legend and
+       the band keeps a hairline edge. */
+    --seq-1: #cfe1f5;
+    --seq-2: #7aaede;
+    --seq-3: #2b74c4;
+    --seq-4: #0a3f7d;
+
+    /* Utilisation. Both ENDS are the problem — idle and overloaded — so the
+       ends take status colour and the healthy middle is one hue at two steps.
+       Busy↔stretched is ΔE 7.2 under protanopia, inside the floor band, which
+       is legal only with secondary encoding: hence the 2px gaps and the
+       labelled, counted legend. */
+    --util-bench: #ea580c;
+    --util-light: #3fa45f;
+    --util-busy: #166534;
+    --util-stretched: #ba1a1a;
+
     --track: #e6e8ea;
     --shadow: 0 1px 2px rgba(25, 28, 29, .06), 0 4px 12px rgba(25, 28, 29, .05);
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --canvas: #14171a;
-      --surface: #1c2024;
-      --sunken: #191c1f;
-      --muted-fill: #272b30;
-      --hairline: #2c333b;
-      --hairline-strong: #3d4650;
-
-      --ink: #eef1f4;
-      --ink-muted: #c3bdb2;
-      --ink-subtle: #98a1ac;
-
-      --brand: #6ba6ff;
-      --gold: #e0a93b;
-      --retail: #6ba6ff;
-      --college: #e0a93b;
-
-      --success: #4ade80;
-      --success-ink: #86efac;
-      --warning: #fb923c;
-      --warning-ink: #fdba74;
-      --danger: #ff8a80;
-
+      --canvas: #14171a; --surface: #1c2024; --sunken: #191c1f;
+      --hairline: #2c333b; --hairline-strong: #3d4650;
+      --ink: #eef1f4; --ink-muted: #c3bdb2; --ink-subtle: #98a1ac;
+      --brand: #6ba6ff; --gold: #e0a93b;
+      --success: #4ade80; --success-ink: #86efac;
+      --warning: #fb923c; --warning-ink: #fdba74; --danger: #ff8a80;
+      --seq-1: #24384f; --seq-2: #35628f; --seq-3: #5591cf; --seq-4: #9cc4f0;
+      --util-bench: #fb923c; --util-light: #4ade80;
+      --util-busy: #86efac; --util-stretched: #ff8a80;
       --track: #2e343b;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
     }
   }
 
   :root[data-theme="dark"] {
-    --canvas: #14171a;
-    --surface: #1c2024;
-    --sunken: #191c1f;
-    --muted-fill: #272b30;
-    --hairline: #2c333b;
-    --hairline-strong: #3d4650;
-
-    --ink: #eef1f4;
-    --ink-muted: #c3bdb2;
-    --ink-subtle: #98a1ac;
-
-    --brand: #6ba6ff;
-    --gold: #e0a93b;
-    --retail: #6ba6ff;
-    --college: #e0a93b;
-
-    --success: #4ade80;
-    --success-ink: #86efac;
-    --warning: #fb923c;
-    --warning-ink: #fdba74;
-    --danger: #ff8a80;
-
+    --canvas: #14171a; --surface: #1c2024; --sunken: #191c1f;
+    --hairline: #2c333b; --hairline-strong: #3d4650;
+    --ink: #eef1f4; --ink-muted: #c3bdb2; --ink-subtle: #98a1ac;
+    --brand: #6ba6ff; --gold: #e0a93b;
+    --success: #4ade80; --success-ink: #86efac;
+    --warning: #fb923c; --warning-ink: #fdba74; --danger: #ff8a80;
+    --seq-1: #24384f; --seq-2: #35628f; --seq-3: #5591cf; --seq-4: #9cc4f0;
+    --util-bench: #fb923c; --util-light: #4ade80;
+    --util-busy: #86efac; --util-stretched: #ff8a80;
     --track: #2e343b;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
   }
 
   * { box-sizing: border-box; }
@@ -105,7 +99,7 @@
   }
 
   .page {
-    max-width: 1120px;
+    max-width: 1140px;
     margin: 0 auto;
     padding-inline: 16px;
     padding-block: 40px 72px;
@@ -114,37 +108,28 @@
     gap: 40px;
   }
 
-  /* ── Type ─────────────────────────────────────────────────────────── */
-  h1 { font-size: 28px; line-height: 34px; font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
-  h2 { font-size: 18px; line-height: 24px; font-weight: 600; margin: 0; text-wrap: balance; }
+  h1 { font-size: 28px; line-height: 34px; font-weight: 700; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+  h2 { font-size: 19px; line-height: 26px; font-weight: 600; margin: 0; text-wrap: balance; }
   h3 { font-size: 16px; line-height: 24px; font-weight: 600; margin: 0; }
   p  { margin: 0; }
 
-  .overline {
-    font-size: 11px;
-    line-height: 16px;
-    font-weight: 600;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--ink-subtle);
-  }
-  .lede { color: var(--ink-muted); max-width: 66ch; }
+  .overline { font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-subtle); }
+  .lede { color: var(--ink-muted); max-width: 68ch; }
   .note { font-size: 13px; color: var(--ink-subtle); }
   .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
   .num  { font-variant-numeric: tabular-nums; }
 
-  /* ── Sections ─────────────────────────────────────────────────────── */
   .section { display: flex; flex-direction: column; gap: 16px; }
   .section-head { display: flex; flex-direction: column; gap: 6px; }
+  hr.rule { border: 0; border-top: 1px solid var(--hairline); margin: 0; }
 
   .pair {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
     gap: 20px;
     align-items: start;
   }
 
-  /* ── Card ─────────────────────────────────────────────────────────── */
   .card {
     background: var(--surface);
     border: 1px solid var(--hairline);
@@ -153,397 +138,391 @@
     padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 20px;
   }
 
-  .card-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .card-head .window { font-size: 13px; color: var(--ink-subtle); }
+  .card-sub { font-size: 13px; color: var(--ink-subtle); margin-top: 2px; }
 
-  /* ── Metric pair at the top of a card ─────────────────────────────── */
-  .metrics { display: flex; gap: 28px; flex-wrap: wrap; }
-  .metric { display: flex; flex-direction: column; gap: 2px; min-width: 96px; }
-  .metric .value { font-size: 30px; line-height: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .metric .value.good { color: var(--success-ink); }
-  .metric .value.bad  { color: var(--danger); }
-  .metric .value.none { color: var(--ink-subtle); font-weight: 600; }
-  .metric .label { font-size: 13px; color: var(--ink-muted); }
+  .block { display: flex; flex-direction: column; gap: 10px; }
+  .block-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-subtle); }
 
-  .split { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-  .split > .metrics { flex: 0 0 auto; }
-  /* 280px is the width below which a course name starts truncating, so the
-     list takes its own row instead of ellipsing the thing it names. */
-  .split > .bars { flex: 1 1 280px; min-width: 200px; }
-
-  /* ── Progress bars ────────────────────────────────────────────────── */
-  /* One hue, not four. These bars all measure the SAME thing — how much of
-     a course has been delivered — so colour here would encode rank, not
-     identity, and colour that follows rank repaints when the list reorders. */
-  .bars { display: flex; flex-direction: column; gap: 10px; }
-  .bar-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 84px 44px;
-    align-items: center;
-    gap: 10px;
-  }
-  .bar-row .name {
-    font-size: 13px;
-    color: var(--ink);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .track {
-    height: 8px;
+  /* ── The distribution band ─────────────────────────────────────────────
+     The whole population in one strip. A top-10 list cannot describe 1,217
+     of anything; this can, at any N, in fixed vertical space. */
+  .band {
+    display: flex;
+    gap: 2px;                     /* surface between segments, per mark spec */
+    height: 16px;
     border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--hairline-strong);
     background: var(--track);
-    overflow: hidden;
   }
-  .fill {
-    height: 100%;
-    border-radius: 999px;
-    background: var(--brand);
+  .band > span { display: block; }
+  .band > span:first-child { border-radius: 999px 0 0 999px; }
+  .band > span:last-child  { border-radius: 0 999px 999px 0; }
+
+  /* Two columns, so four buckets read as a balanced 2×2 rather than three
+     across with the fourth stranded alone on a second row. */
+  .keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+  .key {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 6px;
+    margin-inline: -6px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
   }
-  .bar-row .pct { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+  .key:hover { background: var(--sunken); }
+  .key .dot { width: 10px; height: 10px; border-radius: 3px; transform: translateY(1px); }
+  .key .name { font-size: 13px; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key .count { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ── Attention queue ──────────────────────────────────────────────── */
+  .queue { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
+  .q-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding-block: 11px;
+    border-bottom: 1px solid var(--hairline);
+    text-decoration: none;
+    color: inherit;
+  }
+  .q-item:last-child { border-bottom: 0; }
+  .q-item:hover .q-what { text-decoration: underline; }
+  .q-n {
+    min-width: 34px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    padding: 1px 7px;
+    border-radius: 7px;
+  }
+  .q-n.warn { color: var(--warning-ink); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+  .q-n.bad  { color: var(--danger);      background: color-mix(in srgb, var(--danger) 13%, transparent); }
+  .q-n.calm { color: var(--ink-subtle);  background: var(--sunken); }
+  .q-what { font-size: 13.5px; }
+  .q-go { font-size: 12px; color: var(--ink-subtle); white-space: nowrap; }
 
   /* ── Money rows ───────────────────────────────────────────────────── */
   .rows { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
-  .row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding-block: 11px;
-    border-bottom: 1px solid var(--hairline);
-  }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-block: 10px; border-bottom: 1px solid var(--hairline); }
   .row:last-child { border-bottom: 0; }
-  .row .k { font-size: 14px; color: var(--ink-muted); }
+  .row .k { font-size: 13.5px; color: var(--ink-muted); }
   .row .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; font-family: "JetBrains Mono", ui-monospace, monospace; }
   .row .v.good { color: var(--success-ink); }
   .row .v.bad  { color: var(--danger); }
 
-  /* ── Table ────────────────────────────────────────────────────────── */
+  /* ── Tables ───────────────────────────────────────────────────────── */
   .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   thead th {
-    text-align: left;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: var(--ink-subtle);
-    background: var(--sunken);
-    padding: 10px 12px;
-    white-space: nowrap;
+    text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-subtle); background: var(--sunken);
+    padding: 9px 12px; white-space: nowrap;
   }
   thead th.r, tbody td.r { text-align: right; }
-  tbody td { padding: 12px; border-bottom: 1px solid var(--hairline); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
   tbody tr:last-child td { border-bottom: 0; }
-  tbody td.num { font-variant-numeric: tabular-nums; }
+  td .sub { display: block; font-size: 12px; color: var(--ink-subtle); margin-top: 2px; }
 
-  /* ── Provenance chips ─────────────────────────────────────────────── */
-  /* State is carried by a word, never by colour alone. */
+  /* ── Chips ────────────────────────────────────────────────────────── */
   .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .02em;
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid currentColor;
-    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; border: 1px solid currentColor; white-space: nowrap;
   }
   .chip::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
-  .chip.live    { color: var(--success-ink); }
-  .chip.empty   { color: var(--warning-ink); }
+  .chip.live { color: var(--success-ink); }
+  .chip.empty { color: var(--warning-ink); }
   .chip.blocked { color: var(--danger); }
-
-  .blocked-slot {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 12px;
-    border: 1px dashed var(--hairline-strong);
-    border-radius: 10px;
-    background: var(--sunken);
-  }
-  .blocked-slot .what { font-size: 13px; font-weight: 600; color: var(--ink); }
-  .blocked-slot .why  { font-size: 12px; color: var(--ink-subtle); }
-
-  /* ── Ledger ───────────────────────────────────────────────────────── */
-  .ledger td:first-child { font-weight: 600; }
-  .ledger td .src { display: block; font-size: 12px; color: var(--ink-subtle); margin-top: 2px; }
-
-  .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 
   .callout {
     border-left: 3px solid var(--gold);
     background: var(--sunken);
     border-radius: 0 10px 10px 0;
     padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: flex; flex-direction: column; gap: 8px;
   }
+  .callout.brand { border-left-color: var(--brand); }
+  .callout.bad { border-left-color: var(--danger); }
 
-  hr.rule { border: 0; border-top: 1px solid var(--hairline); margin: 0; }
-
-  @media (max-width: 520px) {
-    .split > .metrics { flex: 1 1 100%; }
-    .bar-row { grid-template-columns: minmax(0, 1fr) 60px 40px; }
+  .evidence {
+    background: var(--sunken);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink-muted);
   }
+  .evidence b { color: var(--danger); font-weight: 700; }
+  .evidence i { color: var(--success-ink); font-style: normal; font-weight: 700; }
+
+  .two-up { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 </style>
 
 <div class="page">
 
   <header class="section-head">
-    <span class="overline">Dashboard · proposed</span>
-    <h1>Course and trainer analytics</h1>
+    <span class="overline">Dashboard · proposed, revision 2</span>
+    <h1>Course portfolio and trainer capacity</h1>
     <p class="lede">
-      Two new cards for the executive dashboard, in the console's own tokens. Every figure below
-      carries where it comes from, because four of the numbers in the reference design have no
-      source in this schema and one card would otherwise promise a measurement nobody is taking.
+      Rebuilt for 1,000+ courses and 100+ trainers. At that size a ranked list of ten is not a
+      smaller version of the answer — it is a different and mostly wrong one. I loaded a database to
+      that scale and measured what the dashboard does today before designing anything.
     </p>
-    <div class="legend" style="margin-top:6px">
-      <span class="chip live">Live today</span>
-      <span class="chip empty">Column exists, nothing writes it</span>
-      <span class="chip blocked">No source — needs a build</span>
-    </div>
   </header>
 
   <hr class="rule">
 
-  <!-- ══ 1. As it would ship today ══════════════════════════════════ -->
+  <!-- ══ The finding ════════════════════════════════════════════════ -->
   <section class="section">
     <div class="section-head">
-      <span class="overline">Option A</span>
-      <h2>If we shipped it this week</h2>
+      <span class="overline">Measured first</span>
+      <h2>The dashboard already has this bug, and it is worse than slow</h2>
       <p class="note">
-        Real figures, read out of the development database a few minutes ago. Nothing here is
-        invented. Where a measurement does not exist, the card says so instead of showing a number.
+        I cloned the database, grew it to 1,217 courses / 291 trainers / 1,267 batches, and called
+        the live endpoint.
       </p>
     </div>
 
-    <div class="pair">
-
-      <!-- Course analytics — today -->
-      <article class="card">
-        <div class="card-head">
-          <h3>Course analytics</h3>
-          <span class="window">All time</span>
-        </div>
-
-        <div class="split">
-          <div class="metrics">
-            <div class="metric">
-              <span class="value good num">12.5%</span>
-              <span class="label">Certified</span>
-              <span class="chip live" style="margin-top:4px">Live</span>
-            </div>
-          </div>
-
-          <div class="bars">
-            <div class="bar-row">
-              <span class="name">Data Analytics</span>
-              <span class="track"><span class="fill" style="width:13%"></span></span>
-              <span class="pct">13%</span>
-            </div>
-            <div class="bar-row">
-              <span class="name">Cloud Engineering (2026)</span>
-              <span class="track"><span class="fill" style="width:0%"></span></span>
-              <span class="pct">0%</span>
-            </div>
-            <div class="bar-row">
-              <span class="name">Cloud Engineering</span>
-              <span class="track"><span class="fill" style="width:0%"></span></span>
-              <span class="pct">0%</span>
-            </div>
-            <p class="note" style="margin-top:2px">Sessions delivered, per course <span class="chip live">Live</span></p>
-          </div>
-        </div>
-
-        <div class="blocked-slot">
-          <span class="what">Completion 88.4% · Drop-out 6.2%</span>
-          <span class="why">
-            <code class="mono">completed_at</code> and <code class="mono">exit_reason</code> exist on the
-            roster and are empty on all 152 rows — no screen writes either yet. Today both read 0%,
-            which is worse than absent.
-          </span>
-          <span><span class="chip empty">Needs a write path</span></span>
-        </div>
-
-        <div class="rows">
-          <div class="row"><span class="k">Retail enrolment value</span><span class="v num">₹54.25 L</span></div>
-          <div class="row"><span class="k">Institutional contract value</span><span class="v num">₹2.32 Cr</span></div>
-          <div class="row"><span class="k">Collected to date</span><span class="v good num">₹50.18 L</span></div>
-          <div class="row"><span class="k">Outstanding</span><span class="v bad num">₹2.36 Cr</span></div>
-        </div>
-        <p class="note">All four <span class="chip live">Live</span> — integer paise, formatted at tile scale.</p>
-      </article>
-
-      <!-- Trainer analytics — today -->
-      <article class="card">
-        <div class="card-head">
-          <h3>Trainer analytics</h3>
-          <span class="window">Rolling 30 days</span>
-        </div>
-
-        <div class="metrics">
-          <div class="metric">
-            <span class="value good num">100%</span>
-            <span class="label">Schedule adherence</span>
-            <span class="chip live" style="margin-top:4px">Live</span>
-          </div>
-          <div class="metric">
-            <span class="value none">—</span>
-            <span class="label">Avg. feedback / 5.0</span>
-            <span class="chip blocked" style="margin-top:4px">No source</span>
-          </div>
-        </div>
-
-        <div class="blocked-slot">
-          <span class="what">Session punctuality 96.2%</span>
-          <span class="why">
-            Nothing records when a session actually started. <code class="mono">completed_at</code> is
-            when somebody pressed "complete" — the schema calls it "a deliberate act, not a date
-            passing". <strong>Schedule adherence</strong> above is the honest measure the columns
-            already support: delivered on the day planned, against moved or called off.
-          </span>
-          <span><span class="chip blocked">Needs a clock-in</span></span>
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Trainer</th>
-                <th scope="col" class="r">Batches</th>
-                <th scope="col" class="r">Sessions</th>
-                <th scope="col" class="r">Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>Kavitha Iyer</td><td class="r num">1</td><td class="r num">8</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
-              <tr><td>Rahul Deshpande</td><td class="r num">1</td><td class="r num">6</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
-              <tr><td>Nisha Pillai</td><td class="r num">1</td><td class="r num">4</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="note">
-          Trainer and batch counts <span class="chip live">Live</span> from confirmed assignments.
-          Rating <span class="chip blocked">No source</span> — there is no rating anywhere in the schema.
-        </p>
-      </article>
-
+    <div class="callout bad">
+      <h3>Speed was never the problem. The numbers are wrong.</h3>
+      <p class="note" style="color:var(--ink-muted)">
+        <span class="mono">topCourses</span> reads
+        <span class="mono">findMany({ take: 50 })</span> <strong>with no ordering</strong>, fires
+        four more queries per course, then sorts those and keeps ten. At 1,217 courses that is a
+        ranked list drawn from an arbitrary <strong>4% sample</strong>.
+        <span class="mono">trainerLoad</span> does the same with 50 of 291.
+      </p>
     </div>
+
+    <div class="two-up">
+      <div class="block">
+        <span class="block-label">What the endpoint returned</span>
+        <div class="evidence">   2 enrolled  Enrolment Probe 1788890238745
+   2 enrolled  Cert Probe 1788432542855
+   1 enrolled  Dash Probe 1788434540030
+   0 enrolled  Scale Course 906
+   0 enrolled  Scale Course 442
+<b>   (Data Analytics — the actual #1 — absent)</b></div>
+      </div>
+      <div class="block">
+        <span class="block-label">What was true</span>
+        <div class="evidence">   <i>4 enrolled  Data Analytics</i>
+   2 enrolled  Cert Probe 1788890242459
+   2 enrolled  Enrolment Probe 1788507970232
+
+busiest trainers, truly:
+   <i>4 sessions  Rahul Deshpande</i>
+   <i>3 sessions  Kavitha Iyer</i>
+<b>   neither appears in trainerLoad</b></div>
+      </div>
+    </div>
+
+    <p class="note">
+      The busiest trainer in the business does not appear on the busiest-trainers list. The cap that
+      keeps it fast is exactly what makes it lie, and it gets worse as the catalogue grows.
+    </p>
   </section>
 
   <hr class="rule">
 
-  <!-- ══ 2. Once the gaps are closed ════════════════════════════════ -->
+  <!-- ══ The design ═════════════════════════════════════════════════ -->
   <section class="section">
     <div class="section-head">
-      <span class="overline">Option B</span>
-      <h2>Once the four gaps are closed</h2>
-      <p class="note">
-        The same two cards with every slot filled. <strong>Figures here are illustrative</strong> —
-        they show the shape, not measurements. This is what the build in the ledger below buys.
+      <span class="overline">The proposal</span>
+      <h2>Distribution first, exceptions second, ranking last</h2>
+      <p class="lede">
+        Three primitives, in that order. A <strong>distribution</strong> describes the whole
+        population in fixed space at any size. An <strong>exception queue</strong> is bounded by
+        what needs action, not by an arbitrary cut-off. A <strong>ranked list</strong> comes last,
+        with its basis and its denominator stated, because ten of 1,217 is a sample and should say
+        so. Every figure links through to the list view with the filter already applied.
       </p>
+      <p class="note">Figures below are illustrative, at the scale you described.</p>
     </div>
 
     <div class="pair">
 
+      <!-- ── Card 1 ── -->
       <article class="card">
         <div class="card-head">
-          <h3>Course analytics</h3>
+          <div>
+            <h3>Course portfolio</h3>
+            <p class="card-sub">1,217 courses · 342 with live delivery</p>
+          </div>
           <span class="window">This term</span>
         </div>
 
-        <div class="split">
-          <div class="metrics">
-            <div class="metric">
-              <span class="value good num">88.4%</span>
-              <span class="label">Completion</span>
-            </div>
-            <div class="metric">
-              <span class="value bad num">6.2%</span>
-              <span class="label">Drop-out</span>
-            </div>
+        <div class="block">
+          <span class="block-label">Delivery progress, all 1,217</span>
+          <div class="band" role="img"
+               aria-label="Delivery progress across 1,217 courses: 486 not scheduled, 274 scheduled but not started, 331 in flight, 126 complete.">
+            <span style="width:39.9%; background:var(--seq-1)"></span>
+            <span style="width:22.5%; background:var(--seq-2)"></span>
+            <span style="width:27.2%; background:var(--seq-3)"></span>
+            <span style="width:10.4%; background:var(--seq-4)"></span>
           </div>
+          <div class="keys">
+            <a class="key" href="#"><span class="dot" style="background:var(--seq-1)"></span><span class="name">Not scheduled</span><span class="count num">486</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--seq-2)"></span><span class="name">Not started</span><span class="count num">274</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--seq-3)"></span><span class="name">In flight</span><span class="count num">331</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--seq-4)"></span><span class="name">Complete</span><span class="count num">126</span></a>
+          </div>
+        </div>
 
-          <div class="bars">
-            <div class="bar-row">
-              <span class="name">Data Analytics</span>
-              <span class="track"><span class="fill" style="width:100%"></span></span>
-              <span class="pct">100%</span>
-            </div>
-            <div class="bar-row">
-              <span class="name">Cloud Computing</span>
-              <span class="track"><span class="fill" style="width:72%"></span></span>
-              <span class="pct">72%</span>
-            </div>
-            <div class="bar-row">
-              <span class="name">Python Fullstack</span>
-              <span class="track"><span class="fill" style="width:58%"></span></span>
-              <span class="pct">58%</span>
-            </div>
-            <div class="bar-row">
-              <span class="name">AI Foundations</span>
-              <span class="track"><span class="fill" style="width:34%"></span></span>
-              <span class="pct">34%</span>
-            </div>
+        <div class="block">
+          <span class="block-label">Needs a decision</span>
+          <div class="queue">
+            <a class="q-item" href="#">
+              <span class="q-n bad">23</span>
+              <span class="q-what">Batches past their start date with no session delivered</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n warn">14</span>
+              <span class="q-what">Courses with live batches and nobody enrolled</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n warn">9</span>
+              <span class="q-what">Batches over their capacity</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n calm">0</span>
+              <span class="q-what">Courses with no topics defined</span>
+              <span class="q-go">Clear</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="block">
+          <span class="block-label">Largest by enrolment <span style="text-transform:none;letter-spacing:0;font-weight:400">— 5 of 1,217</span></span>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Course</th>
+                  <th scope="col" class="r">Enrolled</th>
+                  <th scope="col" class="r">Delivered</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Data Analytics <span class="sub">CRS-DA-2026</span></td><td class="r num">418</td><td class="r num">92%</td></tr>
+                <tr><td>Cloud Engineering <span class="sub">CRS-CE-2026</span></td><td class="r num">306</td><td class="r num">71%</td></tr>
+                <tr><td>Python Fullstack <span class="sub">CRS-PF-2026</span></td><td class="r num">271</td><td class="r num">58%</td></tr>
+                <tr><td>AI Foundations <span class="sub">CRS-AI-2026</span></td><td class="r num">190</td><td class="r num">34%</td></tr>
+                <tr><td>Embedded Systems <span class="sub">CRS-ES-2026</span></td><td class="r num">154</td><td class="r num">80%</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
         <div class="rows">
-          <div class="row"><span class="k">Retail enrolment value</span><span class="v num">₹48.2 L</span></div>
-          <div class="row"><span class="k">Institutional contract value</span><span class="v num">₹1.31 Cr</span></div>
-          <div class="row"><span class="k">Collected to date</span><span class="v good num">₹1.14 Cr</span></div>
-          <div class="row"><span class="k">Outstanding</span><span class="v bad num">₹65.2 L</span></div>
+          <div class="row"><span class="k">Retail enrolment value</span><span class="v num">₹4.82 Cr</span></div>
+          <div class="row"><span class="k">Institutional contract value</span><span class="v num">₹13.1 Cr</span></div>
+          <div class="row"><span class="k">Collected to date</span><span class="v good num">₹11.4 Cr</span></div>
+          <div class="row"><span class="k">Outstanding</span><span class="v bad num">₹6.52 Cr</span></div>
         </div>
       </article>
 
+      <!-- ── Card 2 ── -->
       <article class="card">
         <div class="card-head">
-          <h3>Trainer analytics</h3>
-          <span class="window">Rolling 30 days</span>
+          <div>
+            <h3>Trainer capacity</h3>
+            <p class="card-sub">291 active · 178 carrying delivery</p>
+          </div>
+          <span class="window">Next 30 days</span>
         </div>
 
-        <div class="metrics">
-          <div class="metric">
-            <span class="value good num">96.2%</span>
-            <span class="label">Session punctuality</span>
+        <div class="block">
+          <span class="block-label">Utilisation, all 291</span>
+          <div class="band" role="img"
+               aria-label="Utilisation across 291 active trainers: 113 on the bench, 94 light with one or two batches, 61 busy with three or four, 23 stretched with five or more.">
+            <span style="width:38.8%; background:var(--util-bench)"></span>
+            <span style="width:32.3%; background:var(--util-light)"></span>
+            <span style="width:21.0%; background:var(--util-busy)"></span>
+            <span style="width:7.9%;  background:var(--util-stretched)"></span>
           </div>
-          <div class="metric">
-            <span class="value num">4.6</span>
-            <span class="label">Avg. feedback / 5.0</span>
+          <div class="keys">
+            <a class="key" href="#"><span class="dot" style="background:var(--util-bench)"></span><span class="name">On the bench</span><span class="count num">113</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--util-light)"></span><span class="name">Light · 1–2</span><span class="count num">94</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--util-busy)"></span><span class="name">Busy · 3–4</span><span class="count num">61</span></a>
+            <a class="key" href="#"><span class="dot" style="background:var(--util-stretched)"></span><span class="name">Stretched · 5+</span><span class="count num">23</span></a>
+          </div>
+          <p class="note">
+            Both ends cost money — 113 idle, 23 at a load where a cancellation cascades. The middle
+            is where you want the mass.
+          </p>
+        </div>
+
+        <div class="block">
+          <span class="block-label">Needs a decision</span>
+          <div class="queue">
+            <a class="q-item" href="#">
+              <span class="q-n bad">31</span>
+              <span class="q-what">Batches starting in 14 days with no trainer confirmed</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n bad">6</span>
+              <span class="q-what">Trainers double-booked on the same morning</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n warn">12</span>
+              <span class="q-what">Proposals waiting on a trainer for over 7 days</span>
+              <span class="q-go">Open →</span>
+            </a>
+            <a class="q-item" href="#">
+              <span class="q-n warn">4</span>
+              <span class="q-what">Sessions delivered with no recording attached</span>
+              <span class="q-go">Open →</span>
+            </a>
           </div>
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Trainer</th>
-                <th scope="col" class="r">Batches</th>
-                <th scope="col" class="r">Sessions</th>
-                <th scope="col" class="r">Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>Ravi Shankar</td><td class="r num">3</td><td class="r num">24</td><td class="r num">4.8</td></tr>
-              <tr><td>Sanjay Kumar</td><td class="r num">2</td><td class="r num">18</td><td class="r num">4.7</td></tr>
-              <tr><td>Nisha Pillai</td><td class="r num">2</td><td class="r num">16</td><td class="r num">4.6</td></tr>
-              <tr><td>Arun Prasad</td><td class="r num">2</td><td class="r num">15</td><td class="r num">4.4</td></tr>
-            </tbody>
-          </table>
+        <div class="block">
+          <span class="block-label">Most loaded <span style="text-transform:none;letter-spacing:0;font-weight:400">— 5 of 291, by sessions ahead</span></span>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Trainer</th>
+                  <th scope="col" class="r">Batches</th>
+                  <th scope="col" class="r">Sessions ahead</th>
+                  <th scope="col" class="r">Adherence</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Rahul Deshpande <span class="sub">TRN-0114</span></td><td class="r num">7</td><td class="r num">48</td><td class="r num">98%</td></tr>
+                <tr><td>Kavitha Iyer <span class="sub">TRN-0031</span></td><td class="r num">6</td><td class="r num">41</td><td class="r num">96%</td></tr>
+                <tr><td>Nisha Pillai <span class="sub">TRN-0088</span></td><td class="r num">5</td><td class="r num">37</td><td class="r num">91%</td></tr>
+                <tr><td>Arun Prasad <span class="sub">TRN-0142</span></td><td class="r num">5</td><td class="r num">33</td><td class="r num">88%</td></tr>
+                <tr><td>Sanjay Kumar <span class="sub">TRN-0007</span></td><td class="r num">4</td><td class="r num">29</td><td class="r num">99%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            Adherence — delivered on the day planned, against moved or called off. It is the honest
+            measure the columns support; there is no punctuality clock and no rating anywhere in the
+            schema. <span class="chip blocked">See the ledger</span>
+          </p>
         </div>
       </article>
 
@@ -552,75 +531,92 @@
 
   <hr class="rule">
 
-  <!-- ══ 3. The ledger ══════════════════════════════════════════════ -->
+  <!-- ══ How it is computed ═════════════════════════════════════════ -->
   <section class="section">
     <div class="section-head">
-      <span class="overline">Feasibility</span>
-      <h2>Every data point, and what it costs</h2>
-      <p class="note">Checked against the schema and the live row counts, not against memory.</p>
+      <span class="overline">Cost</span>
+      <h2>Correct turns out to be cheaper than wrong</h2>
+      <p class="note">Every figure measured on the 1,217-course database with <span class="mono">EXPLAIN ANALYZE</span>.</p>
     </div>
 
-    <div class="card" style="padding:0; gap:0">
+    <div class="card" style="padding:0">
       <div class="table-wrap">
-        <table class="ledger">
+        <table>
           <thead>
             <tr>
-              <th scope="col">Data point</th>
-              <th scope="col">Verdict</th>
-              <th scope="col">What it needs</th>
+              <th scope="col">Query</th>
+              <th scope="col" class="r">Queries</th>
+              <th scope="col" class="r">Time</th>
+              <th scope="col">Covers</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Retail enrolment value<span class="src">sum of <span class="mono">enrolment_value_minor</span></span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing — a service method.</td>
+              <td><strong>Today</strong> — topCourses + trainerLoad<span class="sub">take 50, unordered, then N+1</span></td>
+              <td class="r num" style="color:var(--danger)">~250</td>
+              <td class="r num">124 ms</td>
+              <td style="color:var(--danger)">an arbitrary 4% — <strong>wrong answer</strong></td>
             </tr>
             <tr>
-              <td>Institutional contract value<span class="src">sum of <span class="mono">total_value_minor</span></span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing. Cancelled contracts excluded.</td>
+              <td>Course delivery distribution<span class="sub">one grouped pass, bucketed in SQL</span></td>
+              <td class="r num">1</td>
+              <td class="r num">2.2 ms</td>
+              <td>all 1,169 live courses</td>
             </tr>
             <tr>
-              <td>Collected · Outstanding<span class="src">payments, reversals subtracted</span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing — the dashboard already computes both.</td>
+              <td>Largest by enrolment<span class="sub">GROUP BY … ORDER BY … LIMIT 10</span></td>
+              <td class="r num">1</td>
+              <td class="r num">1.3 ms</td>
+              <td>ranked across the whole catalogue</td>
             </tr>
             <tr>
-              <td>Sessions delivered, per course<span class="src"><span class="mono">COMPLETED</span> ÷ total, grouped by course</span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing. 41 of 164 delivered today.</td>
+              <td>Trainer utilisation distribution<span class="sub">one grouped pass</span></td>
+              <td class="r num">1</td>
+              <td class="r num">0.8 ms</td>
+              <td>all 291 active trainers</td>
             </tr>
-            <tr>
-              <td>Batches per trainer<span class="src">confirmed <span class="mono">batch_trainer_assignments</span></span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing — <span class="mono">trainerLoad</span> already returns it.</td>
-            </tr>
-            <tr>
-              <td>Schedule adherence<span class="src">delivered on plan vs moved or called off</span></td>
-              <td><span class="chip live">Live</span></td>
-              <td>Nothing. Honest stand-in for punctuality.</td>
-            </tr>
-            <tr>
-              <td>Completion %<span class="src"><span class="mono">student_batch_mapping.completed_at</span></span></td>
-              <td><span class="chip empty">Empty</span></td>
-              <td>A "mark completed" verb on the batch roster. Column is already there — no migration. <strong>~half a day.</strong></td>
-            </tr>
-            <tr>
-              <td>Drop-out %<span class="src"><span class="mono">is_active</span> + <span class="mono">exit_reason</span></span></td>
-              <td><span class="chip empty">Empty</span></td>
-              <td>A "left the batch, with a reason" verb beside it. Same write, same screen. <strong>Included above.</strong></td>
-            </tr>
-            <tr>
-              <td>Session punctuality<span class="src">no started-at anywhere</span></td>
-              <td><span class="chip blocked">No source</span></td>
-              <td>A <span class="mono">started_at</span> column and a trainer clock-in. The trainer portal is deferred, so admin would key it — which makes the number about admin, not the trainer. <strong>Recommend: ship adherence instead.</strong></td>
-            </tr>
-            <tr>
-              <td>Trainer rating / feedback<span class="src">nothing in the schema</span></td>
-              <td><span class="chip blocked">No source</span></td>
-              <td>A new <span class="mono">session_feedback</span> table and somebody to fill it — that is the student portal, also deferred. <strong>Migration + a write surface.</strong></td>
-            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout brand">
+      <h3>Roughly 25× fewer queries, and the answers are true</h3>
+      <p class="note" style="color:var(--ink-muted)">
+        Ranking belongs in the database, where <span class="mono">ORDER BY … LIMIT</span> sees every
+        row. The exception queues are <span class="mono">count()</span> against existing indexes.
+        Nothing here needs a cache, a materialised view or a nightly job — and if the catalogue ever
+        reaches a size where it does, a distribution is the one shape that materialises cleanly.
+      </p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ══ Ledger ═════════════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="overline">Feasibility</span>
+      <h2>Every figure on these two cards</h2>
+    </div>
+
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col">Figure</th><th scope="col">Verdict</th><th scope="col">What it needs</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Delivery distribution<span class="sub">sessions COMPLETED ÷ total, bucketed</span></td><td><span class="chip live">Live</span></td><td>Nothing.</td></tr>
+            <tr><td>Utilisation distribution<span class="sub">confirmed batches per trainer</span></td><td><span class="chip live">Live</span></td><td>Nothing.</td></tr>
+            <tr><td>Largest by enrolment · most loaded<span class="sub">ranked in SQL, denominator shown</span></td><td><span class="chip live">Live</span></td><td>Replaces the sampled version. <strong>A fix, not a feature.</strong></td></tr>
+            <tr><td>Money — billed · collected · outstanding</td><td><span class="chip live">Live</span></td><td>Nothing; the dashboard computes these already.</td></tr>
+            <tr><td>Unstaffed batches · stale proposals · missing recordings</td><td><span class="chip live">Live</span></td><td>Counts on indexed columns.</td></tr>
+            <tr><td>Double-booked trainers<span class="sub">two live sessions, one trainer, one slot</span></td><td><span class="chip live">Live</span></td><td>A self-join on <span class="mono">batch_sessions</span>. Same shape as the uniqueness index already shipped.</td></tr>
+            <tr><td>Schedule adherence<span class="sub">on the planned day vs moved or called off</span></td><td><span class="chip live">Live</span></td><td>Nothing.</td></tr>
+            <tr><td>Completion % · drop-out %</td><td><span class="chip empty">Empty</span></td><td><span class="mono">completed_at</span>, <span class="mono">is_active</span> and <span class="mono">exit_reason</span> exist and are empty on all 152 rows. Needs a complete/exit verb on the roster. <strong>~half a day.</strong></td></tr>
+            <tr><td>Session punctuality</td><td><span class="chip blocked">No source</span></td><td>Nothing records when a session started. Needs a clock-in, and the trainer portal is deferred. <strong>Adherence stands in.</strong></td></tr>
+            <tr><td>Trainer rating / feedback</td><td><span class="chip blocked">No source</span></td><td>No rating field anywhere. New table plus the student portal. <strong>Not this release.</strong></td></tr>
           </tbody>
         </table>
       </div>
@@ -629,27 +625,42 @@
 
   <section class="section">
     <div class="callout">
-      <h3>Two design calls I made, and why</h3>
+      <h3>Three calls, and why</h3>
       <p class="note">
-        <strong>The course bars are one colour, not four.</strong> Every bar measures the same thing —
-        how much of that course has been delivered. Four hues would encode position in the list, so
-        re-sorting or filtering repaints them and the colour means nothing. Magnitude gets one hue;
-        colour is reserved for retail-against-college, where it carries a real distinction.
+        <strong>The distribution replaced the per-course bar list.</strong> Four bars out of 1,217
+        courses raises the question "which four, and why those" and answers nothing about the other
+        1,213. One strip describes every course, in less space, and each segment is a filter.
       </p>
       <p class="note">
-        <strong>A missing measurement shows as "—", never as 0%.</strong> A drop-out rate of 0.0%
-        reads as "nobody drops out". "—" reads as "nobody is counting", which is true and is the
-        thing worth fixing.
+        <strong>Course progress uses one hue in four ordered steps; utilisation uses status
+        colour.</strong> Delivery is magnitude, so it gets a light-to-dark ramp. Utilisation is
+        different — <em>both</em> ends are the problem, idle and overloaded — so the ends are amber
+        and red and the healthy middle is green. Both ramps went through the palette validator, not
+        my eye.
+      </p>
+      <p class="note">
+        <strong>Every ranked list states its basis and its denominator.</strong> "Most loaded — 5 of
+        291, by sessions ahead" can be checked. "Top trainers" cannot, and is how the current
+        dashboard came to be confidently wrong.
       </p>
     </div>
 
-    <div class="callout" style="border-left-color: var(--brand)">
-      <h3>What I'd recommend</h3>
+    <div class="callout brand">
+      <h3>What I'd build, in order</h3>
       <p class="note">
-        Ship <strong>Option A</strong> now — six of the ten data points are live and need no schema
-        change. Add the roster's complete/exit verb in the same pass and completion and drop-out
-        light up a day later, taking it to eight. Punctuality and rating wait for the trainer and
-        student portals, which is where the people who actually know those facts will be.
+        <strong>1 — Fix the sampling.</strong> <span class="mono">topCourses</span> and
+        <span class="mono">trainerLoad</span> are wrong right now, at today's size as well as
+        tomorrow's; 50 unordered rows is already a sample of 267 batches. This is a bug fix and it
+        should not wait for the cards.
+      </p>
+      <p class="note">
+        <strong>2 — The two distributions and the exception queues.</strong> Seven of the ten
+        figures, no schema change, under 5 ms of database time.
+      </p>
+      <p class="note">
+        <strong>3 — The roster's complete/exit verb</strong>, which lights up completion and
+        drop-out. Punctuality and rating wait for the portals, where the people who know those facts
+        will be.
       </p>
     </div>
   </section>
