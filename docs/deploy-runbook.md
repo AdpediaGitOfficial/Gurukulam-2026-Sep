@@ -234,24 +234,61 @@ taken, which is almost always worse than the bug you are backing out.
 
 ---
 
-## 7. Two things that were silently wrong, and are now fixed
+## 7. The grep that never matched — READ THIS BEFORE THE NEXT DEPLOY
 
-Worth knowing, because they explain why earlier deploys looked fine and were
-not.
+**The workflow on this branch does not run migrations.** It was reverted on
+16 September to the version that decides whether to migrate by grepping
+`prisma migrate status` for:
 
-**Migrations never ran.** The workflow decided whether to migrate by grepping
-`prisma migrate status` for `Following migration(s) have not yet been applied`.
-Prisma 6 prints `Following migrations have not yet been applied` — no `(s)`. The
-test never matched, so the script printed "No pending migrations" and skipped
-`migrate deploy` every single time. It now runs `migrate deploy`
-unconditionally, which is idempotent and cannot be fooled by a wording change.
+```
+Following migration(s) have not yet been applied
+```
+
+Prisma 6 prints `Following migrations have not yet been applied` — no `(s)`.
+Reproduced against a scratch database on this branch: that grep matches **zero**
+times, so the script takes the `else` branch, prints "No pending migrations",
+and `prisma migrate deploy` is never reached. It has never run.
+
+Two migrations are waiting:
+
+| Migration | What it adds |
+| --- | --- |
+| `20260916090000_session_day_uniqueness` | the partial unique index on `(batch, date, start time)` |
+| `20260916120000_college_partnership_type` | the `partnership_type` column and its enum |
+
+**The second one is not optional.** `colleges.service.ts` selects
+`partnership_type`, and the college directory, the college export and every
+college detail page read it. Until the migration runs, those pages answer 500
+on the live box — the column the query names does not exist.
+
+The one-line fix is to stop asking and just do it, because `migrate deploy` is
+idempotent — it applies what is missing and does nothing otherwise:
+
+```bash
+npx prisma migrate deploy --schema="${SCHEMA_PATH}"
+```
+
+**But do not paste that in blind.** The live database has tables and no
+migration history, so `migrate deploy` will answer P3005 and stop the deploy —
+which is exactly why the workflow "worked" while skipping migrations. Section 0
+is the baselining procedure, and it starts by asking whether the hand-written
+constraints are actually there, because if the live schema came from `db push`
+they are not. Section 1 is the duplicate-session query that has to come back
+empty before the unique index can apply.
+
+Order: diagnose (§0) → clear duplicates (§1) → baseline → then make the
+workflow migrate.
+
+## 8. The other thing that was silently wrong
 
 **The build died on file permissions.** `prisma generate` writes into
 `node_modules/.prisma/client`, and something in that tree was owned by another
 user — one `sudo npm install` is enough to do it. The build failed `EACCES`, the
 run stopped after the checkout, and the box was left with new source and an old
-build. The workflow now takes ownership of the project directory on every run.
+build. The current workflow chowns the project directory to `ubuntu` on every
+run, which covers it.
 
-Both of these failed the two deploys on 16 September. Neither was visible from
-the app, which is the point: a deploy that reports success without running the
-migration is worse than one that fails.
+That, and the grep in §7, are why the two deploys on 16 September looked fine
+and were not. Neither was visible from the app, which is the point: a deploy
+that reports success without running the migration is worse than one that
+fails, because nobody goes looking.
