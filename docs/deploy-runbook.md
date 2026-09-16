@@ -60,9 +60,41 @@ Every step after this is reversible from that file. Do not skip it.
 
 ```bash
 cd /var/www/html/gurukulam/gurukulam-claude/Gurukulam-2026-Sep
-git fetch origin && git checkout claude/project-analysis-6t08cr && git pull
+
+# Keep a copy of anything edited on the box before discarding it. Usually this
+# is empty; when it is not, you want to know what it was.
+git status --short
+git diff > ~/box-local-changes-$(date +%F).patch
+
+git fetch origin claude/project-analysis-6t08cr
+git checkout -B claude/project-analysis-6t08cr origin/claude/project-analysis-6t08cr
+git reset --hard origin/claude/project-analysis-6t08cr
+git clean -fd          # NOT -x — node_modules, .next and the .env files stay
+
 sudo -u postgres psql gurukulam -f packages/db/scripts/diagnose-schema.sql
 ```
+
+**Reset, not `git pull`.** A pull MERGES, so anything modified on the box stops
+it dead with "your local changes would be overwritten". Nothing on that box is
+authored there — it is a deployment target, and the remote is the truth — so
+matching the remote exactly is both safe and the only outcome you want.
+
+`git clean -fd` without `-x` is deliberate: `-x` would also delete ignored
+files, and `apps/api/.env` and `apps/web/.env` are ignored. Deleting those
+takes the site down until they are rewritten by hand.
+
+### Why the box goes dirty in the first place
+
+The workflow runs `npm install`, which may rewrite `package-lock.json` — a
+TRACKED file. So a deploy can end with the working tree dirty, and the next
+thing anyone types by hand conflicts on exactly that file. The automatic
+deploys survive it because step 4 resets first; a human running `git pull` does
+not.
+
+`npm ci` installs strictly from the lockfile and never writes to it, which is
+what the manual path below already uses. Changing the workflow's `npm install`
+to `npm ci` stops the box going dirty at all. It is one word, and
+`npm ci --dry-run` passes against the current lockfile.
 
 Read the last three rows of section 2 and the whole of section 3.
 
@@ -186,10 +218,32 @@ The pages that would have been broken, in the order that proves the most:
 From the box, the two health checks the workflow does not currently do:
 
 ```bash
-curl -fsS http://127.0.0.1:4000/api/v1/health && echo "  api ok"
+# Read the port from the box rather than assuming it. The API does not listen
+# on the same port everywhere, and a check against the wrong one reports a
+# healthy service as down — which is how an afternoon goes into an "outage"
+# that never happened.
+API_PORT=$(grep -E '^API_PORT=' apps/api/.env | cut -d= -f2)
+echo "api port ${API_PORT}"
+
+curl -fsS "http://127.0.0.1:${API_PORT}/api/v1/health" && echo "  api ok"
 curl -fsS -o /dev/null http://127.0.0.1:3000/login && echo "  web ok"
 sudo pm2 status
 ```
+
+A 401 from that health URL is not a failure to reach the API — it IS the API,
+answering. Connection refused is the failure.
+
+### A filter in the URL no longer 500s a page
+
+Also worth one check, because it is what this release fixed:
+
+```bash
+curl -s -o /dev/null -w 'bad filter → %{http_code}\n' \
+  "http://127.0.0.1:3000/students/certificates?status=pending"
+```
+
+302 (to the login page, since curl carries no session) or 200 is right. **500
+means the build did not land** — that URL was the crash in the PM2 log.
 
 ---
 
@@ -271,7 +325,10 @@ npx prisma migrate deploy --schema=./packages/db/prisma/schema.prisma
 npm run build
 sudo pm2 restart gurukulam-api gurukulam-web --update-env
 
-curl -fsS http://127.0.0.1:4000/api/v1/health && echo && \
+# The API port comes from the box's own env — it is NOT the same everywhere,
+# and a health check against the wrong port reports a healthy service as down.
+API_PORT=$(grep -E '^API_PORT=' apps/api/.env | cut -d= -f2)
+curl -fsS "http://127.0.0.1:${API_PORT}/api/v1/health" && echo && \
 curl -fsS -o /dev/null -w 'console %{http_code}\n' http://127.0.0.1:3000/login
 ```
 
