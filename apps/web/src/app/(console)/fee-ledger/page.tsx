@@ -219,6 +219,7 @@ export default async function FeeLedgerPage({
         </StatTileGrid>
       }
       action={
+        <div className="flex items-center gap-3">
           <a
             href={exportHref("/fee-ledger", params)}
             className={buttonVariants({ variant: "secondary" })}
@@ -227,6 +228,15 @@ export default async function FeeLedgerPage({
           >
             Export CSV
           </a>
+          {/* A payment is always posted against a SPECIFIC installment, so
+              this finds the person and hands over to their ledger, where the
+              schedule is on screen beside the form. A header form that had to
+              guess which installment the money cleared would be guessing at
+              what the receipt says. */}
+          <Link href="/fee-ledger/record" className={buttonVariants({ variant: "primary" })}>
+            Record payment
+          </Link>
+        </div>
       }
       toolbar={
         <ListFilters

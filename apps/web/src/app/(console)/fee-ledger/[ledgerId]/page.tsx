@@ -225,7 +225,9 @@ export default async function LedgerDetailPage({
           </Card>
         </PageSection>
 
-        <div className="flex flex-col gap-6">
+        {/* The anchor "Record payment" lands on, so arriving from the chooser
+            puts the form on screen rather than at the bottom of a schedule. */}
+        <div id="record" className="flex flex-col gap-6 scroll-mt-24">
           <RecordPaymentForm ledgerId={ledger.ledgerId} installments={open} />
         </div>
       </div>

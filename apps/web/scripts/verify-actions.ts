@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     `/batches/sessions/${ids.session}/edit`,
     "/trainers", "/trainers/new", `/trainers/${ids.trainer}`, `/trainers/${ids.trainer}/edit`,
     "/trainers/calendar",
-    "/fee-ledger", `/fee-ledger/${ids.ledger}`, "/fee-ledger/contracts",
+    "/fee-ledger", "/fee-ledger/record", `/fee-ledger/${ids.ledger}`, "/fee-ledger/contracts",
     "/hiring", "/hiring/new", `/hiring/${ids.job}`, `/hiring/${ids.job}/edit`,
     "/reports", "/reports/collections", "/reports/outstanding", "/reports/unallocated",
     "/reports/batch-progress",
