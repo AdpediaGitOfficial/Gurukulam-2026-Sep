@@ -176,6 +176,11 @@ export const contractSchema = z.object({
   balancePendingMinor: moneyMinor,
   status: contractStatusSchema,
   signedAt: z.string().nullable(),
+  /* Read back so the edit form can round-trip it. A field that can be written
+     but not read is one an operator erases every time they correct something
+     else — `createContractSchema` has always accepted notes and nothing ever
+     returned them. */
+  notes: z.string().nullable(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
   installmentsPaid: z.number().int().optional(),

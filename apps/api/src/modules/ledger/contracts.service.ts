@@ -302,6 +302,7 @@ function toContract(row: ContractRow): Contract {
     balancePendingMinor: row.balancePendingMinor.toString(),
     status: row.status,
     signedAt: row.signedAt?.toISOString() ?? null,
+    notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     installmentsPaid: row.installments.filter((i) => i.status === "PAID").length,

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatRupees, fromWire, type InstallmentWithPayments } from "@gurukulam/contracts";
+import { can, formatRupees, fromWire, type InstallmentWithPayments } from "@gurukulam/contracts";
 
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
@@ -10,6 +10,7 @@ import { Column, DataTable } from "@/components/ui/data-table";
 import { StatusPill } from "@/components/ui/status-pill";
 import { RecordPaymentForm } from "@/features/ledger/components/record-payment-form";
 import { getLedger } from "@/features/ledger/server/ledger-service";
+import { ScheduleEditor } from "@/features/ledger/components/schedule-editor";
 import { requireModule } from "@/server/principal";
 import { brandTokens, feedbackTokens } from "@/design-system/tokens";
 import { formatCount } from "@/lib/format";
@@ -139,11 +140,14 @@ export default async function LedgerDetailPage({
 }: {
   params: Promise<{ ledgerId: string }>;
 }) {
-  await requireModule("feeLedger");
+  const principal = await requireModule("feeLedger");
+  const mayEdit = can(principal, "feeLedger", "edit");
   const { ledgerId } = await params;
   const ledger = await getLedger(ledgerId);
 
   const open = ledger.installments.filter((i) => fromWire(i.outstandingMinor) > 0n);
+  // The API refuses to rewrite a schedule once anything has been received.
+  const collected = fromWire(ledger.totalPaidMinor) > 0n;
 
   return (
     <PageBody>
@@ -229,6 +233,23 @@ export default async function LedgerDetailPage({
             puts the form on screen rather than at the bottom of a schedule. */}
         <div id="record" className="flex flex-col gap-6 scroll-mt-24">
           <RecordPaymentForm ledgerId={ledger.ledgerId} installments={open} />
+          {/* The OTHER parent of the same instalment engine (invariant 4). The
+              same component bills a college contract — a retail schedule and a
+              contract schedule are the same rows under different parents, so
+              they are the same screen. */}
+          {mayEdit ? (
+            <ScheduleEditor
+              parent="ledger"
+              parentId={ledger.ledgerId}
+              totalMinor={ledger.enrolmentValueMinor}
+              existing={ledger.installments.map((installment) => ({
+                amount: formatRupees(fromWire(installment.amountMinor), { symbol: false }),
+                dueDate: installment.dueDate.slice(0, 10),
+              }))}
+              locked={collected}
+              lockedReason="Money has been collected against this schedule. Rewriting it would orphan receipts already issued against its instalments — record a payment or reverse one instead."
+            />
+          ) : null}
         </div>
       </div>
     </PageBody>

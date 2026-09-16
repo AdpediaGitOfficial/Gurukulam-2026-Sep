@@ -68,3 +68,14 @@ export async function getReceipt(transactionId: string): Promise<Receipt> {
 export async function getLedgerSummary(): Promise<LedgerRegisterSummary> {
   return ledgerRegisterSummarySchema.parse(await apiFetch("/fee-ledger/summary"));
 }
+
+/**
+ * One contract, with its installments.
+ *
+ * The API returns the schedule alongside it, because a contract's commercials
+ * and the instalments that bill them are not two screens' worth of thinking —
+ * an operator changing a headcount wants to see what falls due.
+ */
+export async function getContract(contractId: string): Promise<Contract> {
+  return contractSchema.parse(await apiFetch(`/fee-ledger/contracts/${contractId}`));
+}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { can } from "@gurukulam/contracts";
 import { formatRupees, fromWire, type Contract } from "@gurukulam/contracts";
 
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
 import { listContracts } from "@/features/ledger/server/ledger-service";
+import { buttonVariants } from "@/components/ui/button";
 import { rowActions } from "@/components/patterns/row-actions";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -140,11 +142,11 @@ const columns = (mayDelete: boolean): Column<Contract>[] => [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  /* Delete only. There is no contract edit screen yet, and the API refuses to
-     remove a contract that has collected money — it says to cancel it instead,
-     because a receipt is a financial record. That refusal appears on the row. */
+  /* The API refuses to remove a contract that has collected money — it says to
+     cancel it instead, because a receipt is a financial record. That refusal
+     appears on the row. */
   rowActions(
-    () => [],
+    (row) => [{ label: "Open", href: `/fee-ledger/contracts/${row.contractId}` }],
     mayDelete
       ? (row) => ({
           target: "contract" as const,
@@ -161,6 +163,7 @@ export default async function ContractsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const principal = await requireModule("feeLedger");
+  const mayEdit = can(principal, "feeLedger", "edit");
   const mayDelete = can(principal, "feeLedger", "delete");
   const params = await searchParams;
   const page = await listContracts(params);
@@ -170,6 +173,13 @@ export default async function ContractsPage({
       eyebrow="Fee ledger"
       title="Institutional contracts"
       description="The college is billed, not its students. One installment engine, two parents — a scheduled payment hangs off either a student ledger or a college contract, never both."
+      action={
+        mayEdit ? (
+          <Link href="/fee-ledger/contracts/new" className={buttonVariants({ variant: "primary" })}>
+            New contract
+          </Link>
+        ) : undefined
+      }
       toolbar={
         <ListFilters
           params={params}
