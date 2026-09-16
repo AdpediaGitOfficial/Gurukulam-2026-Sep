@@ -93,6 +93,21 @@ const TARGETS = {
     path: (id: string) => `/trainers/${id}`,
     revalidate: ["/trainers"],
   },
+  /**
+   * A scheduled session. The API refuses a COMPLETED one — delivery history is
+   * not a thing to tidy away — and says to cancel a future session instead,
+   * which notifies the roster. That refusal appears on the row.
+   */
+  session: {
+    noun: "session",
+    path: (id: string) => `/batches/sessions/${id}`,
+    revalidate: ["/batches", "/batches/sessions"],
+  },
+  assignment: {
+    noun: "assignment",
+    path: (id: string) => `/batches/assignments/${id}`,
+    revalidate: ["/batches/sessions"],
+  },
   availability: {
     noun: "availability window",
     path: (id: string) => `/trainers/availability/${id}`,

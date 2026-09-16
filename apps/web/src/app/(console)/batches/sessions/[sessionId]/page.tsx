@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 
 import { ConfirmAction } from "@/components/patterns/confirm-with-reason";
@@ -13,6 +14,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { RecordingForm } from "@/features/batches/components/recording-form";
 import { completeSession, reopenSession } from "@/features/batches/server/actions";
 import { getSession } from "@/features/batches/server/batches-service";
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { formatCount } from "@/lib/format";
@@ -35,7 +37,9 @@ export default async function SessionDetailPage({
   params: Promise<{ sessionId: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("batches");
+  const principal = await requireModule("batches");
+  const mayEdit = can(principal, "batches", "edit");
+  const mayDelete = can(principal, "batches", "delete");
   const { sessionId } = await params;
   const query = await searchParams;
   const session = await getSession(sessionId);
@@ -82,6 +86,18 @@ export default async function SessionDetailPage({
               size="md"
             />
           )}
+            {/* The API refuses a delivered session — that is delivery history,
+                and the answer for a future one is Cancel, which tells the
+                roster. The verb is still offered so the refusal is readable
+                rather than a control nobody can find. */}
+            {mayDelete ? (
+              <DeleteRecord
+                target="session"
+                id={session.sessionId}
+                label={session.title}
+                redirectTo={`/batches/${session.batchId}`}
+              />
+            ) : null}
           </div>
         }
       />
@@ -208,6 +224,19 @@ export default async function SessionDetailPage({
 
           <PageSection
             title={`Assignments${session.assignments.length === 0 ? "" : ` — ${formatCount(session.assignments.length)}`}`}
+            action={
+              /* Invariant 17 — a session must be delivered before work can be
+                 set against it. The control is absent until then rather than
+                 present and refused. */
+              mayEdit && delivered ? (
+                <Link
+                  href={`/batches/sessions/${session.sessionId}/assignments/new`}
+                  className={buttonVariants({ variant: "secondary", size: "sm" })}
+                >
+                  Set an assignment
+                </Link>
+              ) : undefined
+            }
             description="Set against a delivered session. Completion is what releases them."
           >
             {session.assignments.length === 0 ? (
@@ -241,6 +270,21 @@ export default async function SessionDetailPage({
                       <StatusPill intent={assignment.status === "OPEN" ? "success" : "neutral"}>
                         {assignment.status.toLowerCase()}
                       </StatusPill>
+                      {mayEdit ? (
+                        <Link
+                          href={`/batches/assignments/${assignment.assignmentId}/edit?sessionId=${session.sessionId}`}
+                          className={buttonVariants({ variant: "ghost", size: "sm" })}
+                        >
+                          Edit
+                        </Link>
+                      ) : null}
+                      {mayDelete ? (
+                        <DeleteRecord
+                          target="assignment"
+                          id={assignment.assignmentId}
+                          label={assignment.title}
+                        />
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -15,6 +15,9 @@ import {
   updateSessionSchema,
   releaseTrainerSchema,
   respondToProposalSchema,
+  assignmentSchema,
+  createAssignmentSchema,
+  updateAssignmentSchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
@@ -385,6 +388,84 @@ export async function updateSession(
       body: parsed.data,
     });
     checkShape(batchSessionSchema, saved, "PATCH /batches/sessions/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?saved=1`);
+}
+
+/**
+ * Work set against a delivered session.
+ *
+ * Invariant 17: a session must be marked COMPLETE before an assignment can be
+ * set against it. The API enforces that; the screen hides the control until
+ * then, so nobody fills in a form that is going to be refused.
+ *
+ * `sessionId` comes from the route rather than the form. An assignment belongs
+ * to a batch and hangs off the session that actually happened, and a session
+ * id in a posted field is a way to attach work to somebody else's day.
+ */
+export async function createAssignment(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = createAssignmentSchema.safeParse({
+    title: text(formData, "title"),
+    description: text(formData, "description"),
+    instructions: text(formData, "instructions"),
+    attachmentUrl: text(formData, "attachmentUrl") ?? "",
+    maxMarks: number(formData, "maxMarks"),
+    dueAt: text(formData, "dueAt"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const created = await apiFetch(`/batches/sessions/${sessionId}/assignments`, {
+      method: "POST",
+      body: parsed.data,
+    });
+    checkShape(assignmentSchema, created, "POST /batches/sessions/:id/assignments");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?assigned=1`);
+}
+
+/**
+ * Correcting work already set.
+ *
+ * The SESSION cannot change — moving an assignment to another day would move
+ * it away from the delivery it belongs to, and students already have it. That
+ * is why the contract omits `sessionId` from the update and this does too.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = updateAssignmentSchema.safeParse({
+    title: text(formData, "title"),
+    description: clearable(formData, "description"),
+    instructions: clearable(formData, "instructions"),
+    attachmentUrl: text(formData, "attachmentUrl") ?? "",
+    maxMarks: number(formData, "maxMarks"),
+    dueAt: text(formData, "dueAt"),
+    status: text(formData, "status"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/batches/assignments/${assignmentId}`, {
+      method: "PATCH",
+      body: parsed.data,
+    });
+    checkShape(assignmentSchema, saved, "PATCH /batches/assignments/:id");
   } catch (error) {
     return apiFormError(error);
   }
