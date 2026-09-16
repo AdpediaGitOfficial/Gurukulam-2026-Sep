@@ -16,7 +16,7 @@ import { brandTokens, domainTokens } from "@/design-system/tokens";
 import { getCollegeSummary, listColleges } from "@/features/colleges/server/colleges-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
-import { pageSummary, withParam } from "@/lib/href";
+import { pageSummary, withParam , exportHref } from "@/lib/href";
 import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Colleges" };
@@ -123,9 +123,19 @@ export default async function CollegesPage({
       title="College database"
       description="The CRM for institutional relationships. A college is an actor, not a directory row — it carries its own contacts, requirements, students and contracts."
       action={
+        <div className="flex items-center gap-3">
+          <a
+            href={exportHref("/colleges", params)}
+            className={buttonVariants({ variant: "secondary" })}
+            // A plain anchor, not a Link: this returns a file, and
+            // client-side navigation has nowhere to put one.
+          >
+            Export CSV
+          </a>
         <Link href="/colleges/new" className={buttonVariants({ variant: "primary" })}>
           Add college
         </Link>
+        </div>
       }
       summary={
         <>

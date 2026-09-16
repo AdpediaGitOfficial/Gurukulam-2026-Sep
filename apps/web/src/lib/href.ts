@@ -39,3 +39,20 @@ export function pageSummary(page: number, pageSize: number, total: number): stri
   const last = Math.min(page * pageSize, total);
   return `Showing ${first.toLocaleString("en-IN")}–${last.toLocaleString("en-IN")} of ${total.toLocaleString("en-IN")}`;
 }
+
+/**
+ * The export link for a list, carrying the filters the operator is looking at.
+ *
+ * Paging is deliberately dropped: an export of "page 3" is a file somebody
+ * reconciles against and finds two thirds of the register missing from.
+ */
+export function exportHref(pathname: string, params: SearchParams): Route {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page" || key === "pageSize") continue;
+    const first = Array.isArray(value) ? value[0] : value;
+    if (first !== undefined && first !== "") next.set(key, first);
+  }
+  const query = next.toString();
+  return `${pathname}/export${query === "" ? "" : `?${query}`}` as Route;
+}

@@ -19,7 +19,7 @@ import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/token
 import { getStudentSummary, listStudents } from "@/features/students/server/students-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
-import { pageSummary, withParam } from "@/lib/href";
+import { pageSummary, withParam , exportHref } from "@/lib/href";
 
 export const metadata: Metadata = { title: "Students" };
 
@@ -144,9 +144,19 @@ export default async function StudentsPage({
       title="Student directory"
       description="Retail and college students in one register. A retail student has no college — and never will."
       action={
+        <div className="flex items-center gap-3">
+          <a
+            href={exportHref("/students", params)}
+            className={buttonVariants({ variant: "secondary" })}
+            // A plain anchor, not a Link: this returns a file, and
+            // client-side navigation has nowhere to put one.
+          >
+            Export CSV
+          </a>
         <Link href="/students/new" className={buttonVariants({ variant: "primary" })}>
           Add student
         </Link>
+        </div>
       }
       summary={
         <>

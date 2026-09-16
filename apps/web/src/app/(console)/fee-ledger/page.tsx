@@ -4,6 +4,7 @@ import { formatRupees, fromWire, type LedgerSummary } from "@gurukulam/contracts
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { buttonVariants } from "@/components/ui/button";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { brandTokens, feedbackTokens } from "@/design-system/tokens";
 import { formatCount } from "@/lib/format";
@@ -15,7 +16,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { getLedgerSummary, listLedgers } from "@/features/ledger/server/ledger-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
-import { pageSummary, withParam } from "@/lib/href";
+import { pageSummary, withParam , exportHref } from "@/lib/href";
 
 export const metadata: Metadata = { title: "Fee ledger" };
 
@@ -216,6 +217,16 @@ export default async function FeeLedgerPage({
             href="/reports/outstanding"
           />
         </StatTileGrid>
+      }
+      action={
+          <a
+            href={exportHref("/fee-ledger", params)}
+            className={buttonVariants({ variant: "secondary" })}
+            // A plain anchor, not a Link: this returns a file, and
+            // client-side navigation has nowhere to put one.
+          >
+            Export CSV
+          </a>
       }
       toolbar={
         <ListFilters

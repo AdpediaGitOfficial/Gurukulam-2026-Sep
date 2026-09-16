@@ -16,7 +16,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { listBatches } from "@/features/batches/server/batches-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
-import { pageSummary, withParam } from "@/lib/href";
+import { pageSummary, withParam , exportHref } from "@/lib/href";
 import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Batches" };
@@ -131,9 +131,19 @@ export default async function BatchesPage({
       title="Batch management"
       description="A batch with a college is dedicated to it. A batch without one is retail. The two rosters never mix."
       action={
+        <div className="flex items-center gap-3">
+          <a
+            href={exportHref("/batches", params)}
+            className={buttonVariants({ variant: "secondary" })}
+            // A plain anchor, not a Link: this returns a file, and
+            // client-side navigation has nowhere to put one.
+          >
+            Export CSV
+          </a>
         <Link href="/batches/new" className={buttonVariants({ variant: "primary" })}>
           Create batch
         </Link>
+        </div>
       }
       summary={
         /* The trainer warning outranks the success line: the batch exists

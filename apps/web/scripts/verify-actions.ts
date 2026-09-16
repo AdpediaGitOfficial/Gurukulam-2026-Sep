@@ -184,6 +184,28 @@ async function main(): Promise<void> {
   const deadLinks: string[] = [];
   for (const target of [...linkTargets].sort()) {
     if (walked.has(target) || target === "/login" || target.startsWith("/auth")) continue;
+    // A link that returns a FILE cannot be navigated to: the browser starts a
+    // download and `goto` never resolves, which hung this suite the moment
+    // Export CSV appeared. Fetch it instead — which checks more, not less,
+    // because it can also say whether a CSV actually came back.
+    if (target.endsWith("/export")) {
+      // Fetched from INSIDE the page, not through `page.request`: the latter
+      // keeps its own cookie jar and does not attach the session, so it saw a
+      // redirect to /login and reported four working exports as broken. An
+      // in-page fetch runs in the operator's own security context, which is
+      // the thing being asserted about.
+      const result = await page.evaluate(async (url) => {
+        const response = await fetch(url, { credentials: "include" });
+        return { status: response.status, type: response.headers.get("content-type") ?? "" };
+      }, target);
+      if (result.status >= 400) {
+        deadLinks.push(`${target} — HTTP ${result.status}`);
+      } else if (!result.type.startsWith("text/csv")) {
+        deadLinks.push(`${target} — returned ${result.type.slice(0, 40)} rather than a CSV`);
+      }
+      continue;
+    }
+
     const response = await page.goto(BASE + target, { waitUntil: "domcontentloaded" });
     const status = response?.status() ?? 0;
     if (status >= 400) deadLinks.push(`${target} — HTTP ${status}`);
