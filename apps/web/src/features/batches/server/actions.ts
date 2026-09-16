@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  parseSessionUpload,
+  sessionUploadResultSchema,
+  type SessionUploadResult,
   batchSchema,
   batchSessionSchema,
   batchStatusSchema,
@@ -16,6 +19,21 @@ import {
 import { apiFetch, checkShape } from "@/server/api";
 import { apiFormError, checked, clearable, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
+
+/**
+ * What the upload form carries between submits.
+ *
+ * Wider than `FormState` because a plan is not a field error — it is the whole
+ * answer to "what will this do", and it has to survive the round trip so the
+ * commit button has something to commit.
+ */
+export interface UploadState {
+  status: "idle" | "error";
+  message?: string;
+  result?: SessionUploadResult;
+  /** The exact text that was planned, so the commit sends the same rows. */
+  csv?: string;
+}
 
 /*
  * A batch cannot change its course or its college.
@@ -280,4 +298,55 @@ export async function linkRecording(
 
   revalidatePath(`/batches/sessions/${sessionId}`);
   redirect(`/batches/sessions/${sessionId}?recorded=1`);
+}
+
+/**
+ * A file of sessions: first the plan, then the commit.
+ *
+ * Two submits of one form rather than a wizard, because the operator's question
+ * is not "which step am I on" but "what is this about to do to my batch". The
+ * plan is the answer, and it comes back attached to the very text that produced
+ * it — so the commit sends the same rows that were planned, not whatever is in
+ * the box by then.
+ *
+ * The file is read here rather than in the browser. A server action takes a
+ * File directly, which saves a client-side reader and keeps the parser — the
+ * one in `@gurukulam/contracts`, beside the schema it has to agree with — as
+ * the only thing that ever interprets the format.
+ */
+export async function uploadSessions(
+  batchId: string,
+  _previous: UploadState,
+  formData: FormData,
+): Promise<UploadState> {
+  const commit = formData.get("intent") === "commit";
+
+  const file = formData.get("file");
+  const pasted = text(formData, "csv") ?? "";
+  const fromFile = file instanceof File && file.size > 0 ? await file.text() : "";
+  const source = commit ? pasted : fromFile || pasted;
+
+  if (source.trim() === "") {
+    return { status: "error", message: "Paste the rows, or choose a file." };
+  }
+
+  const parsed = parseSessionUpload(source);
+  if (!parsed.ok) return { status: "error", message: parsed.error, csv: source };
+
+  try {
+    const result = await apiFetch<SessionUploadResult>(`/batches/sessions/upload/${batchId}`, {
+      method: "POST",
+      body: { dryRun: !commit, rows: parsed.rows },
+    });
+    checkShape(sessionUploadResultSchema, result, "POST /batches/sessions/upload/:batchId");
+
+    if (result.committed) {
+      revalidatePath(`/batches/${batchId}`);
+      revalidatePath("/batches/sessions");
+    }
+    return { status: result.rejected > 0 ? "error" : "idle", result, csv: source };
+  } catch (error) {
+    const state = apiFormError(error);
+    return { status: "error", message: state.message ?? "That upload could not be read.", csv: source };
+  }
 }

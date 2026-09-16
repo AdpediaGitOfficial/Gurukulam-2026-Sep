@@ -365,6 +365,12 @@ export default async function BatchSessionsPage({
               Open in Sessions
             </Link>
             <Link
+              href={`/batches/${batch.batchId}/sessions/upload`}
+              className={buttonVariants({ variant: "secondary", size: "sm" })}
+            >
+              Upload sessions
+            </Link>
+            <Link
               href={`/batches/${batch.batchId}/sessions/new`}
               className={buttonVariants({ variant: "primary", size: "sm" })}
             >
@@ -385,12 +391,20 @@ export default async function BatchSessionsPage({
                 title="No sessions scheduled"
                 description="A batch with no sessions has nothing to deliver. Sessions are scheduled under the course's topics."
                 action={
-                  <Link
-                    href={`/batches/${batch.batchId}/sessions/new`}
-                    className={buttonVariants({ variant: "primary" })}
-                  >
-                    Schedule the first session
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/batches/${batch.batchId}/sessions/new`}
+                      className={buttonVariants({ variant: "primary" })}
+                    >
+                      Schedule the first session
+                    </Link>
+                    <Link
+                      href={`/batches/${batch.batchId}/sessions/upload`}
+                      className={buttonVariants({ variant: "secondary" })}
+                    >
+                      Upload a file
+                    </Link>
+                  </div>
                 }
               />
             }

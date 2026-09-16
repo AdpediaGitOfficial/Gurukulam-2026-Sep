@@ -4,11 +4,13 @@ import {
   batchQuerySchema, createAssignmentSchema, createBatchSchema, createSessionSchema,
   linkRecordingSchema, proposeTrainerSchema, releaseTrainerSchema, rescheduleSessionSchema,
   respondToProposalSchema,
-  sessionQuerySchema, updateAssignmentSchema, updateBatchSchema, updateSessionSchema,
+  sessionQuerySchema, sessionUploadSchema, updateAssignmentSchema, updateBatchSchema,
+  updateSessionSchema,
   type BatchQuery, type CreateAssignmentInput, type CreateBatchInput, type CreateSessionInput,
   type LinkRecordingInput, type Principal, type ProposeTrainerInput, type ReleaseTrainerInput,
   type RescheduleSessionInput,
-  type RespondToProposalInput, type SessionQuery, type UpdateAssignmentInput, type UpdateBatchInput,
+  type RespondToProposalInput, type SessionQuery, type SessionUploadInput,
+  type UpdateAssignmentInput, type UpdateBatchInput,
   type UpdateSessionInput,
 } from "@gurukulam/contracts";
 import { BatchesService } from "./batches.service";
@@ -37,6 +39,23 @@ export class BatchesController {
   @RequirePermission("batches", "edit")
   createSession(@CurrentPrincipal() p: Principal, @Body(zodBody(createSessionSchema)) body: CreateSessionInput) {
     return this.sessions.create(p, body);
+  }
+
+  /**
+   * A file of sessions, loaded into one batch. It ADDS and never replaces.
+   *
+   * `dryRun` returns the plan and writes nothing; the console always asks for
+   * the plan first. The batch is in the path rather than in the file, so a
+   * spreadsheet cannot reach across a scope boundary the caller does not hold.
+   */
+  @Post("sessions/upload/:batchId")
+  @RequirePermission("batches", "edit")
+  uploadSessions(
+    @CurrentPrincipal() p: Principal,
+    @Param("batchId") batchId: string,
+    @Body(zodBody(sessionUploadSchema)) body: SessionUploadInput,
+  ) {
+    return this.sessions.bulkUpload(p, batchId, body);
   }
 
   @Get("sessions/:sessionId")

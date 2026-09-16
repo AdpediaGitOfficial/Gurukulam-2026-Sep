@@ -18,6 +18,7 @@ export * from "./colleges/index.js";
 export * from "./hiring/index.js";
 export * from "./questions/index.js";
 export * from "./batches/index.js";
+export * from "./batches/session-upload.js";
 export * from "./students/index.js";
 export * from "./ledger/index.js";
 export * from "./certificates/index.js";

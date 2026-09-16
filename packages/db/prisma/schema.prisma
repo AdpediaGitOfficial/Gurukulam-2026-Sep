@@ -911,6 +911,10 @@ model BatchSession {
   @@index([scheduledDate, deletedAt])
   @@index([trainerId, scheduledDate])
   @@index([status, deletedAt])
+  /// A batch cannot sit in two places at once, so (batch, date, start) is
+  /// unique among live, uncancelled sessions. Declared as a PARTIAL unique
+  /// index in 20260916090000_session_day_uniqueness, which this schema
+  /// language cannot express — do not let `migrate dev` drop it (ADR 0003).
   @@map("batch_sessions")
 }
 
