@@ -4,12 +4,14 @@ import { z } from "zod";
 import {
   batchSchema,
   collegeContactSchema,
+  collegeSummarySchema,
   collegeDetailSchema,
   collegeSchema,
   collegeUserSchema,
   studentSchema,
   type Batch,
   type College,
+  type CollegeSummary,
   type CollegeContact,
   type CollegeDetail,
   type CollegeUser,
@@ -103,4 +105,9 @@ export async function listContacts(params: SearchParams): Promise<Page<CollegeCo
  */
 export async function listAllPortalAccess(params: SearchParams): Promise<Page<CollegeUser>> {
   return fetchPage("/colleges/access", collegeUserSchema, params, ACCESS_FILTERS);
+}
+
+/** The directory's headline figures, scoped exactly as the list is. */
+export async function getCollegeSummary(): Promise<CollegeSummary> {
+  return collegeSummarySchema.parse(await apiFetch("/colleges/summary"));
 }

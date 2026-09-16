@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { pageQuerySchema, queryBoolean } from "../common/page.js";
+import { moneyMinor } from "../common/money.js";
 
 /**
  * A college is an ACTOR, not a directory row: it has users, contracts,
@@ -17,6 +18,17 @@ export const collegePocSchema = z.object({
   isPrimary: z.boolean(),
 });
 
+/** B2B — a dedicated batch under a contract. HUB — a sponsored centre.
+    PLACEMENT — we place into them rather than teach for them. */
+export const partnershipTypeSchema = z.enum(["B2B", "HUB", "PLACEMENT"]);
+export type PartnershipType = z.infer<typeof partnershipTypeSchema>;
+
+export const PARTNERSHIP_LABELS: Record<PartnershipType, string> = {
+  B2B: "B2B Institutional",
+  HUB: "Sponsored Hub",
+  PLACEMENT: "Placement Partner",
+};
+
 export const collegeSchema = z.object({
   collegeId: z.string(),
   collegeCode: z.string(),
@@ -30,6 +42,7 @@ export const collegeSchema = z.object({
   postalCode: z.string().nullable(),
   website: z.string().nullable(),
   affiliation: z.string().nullable(),
+  partnershipType: partnershipTypeSchema,
   disciplines: z.array(z.string()),
   /** Read back so the edit form can round-trip it — a write-only field is one
       an operator would silently erase every time they corrected an address. */
@@ -41,6 +54,13 @@ export const collegeSchema = z.object({
   studentCount: z.number().int().optional(),
   batchCount: z.number().int().optional(),
   openRequirementCount: z.number().int().optional(),
+  /**
+   * The institution's own portal standing, derived from its users: GRANTED if
+   * anybody there can sign in, otherwise the furthest any of them got. Null
+   * means nobody was ever given an account — different from NONE, which means
+   * an account exists and has not been granted.
+   */
+  portalAccessStatus: z.enum(["NONE", "INVITED", "GRANTED", "REVOKED"]).nullable().optional(),
 });
 
 export type College = z.infer<typeof collegeSchema>;
@@ -90,7 +110,31 @@ export const contactQuerySchema = pageQuerySchema.extend({
 
 export type ContactQuery = z.infer<typeof contactQuerySchema>;
 
+/**
+ * The directory's headline figures, for the tiles above the list.
+ *
+ * Scoped as the list is — a regional sub-admin's "14 colleges" is theirs.
+ * Money is minor units on the wire like everywhere else; a contract total is
+ * a crore-scale number and a float would lose paise on the way.
+ */
+export const collegeSummarySchema = z.object({
+  colleges: z.number().int(),
+  /** Not yet activated — on record, not yet trading. */
+  pendingActivation: z.number().int(),
+  students: z.number().int(),
+  /** Live batches those students sit on. */
+  liveBatches: z.number().int(),
+  openRequirements: z.number().int(),
+  /** Of those, still awaiting our confirmation. */
+  awaitingConfirmation: z.number().int(),
+  contractValueMinor: moneyMinor,
+  contractOutstandingMinor: moneyMinor,
+});
+
+export type CollegeSummary = z.infer<typeof collegeSummarySchema>;
+
 export const collegeQuerySchema = pageQuerySchema.extend({
+  partnershipType: partnershipTypeSchema.optional(),
   cityId: z.string().optional(),
   discipline: z.string().optional(),
   isActive: queryBoolean.optional(),
@@ -108,6 +152,7 @@ const pocInput = z.object({
 });
 
 export const createCollegeSchema = z.object({
+  partnershipType: partnershipTypeSchema.default("B2B"),
   name: z.string().trim().min(1, "Enter the college name").max(200),
   shortName: z.string().trim().max(80).optional(),
   countryId: z.string().min(1, "Select a country"),

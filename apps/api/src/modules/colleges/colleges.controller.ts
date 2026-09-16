@@ -22,6 +22,13 @@ export class CollegesController {
    * Contacts across every college. Declared before `:id` — Fastify prefers a
    * static segment regardless, but the ordering says so out loud.
    */
+  /** Headline figures for the directory's tiles. Static, so before ":id". */
+  @Get("summary")
+  @RequirePermission("colleges", "read")
+  summary(@CurrentPrincipal() p: Principal) {
+    return this.colleges.summary(p);
+  }
+
   @Get("contacts")
   @RequirePermission("colleges", "read")
   contacts(@CurrentPrincipal() p: Principal, @Query(zodBody(contactQuerySchema)) query: ContactQuery) {

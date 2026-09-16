@@ -167,6 +167,12 @@ enum AssignmentStatus {
   CLOSED
 }
 
+enum PartnershipType {
+  B2B
+  HUB
+  PLACEMENT
+}
+
 enum SubmissionStatus {
   PENDING
   SUBMITTED
@@ -473,6 +479,9 @@ model College {
   postalCode   String?   @map("postal_code") @db.VarChar(20)
   website      String?   @db.VarChar(255)
   affiliation  String?   @db.VarChar(200)
+  /// B2B — a dedicated batch under a contract. HUB — a sponsored centre.
+  /// PLACEMENT — we place into them rather than teach for them.
+  partnershipType PartnershipType @default(B2B) @map("partnership_type")
   disciplines  String[]
   logoUrl      String?   @map("logo_url") @db.VarChar(500)
   isActive     Boolean   @default(true) @map("is_active")

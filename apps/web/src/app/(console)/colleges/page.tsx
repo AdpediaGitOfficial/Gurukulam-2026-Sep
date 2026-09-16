@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { College } from "@gurukulam/contracts";
+import { formatRupees, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { rowActions } from "@/components/patterns/row-actions";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
-import { listColleges } from "@/features/colleges/server/colleges-service";
+import { brandTokens, domainTokens } from "@/design-system/tokens";
+import { getCollegeSummary, listColleges } from "@/features/colleges/server/colleges-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -37,19 +38,22 @@ const COLUMNS: Column<College>[] = [
     cell: (row) => row.cityName ?? <span className="text-ink-subtle">—</span>,
   },
   {
-    id: "disciplines",
-    header: "Disciplines",
-    cell: (row) =>
-      row.disciplines.length === 0 ? (
-        <span className="text-ink-subtle">—</span>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {row.disciplines.slice(0, 3).map((d) => (
-            <Chip key={d}>{d}</Chip>
-          ))}
-          {row.disciplines.length > 3 ? <Chip>+{row.disciplines.length - 3}</Chip> : null}
-        </div>
-      ),
+    id: "partnership",
+    header: "Partnership",
+    // What KIND of relationship this is — B2B under a contract, a sponsored
+    // hub, or somewhere we place into rather than teach for. Specified in
+    // admin-portal-plan.md M3 and carried on the record since.
+    cell: (row) => (
+      <div className="flex flex-col">
+        <span className="text-body-sm text-ink">{PARTNERSHIP_LABELS[row.partnershipType]}</span>
+        {row.disciplines.length === 0 ? null : (
+          <span className="text-caption text-ink-subtle">
+            {row.disciplines.slice(0, 2).join(", ")}
+            {row.disciplines.length > 2 ? ` +${row.disciplines.length - 2}` : ""}
+          </span>
+        )}
+      </div>
+    ),
   },
   {
     id: "contacts",
@@ -64,8 +68,8 @@ const COLUMNS: Column<College>[] = [
     cell: (row) => <span className="tabular-nums">{formatCount(row.studentCount ?? 0)}</span>,
   },
   {
-    id: "batches",
-    header: "Batches",
+    id: "trainings",
+    header: "Trainings",
     align: "end",
     cell: (row) => <span className="tabular-nums">{formatCount(row.batchCount ?? 0)}</span>,
   },
@@ -74,6 +78,23 @@ const COLUMNS: Column<College>[] = [
     header: "Open reqs",
     align: "end",
     cell: (row) => <span className="tabular-nums">{formatCount(row.openRequirementCount ?? 0)}</span>,
+  },
+  {
+    id: "portal",
+    header: "Portal",
+    // Null and NONE are different answers: null is "nobody there was ever
+    // given an account", NONE is "an account exists and is not granted".
+    cell: (row) => {
+      const status = row.portalAccessStatus;
+      if (status === null || status === undefined) {
+        return <span className="text-caption text-ink-subtle">No account</span>;
+      }
+      const intent =
+        status === "GRANTED" ? "success" : status === "INVITED" ? "info" : status === "REVOKED" ? "danger" : "neutral";
+      const label =
+        status === "GRANTED" ? "Portal access" : status === "INVITED" ? "Invited" : status === "REVOKED" ? "Revoked" : "Not granted";
+      return <StatusPill intent={intent}>{label}</StatusPill>;
+    },
   },
   {
     id: "status",
@@ -94,7 +115,7 @@ export default async function CollegesPage({
 }) {
   await requireModule("colleges");
   const params = await searchParams;
-  const page = await listColleges(params);
+  const [page, summary] = await Promise.all([listColleges(params), getCollegeSummary()]);
 
   return (
     <ListPage
@@ -107,11 +128,56 @@ export default async function CollegesPage({
         </Link>
       }
       summary={
-        params["created"] === "1" ? (
-          <Alert intent="success" title="Added">
-            College added.
-          </Alert>
-        ) : null
+        <>
+          {/* Scoped as the list is, and not narrowed by the toolbar — these
+              are the denominator the filtered table is read against. */}
+          <StatTileGrid>
+            <StatTile
+              label="Colleges on record"
+              value={formatCount(summary.colleges)}
+              caption={
+                summary.pendingActivation === 0
+                  ? "All trading"
+                  : `${formatCount(summary.pendingActivation)} pending activation`
+              }
+              icon="college"
+              color={domainTokens.colleges}
+            />
+            <StatTile
+              label="College students"
+              value={formatCount(summary.students)}
+              caption={`Across ${formatCount(summary.liveBatches)} live batch${summary.liveBatches === 1 ? "" : "es"}`}
+              icon="users"
+              color={domainTokens.students}
+              href="/students?segment=COLLEGE"
+            />
+            <StatTile
+              label="Open requirements"
+              value={formatCount(summary.openRequirements)}
+              caption={
+                summary.awaitingConfirmation === 0
+                  ? "None awaiting us"
+                  : `${formatCount(summary.awaitingConfirmation)} awaiting confirmation`
+              }
+              icon="brief"
+              color={brandTokens.brand}
+              href="/colleges/requirements"
+            />
+            <StatTile
+              label="Contract value"
+              value={formatRupees(fromWire(summary.contractValueMinor), { paise: false })}
+              caption={`${formatRupees(fromWire(summary.contractOutstandingMinor), { paise: false })} outstanding`}
+              icon="rupee"
+              color={brandTokens.gold}
+              href="/fee-ledger/contracts"
+            />
+          </StatTileGrid>
+          {params["created"] === "1" ? (
+            <Alert intent="success" title="Added">
+              College added.
+            </Alert>
+          ) : null}
+        </>
       }
       toolbar={
         <ListFilters

@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
+  CollegeSummary,
   College, CollegeContact, CollegeQuery, ContactQuery, CreateCollegeInput, Page, Principal,
   ReplacePocsInput, UpdateCollegeInput, CollegeDetail,
 } from "@gurukulam/contracts";
@@ -41,6 +42,7 @@ export class CollegesService {
       // a foreign key — so the college-scope column differs on this table.
       ...collegeScope(principal, "collegeId"),
       ...(query.cityId ? { cityId: query.cityId } : {}),
+      ...(query.partnershipType ? { partnershipType: query.partnershipType } : {}),
       ...(query.discipline ? { disciplines: { has: query.discipline } } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
       ...(query.q
@@ -63,6 +65,9 @@ export class CollegesService {
           include: {
             city: { select: { name: true } },
             _count: { select: { pocs: true, students: true, batches: true } },
+            // The institution's portal standing is the best any of its users
+            // reached — one granted account means the college is on the portal.
+            users: { where: { deletedAt: null }, select: { accessStatus: true } },
           },
         }),
         this.prisma.college.count({ where }),
@@ -86,6 +91,52 @@ export class CollegesService {
    * scope are expressed through its college — the same shape the portal-access
    * roll-up uses.
    */
+  /**
+   * The directory's headline figures.
+   *
+   * Scoped exactly as `list` is, so the tiles and the table below them count
+   * the same estate. Contract money is summed in the database rather than in
+   * JavaScript: these are crore-scale totals and a float loses paise.
+   */
+  async summary(principal: Principal): Promise<CollegeSummary> {
+    const scope = {
+      ...liveOnly(),
+      ...cityScope(principal),
+      ...collegeScope(principal, "collegeId"),
+    } satisfies Prisma.CollegeWhereInput;
+
+    const [colleges, pendingActivation, students, liveBatches, requirements, awaiting, contracts] =
+      await this.prisma.$transaction([
+        this.prisma.college.count({ where: scope }),
+        this.prisma.college.count({ where: { ...scope, isActive: false } }),
+        this.prisma.student.count({ where: { deletedAt: null, college: scope } }),
+        this.prisma.batch.count({
+          where: { deletedAt: null, college: scope, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+        }),
+        this.prisma.collegeRequirement.count({
+          where: { deletedAt: null, college: scope, status: { notIn: ["CONFIRMED", "REJECTED"] } },
+        }),
+        this.prisma.collegeRequirement.count({
+          where: { deletedAt: null, college: scope, status: "UNDER_REVIEW" },
+        }),
+        this.prisma.collegeContract.aggregate({
+          where: { deletedAt: null, college: scope, status: { not: "CANCELLED" } },
+          _sum: { totalValueMinor: true, balancePendingMinor: true },
+        }),
+      ]);
+
+    return {
+      colleges,
+      pendingActivation,
+      students,
+      liveBatches,
+      openRequirements: requirements,
+      awaitingConfirmation: awaiting,
+      contractValueMinor: (contracts._sum.totalValueMinor ?? 0n).toString(),
+      contractOutstandingMinor: (contracts._sum.balancePendingMinor ?? 0n).toString(),
+    };
+  }
+
   async listContacts(principal: Principal, query: ContactQuery): Promise<Page<CollegeContact>> {
     const where: Prisma.CollegePocWhereInput = {
       ...liveOnly(query.includeDeleted),
@@ -400,6 +451,7 @@ function toCollege(row: CollegeRow): College {
     postalCode: row.postalCode,
     website: row.website,
     affiliation: row.affiliation,
+    partnershipType: row.partnershipType,
     disciplines: row.disciplines,
     notes: row.notes,
     isActive: row.isActive,
@@ -408,6 +460,7 @@ function toCollege(row: CollegeRow): College {
     pocCount: row._count.pocs,
     studentCount: row._count.students,
     batchCount: row._count.batches,
+    portalAccessStatus: bestAccess(row.users),
   };
 }
 
@@ -442,4 +495,22 @@ function toContact(
     cityName: row.college?.city?.name ?? null,
     portalAccessStatus: (account?.accessStatus ?? null) as CollegeContact["portalAccessStatus"],
   };
+}
+
+/**
+ * A college's portal standing, from its users'.
+ *
+ * GRANTED wins outright: if one person there can sign in, the institution is
+ * on the portal whatever the others say. Below that it reports the furthest
+ * anyone got, so a revoked account still reads REVOKED rather than silently
+ * becoming NONE. No users at all is null — nobody was ever given an account,
+ * which is a different answer from having one that is not granted.
+ */
+function bestAccess(
+  users: ReadonlyArray<{ accessStatus: "NONE" | "INVITED" | "GRANTED" | "REVOKED" }>,
+): "NONE" | "INVITED" | "GRANTED" | "REVOKED" | null {
+  if (users.length === 0) return null;
+  const rank = { GRANTED: 3, INVITED: 2, REVOKED: 1, NONE: 0 } as const;
+  return users.reduce((best, u) => (rank[u.accessStatus] > rank[best] ? u.accessStatus : best),
+    "NONE" as "NONE" | "INVITED" | "GRANTED" | "REVOKED");
 }
