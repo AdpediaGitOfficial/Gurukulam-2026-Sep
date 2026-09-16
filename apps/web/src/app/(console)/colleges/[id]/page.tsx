@@ -187,6 +187,14 @@ export default async function CollegeDetailPage({
         breadcrumbs={[{ label: "Colleges", href: "/colleges" }, { label: college.name }]}
         action={
           <div className="flex items-center gap-3">
+            {/* Invariant 7 — for a college cohort the INSTITUTION downloads its
+                students' certificates, so its own record is where they belong. */}
+            <Link
+              href={`/colleges/${college.collegeId}/certificates`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Certificates
+            </Link>
             <Link
               href={`/colleges/${college.collegeId}/access`}
               className={buttonVariants({ variant: "secondary" })}

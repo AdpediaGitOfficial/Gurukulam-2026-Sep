@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Certificates" };
 
 const STATUS: Record<string, { intent: "success" | "warning" | "danger" | "neutral"; label: string }> = {
   ISSUED: { intent: "success", label: "Issued" },
-  PENDING: { intent: "warning", label: "Pending" },
+  DRAFT: { intent: "warning", label: "Draft" },
   REVOKED: { intent: "danger", label: "Revoked" },
 };
 
@@ -139,7 +139,7 @@ export default async function CertificatesPage({
               label: "Status",
               options: [
                 { value: "", label: "All statuses" },
-                { value: "PENDING", label: "Pending" },
+                { value: "DRAFT", label: "Draft" },
                 { value: "ISSUED", label: "Issued" },
                 { value: "REVOKED", label: "Revoked" },
               ],
