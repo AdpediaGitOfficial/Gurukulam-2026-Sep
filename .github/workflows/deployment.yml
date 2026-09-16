@@ -6,6 +6,14 @@ on:
       - main
       - claude/project-analysis-6t08cr
 
+# Two pushes a minute apart must not deploy over each other: the second would
+# start npm ci while the first is mid-build, and the box would end up with a
+# half-written node_modules. Queue them instead, and never cancel a run that
+# may already have migrated.
+concurrency:
+  group: deploy-gurukulam
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: self-hosted
@@ -16,7 +24,10 @@ jobs:
 
       - name: Run Deployment & PM2 Restart
         run: |
-          set -e
+          # -u catches an unset variable, and -o pipefail stops a failure
+          # inside a pipeline being hidden by the exit code of the last stage.
+          set -euo pipefail
+
           PROJECT_DIR="/var/www/html/gurukulam/gurukulam-claude/Gurukulam-2026-Sep"
           BACKUP_DIR="/var/www/html/gurukulam/db-bakup"
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
@@ -25,37 +36,127 @@ jobs:
           TARGET_BRANCH="claude/project-analysis-6t08cr"
           SCHEMA_PATH="./packages/db/prisma/schema.prisma"
 
-          echo "1. Starting database backup..."
+          echo "::group::1. Database backup"
           sudo mkdir -p "${BACKUP_DIR}"
           sudo -u postgres pg_dump "${DB_NAME}" | sudo tee "${BACKUP_FILE}" > /dev/null
+          # A backup that silently wrote nothing is worse than no backup, since
+          # it is the thing you reach for at the worst possible moment.
+          BACKUP_BYTES=$(sudo stat -c %s "${BACKUP_FILE}")
+          if [ "${BACKUP_BYTES}" -lt 10000 ]; then
+            echo "Backup is only ${BACKUP_BYTES} bytes — refusing to deploy over a database we cannot restore."
+            exit 1
+          fi
+          echo "Backed up ${BACKUP_BYTES} bytes to ${BACKUP_FILE}"
+          echo "::endgroup::"
 
-          echo "2. Navigating to project directory..."
+          echo "::group::2. Check out ${TARGET_BRANCH}"
           cd "${PROJECT_DIR}"
-
-          echo "3. Marking safe directory..."
           git config --global --add safe.directory "${PROJECT_DIR}" || true
-
-          echo "4. Fetching and checking out target branch..."
-          git fetch origin
+          git fetch origin --prune
           git reset --hard HEAD
           git clean -fd
+          # Reset to the remote rather than pulling: a pull can conflict or
+          # create a merge commit on a box nobody is going to resolve one on.
           git checkout -B "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
-          git pull origin "${TARGET_BRANCH}"
+          git reset --hard "origin/${TARGET_BRANCH}"
+          echo "Deploying $(git rev-parse --short HEAD) — $(git log -1 --pretty=%s)"
+          echo "::endgroup::"
 
-          echo "5. Installing dependencies..."
-          npm install
+          echo "::group::3. Ownership"
+          # `prisma generate` writes into node_modules/.prisma/client. If any of
+          # the tree is owned by another user — one `sudo npm install` is enough
+          # — the build dies with EACCES and the deploy stops after the checkout,
+          # leaving new source against an old build. Take ownership every time
+          # rather than relying on nobody ever having used sudo here.
+          sudo chown -R "$(id -u):$(id -g)" "${PROJECT_DIR}"
+          echo "::endgroup::"
 
-          echo "6. Checking Prisma migrations..."
-          STATUS=$(npx prisma migrate status --schema="${SCHEMA_PATH}" 2>&1 || true)
-          if echo "${STATUS}" | grep -q "Following migration(s) have not yet been applied"; then
-            echo "Applying migrations..."
-            npx prisma migrate deploy --schema="${SCHEMA_PATH}"
-          else
-            echo "No pending migrations."
+          echo "::group::4. Dependencies"
+          # `npm ci`, not `npm install`: it installs exactly what the lockfile
+          # records and fails if the lockfile and the manifests disagree,
+          # instead of resolving something that was never tested. It matters
+          # here specifically — the root package.json pins a `fastify` override
+          # for a rate-limit bypass, and a fresh resolve could walk away from it.
+          npm ci
+          echo "::endgroup::"
+
+          echo "::group::5. Database migrations"
+          # Prisma reads DATABASE_URL from the .env beside the schema. Prove it
+          # resolved before doing anything that depends on it.
+          if [ ! -f "packages/db/.env" ] && [ ! -f ".env" ]; then
+            echo "No .env found for Prisma — DATABASE_URL would be unset and migrate deploy would target nothing."
+            exit 1
           fi
 
-          echo "7. Building application..."
-          npm run build
+          # `migrate deploy` unconditionally. It is idempotent: it applies what
+          # is missing and does nothing otherwise.
+          #
+          # This replaces a grep on the output of `migrate status` for the
+          # string "Following migration(s) have not yet been applied". Prisma 6
+          # actually prints "Following migrations have not yet been applied" —
+          # no "(s)" — so that test never matched, the else branch printed
+          # "No pending migrations", and migrate deploy never ran. Every schema
+          # change since this workflow was added was silently skipped.
+          npx prisma migrate status --schema="${SCHEMA_PATH}" || true
+          npx prisma migrate deploy --schema="${SCHEMA_PATH}"
+          echo "::endgroup::"
 
-          echo "8. Restarting PM2 services..."
+          echo "::group::6. Build"
+          # contracts → db → api → web, ordered by Turborepo's declared graph.
+          npm run build
+          echo "::endgroup::"
+
+          echo "::group::7. Restart"
+          # Migrate, then build, then restart: the running code must never be
+          # newer than the schema underneath it.
           sudo pm2 restart gurukulam-api gurukulam-web --update-env
+          echo "::endgroup::"
+
+          echo "::group::8. Did it come back up?"
+          # A green tick that only means "the script reached the end" is worth
+          # very little. Ask the processes themselves.
+          #
+          # The ports come from the app's own env rather than being assumed
+          # here: a health check pointed at the wrong port fails a deploy that
+          # actually worked, which trains everyone to ignore it.
+          ENV_FILE="/dev/null"
+          for candidate in "${PROJECT_DIR}/.env" "${PROJECT_DIR}/apps/api/.env"; do
+            if [ -f "${candidate}" ]; then
+              ENV_FILE="${candidate}"
+              break
+            fi
+          done
+          API_PORT="$(sed -n 's/^API_PORT=\"\?\([0-9]*\)\"\?.*/\1/p' "${ENV_FILE}" | tail -1)"
+          API_PORT="${API_PORT:-4000}"
+          API_BASE="$(sed -n 's|^API_BASE_PATH=\"\?\([^\"]*\)\"\?|\1|p' "${ENV_FILE}" | tail -1)"
+          API_BASE="${API_BASE:-/api/v1}"
+          WEB_PORT="$(sed -n 's/^WEB_PORT=\"\?\([0-9]*\)\"\?.*/\1/p' "${ENV_FILE}" | tail -1)"
+          WEB_PORT="${WEB_PORT:-3000}"
+          echo "Checking API on ${API_PORT}${API_BASE} and the console on ${WEB_PORT}"
+
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 5 "http://127.0.0.1:${API_PORT}${API_BASE}/health" > /dev/null; then
+              echo "API healthy after ${attempt} attempt(s)"
+              break
+            fi
+            if [ "${attempt}" -eq 20 ]; then
+              echo "API did not answer /health within 20 attempts."
+              sudo pm2 logs gurukulam-api --lines 40 --nostream || true
+              exit 1
+            fi
+            sleep 3
+          done
+
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${WEB_PORT}/login"; then
+              echo "Console healthy after ${attempt} attempt(s)"
+              break
+            fi
+            if [ "${attempt}" -eq 20 ]; then
+              echo "Console did not answer /login within 20 attempts."
+              sudo pm2 logs gurukulam-web --lines 40 --nostream || true
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "::endgroup::"
