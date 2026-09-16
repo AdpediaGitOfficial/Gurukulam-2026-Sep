@@ -364,6 +364,20 @@ tr.clickable{cursor:pointer}
 .modal .warnbox{background:#fdeaea;border:1px solid #f6c9c9;border-radius:var(--r-tile);
  padding:12px 14px;font-size:13px;line-height:20px;color:var(--danger);margin:14px 0}
 .modal .facts{border-top:0;padding-top:18px}
+/* An action with no server behind it still has to answer for itself. A control
+   that looks like a verb and does nothing teaches a reviewer the feature is
+   broken, so every terminal action says what it would do and where the rule
+   that governs it lives. */
+.toasts{position:fixed;right:24px;bottom:24px;z-index:80;display:flex;flex-direction:column;
+ gap:10px;max-width:min(380px,calc(100vw - 48px));pointer-events:none}
+.toast{background:var(--ink);color:#fff;border-radius:var(--r-tile);padding:14px 16px;
+ box-shadow:0 12px 28px rgb(25 28 29/.28);pointer-events:auto;animation:toastin .18s ease-out}
+.toast b{display:block;font-size:14px;font-weight:600;margin-bottom:3px}
+.toast span{display:block;font-size:13px;line-height:19px;color:rgb(255 255 255/.72)}
+.toast button{margin-top:8px;background:none;border:0;color:rgb(255 255 255/.72);
+ font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+@keyframes toastin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(max-width:700px){.toasts{right:16px;left:16px;bottom:16px;max-width:none}}
 .btn.dan{background:var(--danger);color:#fff;box-shadow:var(--sh-raised)}
 .btn.dan:hover{background:#9c1616}
 
@@ -808,12 +822,17 @@ const linkRow=(href,cells,cols,min)=>`<div class="tw"><table${min?` style="min-w
  ${r.map((c,i)=>{const isActs=String(c).includes('class="acts"');
    return `<td${cols[i]&&cols[i][1]==='r'?' class="r"':''}${isActs?'':` onclick="location.hash='${href}'"`}>${c}</td>`;
   }).join('')}</tr>`).join('')}</tbody></table></div>`;
+/* Paging lives in the URL in the real console, so a page is shareable and the
+   back button works. The prototype has one page of fixtures, so the controls
+   say where the state lives rather than pretending to turn a page. */
+const PAGE_NOTE='Page and filters live in the URL in the real console, so a view is shareable and the back button works.';
 const pager=(n,total)=>`<div class="pager"><span>Showing <b class="num">1–${n}</b> of <b class="num">${total}</b></span>
- <div class="pnums"><button class="on">1</button><button>2</button><button>3</button><button>›</button></div></div>`;
+ <div class="pnums">${['1','2','3','›'].map((l,i)=>
+  `<button class="${i===0?'on':''}" onclick="act(${jsStr('Page '+(l==='›'?'2':l))},${jsStr(PAGE_NOTE)})">${l}</button>`).join('')}</div></div>`;
 const toolbar=(ph,sels=[],extra='')=>`<div class="toolbar">
  <span class="tsearch">${svg(I.search,18)}<input placeholder="${ph}"></span>
  ${sels.map(s=>`<select class="sel">${s.map(o=>`<option>${o}</option>`).join('')}</select>`).join('')}
- ${extra||`<button class="btn sec sm">${svg(I.down,16)} Export CSV</button>`}</div>`;
+ ${extra||`<button class="btn sec sm" onclick="${said('Export CSV')}">${svg(I.down,16)} Export CSV</button>`}</div>`;
 const field=(l,ph,req,type='input',opts)=>`<div class="f"><label>${l}${req?' <em>*</em>':''}</label>
  ${type==='select'?`<select>${opts.map(o=>`<option>${o}</option>`).join('')}</select>`
   :type==='textarea'?`<textarea placeholder="${ph}"></textarea>`
@@ -831,24 +850,62 @@ const crumb=(...parts)=>`<div class="crumb">${parts.map((p,i)=>
 const ytFrame=(id,title)=>`<div class="vidframe"><span class="play">${svg(I.play,28)}</span>
  <span class="cap">youtube-nocookie.com/embed/${id||'—'}?rel=0&amp;iv_load_policy=3&amp;modestbranding=1</span></div>
  ${title?`<div style="margin-top:10px;font-weight:600">${title}</div>`:''}`;
+/* What each verb would do, for the controls that have no screen to go to.
+   Written once rather than at a hundred call sites: the explanation belongs to
+   the verb, not to the row it happens to sit on. A call site that needs
+   something more specific passes its own. */
+const VERBS={
+ 'Delete':'There is no hard delete. The record is soft-deleted, keeps its author and its history, and stops appearing in lists.',
+ 'Remove':'Soft-delete — the mapping is retired and the history it carries stays attached to the record.',
+ 'Suspend':'Suspension needs a stated reason. It withdraws the account without touching anything already in flight.',
+ 'Revoke':'Revoking needs a stated reason, and the reason is shown wherever the access is listed.',
+ 'Restore':'Restores the soft-deleted row. Nothing was destroyed, so nothing has to be rebuilt.',
+ 'Export CSV':'Exports exactly the rows the filters above select — what you see is what you get.',
+ 'Export':'Exports exactly the rows the filters above select — what you see is what you get.',
+ 'PDF':'Renders the document and hands it to the browser, which is where "save as PDF" comes from.',
+ 'Download':'Renders the document and hands it to the browser, which is where "save as PDF" comes from.',
+ 'Approve':'Approval releases the certificate. For a college cohort the institution downloads it, never the student.',
+ 'Reject':'Rejection needs a reason, which goes back to whoever raised it.',
+ 'Resend':'Re-sends to the address resolved from the record now, never a stored copy of it.',
+ 'Save changes':'Saved. The record keeps its author and gains a last-modified entry.',
+ 'Publish':'Publishing is the deliberate act that makes this visible to its audience.',
+ 'Save draft':'Held as a draft. Nothing is visible to anyone else until it is published.',
+ 'Notify students':'Sends to the roster resolved at send time, so somebody added this morning is included.',
+ 'Email contacts':'Sends to the institution\u2019s contacts, never to its students.',
+ 'Unpublish':'Hides the recording from the roster. The link is kept, so republishing costs nothing.',
+ 'Schedule':'Schedules the report to run and land in an inbox on a cadence.',
+ 'Run again':'Re-runs the report against the data as it stands now.',
+};
+/* Everything that is a real action but has no server behind it says so.
+   `act` is the honest answer; navigation is always preferred where a screen
+   exists to navigate to. */
+/* These land inside onclick="…", so the JS string literals must not carry a
+   bare double quote — it would close the attribute and silently disarm the
+   control, which is exactly the failure this mechanism exists to stop. */
+const jsStr=v=>JSON.stringify(String(v)).replace(/"/g,'&quot;');
+const said=(label,note)=>`act(${jsStr(label)},${jsStr(note||VERBS[label]||'Not wired in the prototype \u2014 this is the design reference, not the build.')})`;
+
 /* Row actions — the CRUD verbs live on the row, not behind a hidden menu, so
-   what an operator can do to a record is visible without hovering. */
-const rowActs=(...items)=>`<span class="acts">${items.map(([label,kind,href])=>
- `<button class="${kind||''}"${href?` onclick="location.hash='${href}'"`:''}>${label}</button>`).join('')}</span>`;
+   what an operator can do to a record is visible without hovering.
+   An item is `[label, kind, href, note]`: with an href it navigates, without
+   one it explains itself. Neither is ever a button that does nothing. */
+const rowActs=(...items)=>`<span class="acts">${items.map(([label,kind,href,note])=>
+ `<button class="${kind||''}" onclick="${href?`location.hash='${href}'`:said(label,note)}">${label}</button>`).join('')}</span>`;
 
 const confirmDialog=(title,body,warn,cta)=>`<div class="scrim"><div class="modal">
  <h3>${title}</h3><p>${body}</p>
  ${warn?`<div class="warnbox">${warn}</div>`:''}
- <div class="facts"><button class="btn sec">Cancel</button><button class="btn dan">${cta}</button></div>
+ <div class="facts"><button class="btn sec" onclick="this.closest('.scrim').remove()">Cancel</button>
+ <button class="btn dan" onclick="${said(cta)}">${cta}</button></div>
 </div></div>`;
 
 /* Add / edit share one form — the only difference is prefilled values and the
    verb on the submit button, which is how the real routes will work too. */
-const formPage=(sections,submit,cancelHref)=>`<div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+const formPage=(sections,submit,cancelHref,saved)=>`<div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
  <div class="card">${sections.map(([h,d,fields])=>`<div class="fsec"><h3>${h}</h3>
   ${d?`<p>${d}</p>`:''}<div class="fset">${fields}</div></div>`).join('')}
   <div class="facts"><button class="btn sec" onclick="location.hash='${cancelHref}'">Cancel</button>
-   <button class="btn pri">${submit}</button></div></div>
+   <button class="btn pri" onclick="${said(submit,saved)}">${submit}</button></div></div>
  <div class="stack" id="formAside"></div></div>`;
 
 const flowStrip=steps=>`<div class="flow">${steps.map(([n,t,d,soon])=>
@@ -905,7 +962,7 @@ P['/']=()=>({eyebrow:'Executive command',title:'Dashboard',
 /* ---- localisation ---- */
 P['/localisation/countries']=()=>({eyebrow:'Localisation',title:'Country master',
  sub:'Operating countries, their currencies, dial codes and default timezones.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Onboard country</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Onboard country&quot;,&quot;Adds a country. Cities hang off it, and a city is what scope is expressed in.&quot;)">${svg(I.plus,18)} Onboard country</button>`,
  body:toolbar('Search countries…',[['All statuses','Active','Draft']])+
  `<div class="card flush">${table([['Country'],['ISO'],['Dial'],['Currency'],['Timezone'],['Cities','r'],['Status']],
   D.countries.map(([id,n,iso,d,c,tz,ct,s])=>[`<b class="tmain">${n}</b><span class="tsub tid">${id}</span>`,
@@ -915,7 +972,7 @@ P['/localisation/countries']=()=>({eyebrow:'Localisation',title:'Country master'
 
 P['/localisation/cities']=()=>({eyebrow:'Localisation',title:'City master',
  sub:'Operating cities mapped to their parent country. Cities scope sub-admin access.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Add city</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Add city&quot;,&quot;Adds a city. City scope for a regional sub-admin is expressed in these.&quot;)">${svg(I.plus,18)} Add city</button>`,
  body:toolbar('Search cities…',[['All countries','India','United Arab Emirates']])+
  `<div class="card flush">${table([['City'],['State / Province'],['Country'],['Colleges','r'],['Status']],
   D.cities.map(([id,n,st,c,cl,s])=>[`<b class="tmain">${n}</b><span class="tsub tid">${id}</span>`,st,c,
@@ -924,7 +981,7 @@ P['/localisation/cities']=()=>({eyebrow:'Localisation',title:'City master',
 /* ---- college database (CRM) ---- */
 P['/colleges']=()=>({eyebrow:'Colleges',title:'College Database',
  sub:'The CRM for institutional relationships. Every college carries its contacts, trainings, students and certificate approvals.',
- acts:`<button class="btn sec">${svg(I.down,18)} Export</button><button class="btn pri" onclick="location.hash='#/colleges/new'">${svg(I.plus,18)} Add college</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,18)} Export</button><button class="btn pri" onclick="location.hash='#/colleges/new'">${svg(I.plus,18)} Add college</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--d-colleges)','college','Colleges on record','14','2 pending activation')}
   ${tile('var(--d-students)','users','College students','2,280','Across 9 live batches')}
@@ -949,8 +1006,8 @@ const collegeHead=()=>`${crumb(['Colleges','#/colleges'],['Sree Narayana College
   <div class="meta"><h2>Sree Narayana College</h2>
    <div class="row"><span class="tid">CLG-SNC-01</span><span>·</span><span>Kochi, Kerala</span><span>·</span>
     <span class="tag">B2B Institutional</span>${pill('granted')}${pill('active')}</div></div>
-  <div class="pacts"><button class="btn sec">${svg(I.mail,18)} Email contacts</button>
-   <button class="btn sec" onclick="location.hash='#/colleges/new'">Edit</button>
+  <div class="pacts"><button class="btn sec" onclick="act(&quot;Email contacts&quot;,&quot;Sends to the institution\u2019s contacts, never to its students.&quot;)">${svg(I.mail,18)} Email contacts</button>
+   <button class="btn sec" onclick="location.hash='#/colleges/edit'">Edit</button>
    <button class="btn pri" onclick="location.hash='#/colleges/requirements'">${svg(I.plus,18)} Add requirement</button></div></div>`;
 
 
@@ -1036,8 +1093,8 @@ P['/colleges/detail/certificates']=()=>({title:'',hideHead:1,
  <div class="sechead"><h2>Submission — BTC-DA-MAY-A · Data Analytics Masterclass</h2>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
    <span class="hint">Uploaded by Dr. Meera Nambiar · 06 Sep 2026 · 12 names</span>
-   <button class="btn sec sm">Reject all</button>
-   <button class="btn pri sm">${svg(I.check,16)} Approve all &amp; release</button></div></div>
+   <button class="btn sec sm" onclick="act(&quot;Reject all&quot;,&quot;Rejection needs a reason, which goes back to whoever raised it.&quot;)">Reject all</button>
+   <button class="btn pri sm" onclick="act(&quot;Approve all & release&quot;,&quot;Releases the whole cohort\u2019s certificates to the institution.&quot;)">${svg(I.check,16)} Approve all &amp; release</button></div></div>
  <div class="card flush" style="margin-bottom:24px">${table(
   [['Name submitted'],['Matched student'],['Attendance'],['Assignments'],['Eligible'],['Decision'],['']],
   [['Ananya Rao','STU-2026-0894','30/32','7/7','yes','approved'],
@@ -1052,11 +1109,11 @@ P['/colleges/detail/certificates']=()=>({title:'',hideHead:1,
    asg==='—'?'<span style="color:var(--ink-subtle)">—</span>':`<span class="num">${asg}</span>`,
    el==='yes'?pill('completed'):pill('rejected'),
    dec==='approved'?pill('confirmed'):pill('pending'),
-   dec==='approved'?'<button class="btn lnk">Revoke</button>'
+   dec==='approved'?'<button class="btn lnk" onclick="act(&quot;Revoke&quot;,&quot;Revoking needs a stated reason, and the reason is shown wherever the access is listed.&quot;)">Revoke</button>'
     :rowActs(['Approve'],['Reject','del'])]),'1250px')}</div>
 
  <div class="sechead"><h2>Released certificates</h2>
-  <button class="btn sec sm">${svg(I.down,16)} Download all as ZIP</button></div>
+  <button class="btn sec sm" onclick="act(&quot;Download all as ZIP&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,16)} Download all as ZIP</button></div>
  <div class="card flush">${table([['Certificate number'],['Student'],['Training'],['Approved by'],['Released'],['Downloads'],['Status']],
   [['GK-CERT-2026-00418','Ananya Rao','Data Analytics · BTC-DA-MAY-A','Admin Global','12 Aug 2026',3,'issued'],
    ['GK-CERT-2026-00419','Aditi Desai','Data Analytics · BTC-DA-MAY-A','Admin Global','12 Aug 2026',1,'issued'],
@@ -1090,13 +1147,13 @@ P['/colleges/detail/contacts']=()=>({title:'',hideHead:1,
    this institution, their designation, and which of them hold a portal login. Exactly one contact is
    primary.</div>
  <div class="sechead"><h2>Points of contact</h2>
-  <button class="btn pri sm">${svg(I.plus,16)} Add contact</button></div>
+  <button class="btn pri sm" onclick="act(&quot;Add contact&quot;,&quot;Adds a point of contact for the institution. Portal access is granted separately.&quot;)">${svg(I.plus,16)} Add contact</button></div>
  <div class="card flush" style="margin-bottom:24px">${table([['Name'],['Designation'],['Email'],['Phone'],['Primary'],['Portal access'],['']],
   D.pocs.filter(p=>p[2]==='Sree Narayana College').map(([n,d,c,e,ph,pr,acc])=>[
    `<b class="tmain">${n}</b>`,d,`<span style="font-size:14px;color:var(--ink-muted)">${e}</span>`,
    `<span class="mono" style="font-size:13px">${ph}</span>`,
    pr?`<span style="color:var(--success-s)">${svg(I.check,16)}</span>`:'<span style="color:var(--ink-subtle)">—</span>',
-   pill(acc),acc==='granted'?'<button class="btn lnk">Revoke</button>':'<button class="btn lnk">Grant &amp; email</button>']),'1050px')}</div>
+   pill(acc),acc==='granted'?'<button class="btn lnk" onclick="act(&quot;Revoke&quot;,&quot;Revoking needs a stated reason, and the reason is shown wherever the access is listed.&quot;)">Revoke</button>':'<button class="btn lnk" onclick="act(&quot;Grant & email&quot;,&quot;Issues the login and emails it. The contact\u2019s own address is used, never a shared one.&quot;)">Grant &amp; email</button>']),'1050px')}</div>
  <div class="card"><div class="sechead"><h2>Portal invitation email</h2>
    <span class="hint">Sent automatically when access is granted</span></div>
   <div style="background:var(--sunken);border:1px solid var(--hairline);border-radius:var(--r-well);padding:20px;font-size:14px;line-height:22px">
@@ -1111,13 +1168,13 @@ P['/colleges/detail/contacts']=()=>({title:'',hideHead:1,
     <b>Sign in</b> portal.gurukulam.in</p>
    <p style="color:var(--ink-subtle)">You will be asked to set a new password on first sign-in.
     This link expires in 7 days.</p></div>
-  <div class="facts" style="margin-top:20px"><button class="btn sec">Preview</button>
-   <button class="btn pri">${svg(I.mail,18)} Send invitation</button></div></div>`});
+  <div class="facts" style="margin-top:20px"><button class="btn sec" onclick="act(&quot;Preview&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Preview</button>
+   <button class="btn pri" onclick="act(&quot;Send invitation&quot;,&quot;Emails the invitation to the contact\u2019s own address.&quot;)">${svg(I.mail,18)} Send invitation</button></div></div>`});
 
 P['/colleges/detail/trainings']=()=>({title:'',hideHead:1,
  body:collegeHead()+collegeTabs('/trainings')+
  `<div class="sechead"><h2>Trainings at this college</h2>
-  <button class="btn pri sm">${svg(I.plus,16)} Schedule training</button></div>
+  <button class="btn pri sm" onclick="act(&quot;Schedule training&quot;,&quot;Schedules a training for this institution.&quot;)">${svg(I.plus,16)} Schedule training</button></div>
  <div class="card flush">${table([['Batch'],['Course / subject'],['Trainer'],['Starts'],['Ends'],['Mode'],['Students','r'],['Status']],
   [['BTC-DA-SEP-A','Data Analytics Masterclass','Ravi Shankar','12 Aug 2026','09 Oct 2026','Offline · Block C',58,'in_progress'],
    ['BTC-CS-NOV-A','Cybersecurity Analyst','Fatima Rahman','04 Nov 2026','12 Feb 2027','Offline · Block A',40,'scheduled'],
@@ -1151,7 +1208,7 @@ P['/colleges/detail/calendar']=()=>{
 
 P['/colleges/contacts']=()=>({eyebrow:'Colleges',title:'All contacts',
  sub:'Every point of contact across the database, with designation and portal status.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Add contact</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Add contact&quot;,&quot;Adds a point of contact for the institution. Portal access is granted separately.&quot;)">${svg(I.plus,18)} Add contact</button>`,
  body:toolbar('Search contacts…',[['All colleges','Sree Narayana College','Amrita Institute'],['All designations','Head of Department','Placement Director']])+
  `<div class="card flush">${table([['Name'],['Designation'],['College'],['Email'],['Phone'],['Primary'],['Portal']],
   D.pocs.map(([n,d,c,e,p,pr,acc])=>[`<b class="tmain">${n}</b>`,d,c,
@@ -1161,7 +1218,7 @@ P['/colleges/contacts']=()=>({eyebrow:'Colleges',title:'All contacts',
 
 P['/colleges/requirements']=()=>({eyebrow:'Colleges',title:'Training requirements',
  sub:'The demand record that starts a college engagement. Confirming one is what creates its batch.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Log requirement</button>`,
+ acts:`<button class="btn pri" onclick="location.hash='#/colleges/new'">${svg(I.plus,18)} Log requirement</button>`,
  body:`<div class="note" style="margin-bottom:24px"><b>How this flows.</b> A college raises a requirement →
   an admin confirms it → a dedicated batch is created → a trainer is proposed from the availability calendar
   and confirms → the college adds its students. The requirement keeps a link to the batch it produced.</div>`+
@@ -1173,7 +1230,7 @@ P['/colleges/requirements']=()=>({eyebrow:'Colleges',title:'Training requirement
 
 P['/colleges/access']=()=>({eyebrow:'Colleges',title:'Portal access',
  sub:'Which contacts hold a college portal login, and what their institution can do with it.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Grant access</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Grant access&quot;,&quot;Issues a portal login for a college contact. Granting and revoking both need a reason.&quot;)">${svg(I.plus,18)} Grant access</button>`,
  body:`<div class="card flush" style="margin-bottom:24px">${table([['Contact'],['College'],['Designation'],['Access'],['Last sign-in'],['']],
   [['Dr. Meera Nambiar','Sree Narayana College','Head of Department','granted','12 Aug 2026'],
    ['Rajesh Varma','Sree Narayana College','Placement Director','granted','02 Sep 2026'],
@@ -1183,7 +1240,7 @@ P['/colleges/access']=()=>({eyebrow:'Colleges',title:'Portal access',
    ['Vikram Rao','Osmania Campus','Placement Coordinator','revoked','19 Jun 2026']]
   .map(([n,c,d,s,l])=>[`<b class="tmain">${n}</b>`,c,d,pill(s),
    `<span style="font-size:14px;color:var(--ink-subtle)">${l}</span>`,
-   `<button class="btn lnk">${s==='revoked'?'Restore':s==='invited'?'Resend email':'Revoke'}</button>`]))}</div>
+   `<button class="btn lnk" onclick="${s==='revoked'?said('Restore'):s==='invited'?said('Resend email','Re-sends the invitation to the contact\u2019s own address.'):said('Revoke')}">${s==='revoked'?'Restore':s==='invited'?'Resend email':'Revoke'}</button>`]))}</div>
  <div class="card"><div class="sechead"><h2>What a college user may do</h2></div>
   ${switchList([['Add and manage their own students','Create student records and import cohorts by CSV.',1],
    ['View their batches, schedule and attendance','Read-only across the batches their students sit in.',1],
@@ -1212,8 +1269,8 @@ P['/courses/detail']=()=>({title:'',hideHead:1,
   <div class="meta"><h2>Data Analytics Masterclass</h2>
    <div class="row"><span class="tid">CRS-DA-2026</span><span>·</span><span>Data Science</span><span>·</span>
     <span>12 weeks</span><span>·</span><span class="money">₹75,000</span>${pill('published')}</div></div>
-  <div class="pacts"><button class="btn sec">${svg(I.plus,18)} Add topic</button>
-   <button class="btn pri">${svg(I.plus,18)} Create batch</button></div></div>
+  <div class="pacts"><button class="btn sec" onclick="act(&quot;Add topic&quot;,&quot;Adds a topic to the course. Sessions are scheduled under a topic of their own batch\u2019s course.&quot;)">${svg(I.plus,18)} Add topic</button>
+   <button class="btn pri" onclick="location.hash='#/batches/new'">${svg(I.plus,18)} Create batch</button></div></div>
  <div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--d-courses)','book','Topics','6','32 sessions total')}
   ${tile('var(--d-trainers)','batch','Live batches','9','2 college · 7 retail')}
@@ -1229,9 +1286,9 @@ P['/courses/detail']=()=>({title:'',hideHead:1,
   <div class="inner">${sess.map(([st,sd,stime,str,yt,stat])=>`<div class="sessrow">
    <span class="s1"><b>${st}</b><span>${sd} · ${stime} · ${str}</span></span>
    ${yt?`<span class="tag" style="background:#fdeaea;color:var(--danger)">${svg(I.yt,13)} &nbsp;YouTube linked</span>`
-     :`<button class="btn sec sm">${svg(I.plus,14)} Add video</button>`}
-   ${pill(stat)}<button class="btn lnk">Edit</button></div>`).join('')}
-   <button class="btn sec sm" style="margin:8px 4px 4px">${svg(I.plus,14)} Add session to this topic</button>
+     :`<button class="btn sec sm" onclick="act(&quot;Add video&quot;,&quot;Attaches a YouTube link to the topic. The recording hangs off the SESSION that delivered it, not off the topic.&quot;)">${svg(I.plus,14)} Add video</button>`}
+   ${pill(stat)}<button class="btn lnk" onclick="act(&quot;Edit&quot;,&quot;Opens the same form the record was created with, prefilled. The business ID is generated and stays put.&quot;)">Edit</button></div>`).join('')}
+   <button class="btn sec sm" style="margin:8px 4px 4px" onclick="location.hash='#/batches/sessions/new'">${svg(I.plus,14)} Add session to this topic</button>
   </div></details>`).join('')}
  <div class="card" style="margin-top:24px"><div class="sechead"><h2>Add a session video</h2>
    <span class="hint">Paste a YouTube link — it attaches to the session, its topic and the course library</span></div>
@@ -1244,8 +1301,8 @@ P['/courses/detail']=()=>({title:'',hideHead:1,
    ${switchList([['Hide related videos at the end','Adds rel=0 — restricts suggestions to this channel.',1],
     ['Privacy-enhanced playback','Serves from youtube-nocookie.com.',1],
     ['Hide video annotations','Adds iv_load_policy=3.',1]])}
-   <div class="facts" style="margin-top:16px"><button class="btn sec">Cancel</button>
-    <button class="btn pri">Attach video</button></div></div>
+   <div class="facts" style="margin-top:16px"><button class="btn sec" onclick="this.closest('.scrim')?this.closest('.scrim').remove():history.back()">Cancel</button>
+    <button class="btn pri" onclick="act(&quot;Attach video&quot;,&quot;Attaches a YouTube link. The recording hangs off the session that delivered it.&quot;)">Attach video</button></div></div>
    <div>${ytFrame('dQw4w9WgXcQ','Window functions — full session')}
     <div class="note" style="margin-top:16px"><b>On ads.</b> Embed parameters can hide related videos,
      annotations and branding, but they cannot suppress advertising — YouTube serves that server-side.
@@ -1316,7 +1373,7 @@ P['/trainers/calendar']=()=>{const days=['Mon 07','Tue 08','Wed 09','Thu 10','Fr
  return{eyebrow:'Trainers',title:'Availability calendar',
  sub:'Free/busy is computed from committed sessions plus declared leave — never stored. This is the surface you assign from.',
  acts:`<select class="sel"><option>All skills</option><option>Python</option></select>
-       <button class="btn pri">${svg(I.plus,18)} Propose assignment</button>`,
+       <button class="btn pri" onclick="act(&quot;Propose assignment&quot;,&quot;A proposal is not committed delivery. The trainer confirms; an in-house trainer is confirmed on allocation.&quot;)">${svg(I.plus,18)} Propose assignment</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--success-s)','check','Available this week','3','Matching Python · SQL')}
   ${tile('var(--d-trainers)','batch','Committed sessions','19','Across 6 live batches')}
@@ -1331,8 +1388,8 @@ P['/trainers/calendar']=()=>{const days=['Mon 07','Tue 08','Wed 09','Thu 10','Fr
   <span class="hint">A proposal is not a commitment until the trainer confirms</span></div>
   ${table([['Batch'],['Proposed trainer'],['Proposed on'],['Status'],['']],
    [['<span class="mono" style="font-size:13px">BTC-CC-OCT-A</span>','Arun Prasad','04 Sep 2026',pill('confirmed'),'<span style="color:var(--ink-subtle);font-size:14px">Accepted 04 Sep</span>'],
-    ['<span class="mono" style="font-size:13px">BTC-AI-SEP-A</span>','Sanjay Kumar','06 Sep 2026',pill('pending'),'<button class="btn lnk">Confirm on behalf</button>'],
-    ['<span class="mono" style="font-size:13px">BTC-CS-NOV-A</span>','Fatima Rahman','06 Sep 2026',pill('pending'),'<button class="btn lnk">Confirm on behalf</button>'],
+    ['<span class="mono" style="font-size:13px">BTC-AI-SEP-A</span>','Sanjay Kumar','06 Sep 2026',pill('pending'),'<button class="btn lnk" onclick="act(&quot;Confirm on behalf&quot;,&quot;Records the trainer\u2019s answer for them. Only a confirmed assignment is committed delivery.&quot;)">Confirm on behalf</button>'],
+    ['<span class="mono" style="font-size:13px">BTC-CS-NOV-A</span>','Fatima Rahman','06 Sep 2026',pill('pending'),'<button class="btn lnk" onclick="act(&quot;Confirm on behalf&quot;,&quot;Records the trainer\u2019s answer for them. Only a confirmed assignment is committed delivery.&quot;)">Confirm on behalf</button>'],
     ['<span class="mono" style="font-size:13px">BTC-PF-OCT-B</span>','Deepa Menon','01 Sep 2026',pill('rejected'),'<span style="color:var(--ink-subtle);font-size:14px">Declined — on leave</span>']])}</div>`}};
 
 /* ---- batches ---- */
@@ -1399,8 +1456,8 @@ const batchHead=()=>`${crumb(['Batches','#/batches'],['Data Analytics — Sep Co
   <div class="meta"><h2>Data Analytics — Sep Cohort A</h2>
    <div class="row"><span class="tid">BTC-DA-SEP-A</span><span>·</span><span>Ravi Shankar</span><span>·</span>
     <span>Kochi · Offline</span>${segTag('college')}<span>Sree Narayana College</span>${pill('in_progress')}</div></div>
-  <div class="pacts"><button class="btn sec">${svg(I.bell,18)} Notify students</button>
-   <button class="btn pri">${svg(I.plus,18)} Add session</button></div></div>`;
+  <div class="pacts"><button class="btn sec" onclick="act(&quot;Notify students&quot;,&quot;Sends to the roster resolved at send time, so somebody added this morning is included.&quot;)">${svg(I.bell,18)} Notify students</button>
+   <button class="btn pri" onclick="location.hash='#/batches/sessions/new'">${svg(I.plus,18)} Add session</button></div></div>`;
 
 P['/batches/detail']=()=>({title:'',hideHead:1,
  body:batchHead()+batchTabs('')+
@@ -1422,7 +1479,7 @@ P['/batches/detail']=()=>({title:'',hideHead:1,
   .map(([s,t,d,ti,tr,r,a,st])=>[`<b class="tmain">${s}</b>`,`<span style="font-size:14px;color:var(--ink-muted)">${t}</span>`,
    d,`<span class="num">${ti}</span>`,tr,`<span style="font-size:13px;color:var(--ink-muted)">${r}</span>`,
    a==='—'?'<span style="color:var(--ink-subtle)">—</span>':`<span class="num">${a}</span>`,pill(st),
-   st==='completed'?'<button class="btn lnk">Attendance</button>':'<button class="btn lnk">Reschedule</button>']),'1400px')}</div>
+   st==='completed'?'<button class="btn lnk" onclick="act(&quot;Attendance&quot;,&quot;Attendance is written per session. The trainer portal is where it is born; admin can always override.&quot;)">Attendance</button>':'<button class="btn lnk" onclick="act(&quot;Reschedule&quot;,&quot;A reschedule updates in place, so attendance and the recording stay attached, and the roster is told why it moved.&quot;)">Reschedule</button>']),'1400px')}</div>
  <div class="grid g2">
   <div class="card"><div class="sechead"><h2>Reschedule a session</h2></div>
    <div class="fset">${field('Session','','','select',['pandas fundamentals — 06 Sep','SQL practice lab — 09 Sep'])}
@@ -1434,8 +1491,8 @@ P['/batches/detail']=()=>({title:'',hideHead:1,
     ['Notify the trainer','Ravi Shankar receives a schedule change alert.',1],
     ['Notify the college','Sree Narayana College — the institution hosting this batch.',1],
     ['Add a note for students','Include the reason for the change in the message.',0]])}</div>
-   <div class="facts" style="margin-top:16px"><button class="btn sec">Cancel</button>
-    <button class="btn pri">${svg(I.bell,18)} Reschedule &amp; notify</button></div></div>
+   <div class="facts" style="margin-top:16px"><button class="btn sec" onclick="this.closest('.scrim')?this.closest('.scrim').remove():history.back()">Cancel</button>
+    <button class="btn pri" onclick="act(&quot;Reschedule & notify&quot;,&quot;Updates in place and notifies the roster, the trainer and \u2014 for a college batch \u2014 the institution, from the same write.&quot;)">${svg(I.bell,18)} Reschedule &amp; notify</button></div></div>
   <div class="stack">
    <div class="card"><div class="sechead"><h2>Notification preview</h2></div>
     <div style="background:var(--sunken);border:1px solid var(--hairline);border-radius:var(--r-well);padding:18px;font-size:14px;line-height:22px">
@@ -1455,7 +1512,7 @@ P['/batches/detail/roster']=()=>({title:'',hideHead:1,
  `<div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
   <div class="stack">
    <div class="sechead"><h2>Roster — 58 students</h2>
-    <button class="btn pri sm">${svg(I.plus,16)} Add students</button></div>
+    <button class="btn pri sm" onclick="act(&quot;Add students&quot;,&quot;Adds students to this roster. A student may only join a batch whose college matches their own.&quot;)">${svg(I.plus,16)} Add students</button></div>
    <div class="card flush">${table([['Student'],['Segment'],['Enrolled'],['Notified'],['Attendance'],['Assignments'],['Progress']],
     [['Diya Krishnan','college','12 Aug 2026','12 Aug','29/32','6/7',78],
      ['Saanvi Iyer','college','12 Aug 2026','12 Aug','31/32','7/7',88],
@@ -1477,8 +1534,8 @@ P['/batches/detail/roster']=()=>({title:'',hideHead:1,
      ['Issue portal credentials','Username and temporary password for handover.',1],
      ['Grant past session recordings','Everything already delivered in this batch.',1],
      ['Notify the trainer','Ravi Shankar sees the updated roster count.',0]])}</div>
-    <div class="facts" style="margin-top:16px"><button class="btn sec">Cancel</button>
-     <button class="btn pri">${svg(I.mail,18)} Add &amp; notify</button></div></div>
+    <div class="facts" style="margin-top:16px"><button class="btn sec" onclick="this.closest('.scrim')?this.closest('.scrim').remove():history.back()">Cancel</button>
+     <button class="btn pri" onclick="act(&quot;Add & notify&quot;,&quot;Adds the students and emails them the schedule and their credentials, in one transaction.&quot;)">${svg(I.mail,18)} Add &amp; notify</button></div></div>
    <div class="card"><div class="sechead"><h2>Enrolment email</h2>
      <span class="hint">Sent on add</span></div>
     <div style="background:var(--sunken);border:1px solid var(--hairline);border-radius:var(--r-well);padding:18px;font-size:14px;line-height:22px">
@@ -1496,7 +1553,7 @@ P['/batches/detail/roster']=()=>({title:'',hideHead:1,
 P['/batches/detail/assignments']=()=>({title:'',hideHead:1,
  body:batchHead()+batchTabs('/assignments')+
  `<div class="sechead"><h2>Assignments for this batch</h2>
-  <button class="btn pri sm">${svg(I.plus,16)} New assignment</button></div>
+  <button class="btn pri sm" onclick="act(&quot;New assignment&quot;,&quot;An assignment can only be set against a session already marked delivered (invariant 17).&quot;)">${svg(I.plus,16)} New assignment</button></div>
  <div class="card flush">${table([['Assignment'],['Topic / session'],['Set by'],['Set on'],['Due'],['Submitted'],['Status']],
   D.assignments.filter(a=>a[2]==='BTC-DA-SEP-A').map(([id,t,b,se,by,on,due,sub,tot,s])=>[
    `<b class="tmain">${t}</b><span class="tsub tid">${id}</span>`,se,by,on,due,
@@ -1505,18 +1562,18 @@ P['/batches/detail/assignments']=()=>({title:'',hideHead:1,
 P['/batches/detail/recordings']=()=>({title:'',hideHead:1,
  body:batchHead()+batchTabs('/recordings')+
  `<div class="sechead"><h2>Session recordings</h2>
-  <button class="btn pri sm">${svg(I.plus,16)} Link YouTube video</button></div>
+  <button class="btn pri sm" onclick="act(&quot;Link YouTube video&quot;,&quot;Attaches the recording to a delivered session.&quot;)">${svg(I.plus,16)} Link YouTube video</button></div>
  <div class="grid g3">${D.recordings.filter(r=>r[1]==='BTC-DA-SEP-A').concat([['pandas fundamentals','BTC-DA-SEP-A','Ravi Shankar','06 Sep 2026','—','','unpublished']])
   .map(([t,b,tr,d,dur,yt,s])=>`<div class="card">${ytFrame(yt,'')}
    <div style="margin-top:12px"><b style="font-weight:600;display:block">${t}</b>
     <span class="tsub">${tr} · ${d}${dur!=='—'?' · '+dur:''}</span>
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center">${pill(s)}
-     ${yt?'<span class="tag" style="background:#fdeaea;color:var(--danger)">YouTube</span>':'<button class="btn lnk">Add link</button>'}</div></div></div>`).join('')}</div>`});
+     ${yt?'<span class="tag" style="background:#fdeaea;color:var(--danger)">YouTube</span>':'<button class="btn lnk" onclick="act(&quot;Add link&quot;,&quot;Attaches the recording to this session \u2014 available once the session is marked delivered.&quot;)">Add link</button>'}</div></div></div>`).join('')}</div>`});
 
 /* ---- sessions: under Batches. Course > Batch > Session > Assignment. ---- */
 P['/batches/sessions']=()=>({eyebrow:'Batches',title:'Sessions',
  sub:'Every session across every batch. A session sits under a topic; assignments and the recording hang off it.',
- acts:`<button class="btn sec">${svg(I.cal,18)} Calendar</button><button class="btn pri" onclick="location.hash='#/batches/sessions/new'">${svg(I.plus,18)} Add session</button>`,
+ acts:`<button class="btn sec" onclick="location.hash='#/trainers/calendar'">${svg(I.cal,18)} Calendar</button><button class="btn pri" onclick="location.hash='#/batches/sessions/new'">${svg(I.plus,18)} Add session</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--d-trainers)','clock','Sessions this week','18','Across 6 live batches')}
   ${tile('var(--success-s)','check','Completed','11','7 still scheduled')}
@@ -1533,7 +1590,7 @@ P['/batches/sessions']=()=>({eyebrow:'Batches',title:'Sessions',
    <td>${d}<span class="tsub num">${ti}</span></td><td>${tr}</td>
    <td>${asg?`<span class="tag" style="background:#fff4d6;color:var(--gold)">${asg}</span>`:'<span style="color:var(--ink-subtle)">None</span>'}</td>
    <td>${rec?`<span class="tag" style="background:#fdeaea;color:var(--danger)">${svg(I.yt,12)}&nbsp; Linked</span>`
-     :st==='completed'?'<button class="btn lnk">Add link</button>':'<span style="color:var(--ink-subtle)">—</span>'}</td>
+     :st==='completed'?'<button class="btn lnk" onclick="act(&quot;Add link&quot;,&quot;Attaches the recording to this session \u2014 available once the session is marked delivered.&quot;)">Add link</button>':'<span style="color:var(--ink-subtle)">—</span>'}</td>
    <td>${pill(st)}</td>
    <td>${rowActs(['Open','','#/batches/sessions/detail'],['Edit','','#/batches/sessions/edit'],['Delete','del'])}</td>
   </tr>`).join('')}</tbody></table></div>${pager(8,214)}</div>`});
@@ -1548,8 +1605,8 @@ const sessHead=(done=true)=>`${crumb(['Batches','#/batches'],['Sessions','#/batc
     <span>02 Sep 2026 · 10:00–13:00</span><span>·</span><span>Ravi Shankar</span>
     ${pill(done?'completed':'scheduled')}</div></div>
   <div class="pacts">
-   ${done?'<button class="btn sec">Reopen session</button>'
-        :`<button class="btn sec">${svg(I.check,18)} Mark complete</button>`}
+   ${done?'<button class="btn sec" onclick="act(&quot;Reopen session&quot;,&quot;Reopening exists because completion is a human judgement that can be wrong. It is refused if assignments are already published.&quot;)">Reopen session</button>'
+        :`<button class="btn sec" onclick="act(&quot;Mark complete&quot;,&quot;Completion is a deliberate act, not a date passing. It releases the assignment tab and prompts for the recording.&quot;)">${svg(I.check,18)} Mark complete</button>`}
    <button class="btn sec" onclick="location.hash='#/batches/sessions/edit'">Edit</button>
    <button class="btn pri" onclick="location.hash='#/batches/sessions/detail/assignments'">${svg(I.plus,18)} Add assignment</button></div></div>`;
 
@@ -1573,7 +1630,7 @@ P['/batches/sessions/detail']=()=>({title:'',hideHead:1,
     <dt>Date &amp; time</dt><dd>02 Sep 2026 · 10:00–13:00</dd>
     <dt>Mode</dt><dd>Offline · Block C, Room 214</dd>
     <dt class="tot">Session 3 of 32</dt><dd class="tot">Completed</dd></dl></div>
-  <div class="card"><div class="sechead"><h2>Agenda &amp; materials</h2><button class="btn lnk">Edit</button></div>
+  <div class="card"><div class="sechead"><h2>Agenda &amp; materials</h2><button class="btn lnk" onclick="location.hash='#/batches/sessions/edit'">Edit</button></div>
    <ul style="font-size:14px;line-height:24px;color:var(--ink-muted);padding-left:18px;list-style:disc">
     <li>OVER / PARTITION BY mechanics</li><li>Ranking — ROW_NUMBER, RANK, DENSE_RANK</li>
     <li>Running totals and moving averages</li><li>Frame clauses — ROWS vs RANGE</li></ul>
@@ -1596,13 +1653,13 @@ P['/batches/sessions/detail/assignments']=()=>({title:'',hideHead:1,
      `<span style="display:flex;align-items:center;gap:8px"><span class="num" style="font-size:13px">${sub}/${tot}</span>${bar(Math.round(sub/tot*100),'var(--success)')}</span>`,
      pill(st),rowActs(['Submissions'],['Edit'],['Delete','del'])]),'1150px')}</div>
    <div class="card flush"><div style="padding:24px 24px 0"><div class="sechead"><h2>Submissions — SQL join exercises</h2>
-     <button class="btn sec sm">${svg(I.down,16)} Export</button></div></div>
+     <button class="btn sec sm" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,16)} Export</button></div></div>
     ${table([['Student'],['Submitted'],['On time'],['Grade'],['']],
      [['Diya Krishnan','06 Sep 2026','yes','A'],['Saanvi Iyer','05 Sep 2026','yes','A'],
       ['Arjun Nair','09 Sep 2026','yes','B'],['Nithya Menon','10 Sep 2026','no','B'],['Rahul Das','—','—','—']]
      .map(([n,d,ot,g])=>[`<b class="tmain">${n}</b>`,d,
       ot==='yes'?pill('completed'):ot==='no'?pill('partial'):'<span style="color:var(--ink-subtle)">Not submitted</span>',
-      g==='—'?'<span style="color:var(--ink-subtle)">—</span>':`<b>${g}</b>`,'<button class="btn lnk">Review</button>']))}
+      g==='—'?'<span style="color:var(--ink-subtle)">—</span>':`<b>${g}</b>`,'<button class="btn lnk" onclick="act(&quot;Review&quot;,&quot;Opens the submission to mark. Grading writes the marks, the feedback and who gave it.&quot;)">Review</button>']))}
     ${pager(5,58)}</div></div>
   <div class="card"><div class="sechead"><h2>Add an assignment</h2></div>
    <div class="fset one">${field('Title','SQL join exercises — set 4',1)}
@@ -1613,8 +1670,8 @@ P['/batches/sessions/detail/assignments']=()=>({title:'',hideHead:1,
     ['Email the batch on publish','58 students on this roster.',1],
     ['Remind 24 hours before due','Only students who have not submitted.',1],
     ['Allow late submission','Accepted, flagged as late.',0]])}</div>
-   <div class="facts" style="margin-top:16px"><button class="btn sec">Save draft</button>
-    <button class="btn pri">Publish</button></div></div></div>`});
+   <div class="facts" style="margin-top:16px"><button class="btn sec" onclick="act(&quot;Save draft&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Save draft</button>
+    <button class="btn pri" onclick="act(&quot;Publish&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Publish</button></div></div></div>`});
 
 P['/batches/sessions/detail/recording']=()=>({title:'',hideHead:1,
  body:sessHead()+sessTabs('/recording')+
@@ -1632,7 +1689,7 @@ P['/batches/sessions/detail/recording']=()=>({title:'',hideHead:1,
      ['Privacy-enhanced playback','Serves from youtube-nocookie.com.',1],
      ['Hide related videos','rel=0 — restricts suggestions to this channel.',1],
      ['Notify the batch','Email the 58 students that the recording is up.',1]])}</div>
-    <div class="facts" style="margin-top:16px"><button class="btn pri">Attach recording</button></div></div>
+    <div class="facts" style="margin-top:16px"><button class="btn pri" onclick="act(&quot;Attach recording&quot;,&quot;Attaches the recording. Available once the session is marked delivered (invariant 17).&quot;)">Attach recording</button></div></div>
    <div class="note"><b>Ads cannot be switched off from an embed.</b> These parameters remove
     suggestions and branding only. For a genuinely clean player, upload unlisted to an unmonetised
     channel, or self-host on S3/CloudFront.</div></div></div>`});
@@ -1669,7 +1726,7 @@ P['/batches/sessions/edit']=()=>({eyebrow:'Batches › Sessions',title:'Edit ses
 /* ---- students ---- */
 P['/students']=()=>({eyebrow:'Students',title:'Student directory',
  sub:'Retail and college students in one register. A retail student has no college — and never will.',
- acts:`<button class="btn sec">${svg(I.down,18)} Bulk import</button><button class="btn pri" onclick="location.hash='#/students/onboard'">${svg(I.plus,18)} Add student</button>`,
+ acts:`<button class="btn sec" onclick="location.hash='#/students/onboard'">${svg(I.down,18)} Bulk import</button><button class="btn pri" onclick="location.hash='#/students/onboard'">${svg(I.plus,18)} Add student</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--d-students)','users','Total students','3,420','Enrolled across all terms')}
   ${tile('var(--danger)','acct','Retail','1,140','Walk-in and inbound')}
@@ -1691,7 +1748,7 @@ P['/students']=()=>({eyebrow:'Students',title:'Student directory',
 P['/students/onboard']=()=>({eyebrow:'Students',title:'Onboard a student',
  sub:'Creates the student record only. Batch allocation and money are the next step.',
  body:`<div style="margin-bottom:24px"><div class="segsel">
-   <button class="on">Retail — walk-in</button><button>College — B2B</button></div></div>
+   <button class="on" onclick="act(&quot;Retail \u2014 walk-in&quot;,&quot;Switches the form to the retail path \u2014 no college, an individual ledger.&quot;)">Retail — walk-in</button><button onclick="act(&quot;College \u2014 B2B&quot;,&quot;Switches the form to the college path \u2014 the institution is billed, and the student gets no ledger.&quot;)">College — B2B</button></div></div>
  <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
   <div class="card">
    <div class="fsec"><h3>Personal information</h3>
@@ -1705,7 +1762,7 @@ P['/students/onboard']=()=>({eyebrow:'Students',title:'Onboard a student',
     <div class="fset">${field('Partner college','','','select',['— none (retail) —','Sree Narayana College','Amrita Institute'])}
      ${field('Degree / stream','B.Tech Computer Science')}${field('Year of passout','2026')}
      ${field('CGPA / percentage','8.5 CGPA')}</div></div>
-   <div class="facts"><button class="btn sec">Save &amp; add another</button>
+   <div class="facts"><button class="btn sec" onclick="act(&quot;Save & add another&quot;,&quot;Saves and clears the form for the next walk-in.&quot;)">Save &amp; add another</button>
     <button class="btn pri" onclick="location.hash='#/students/allocate'">Save &amp; continue to allocation</button></div></div>
   <div class="stack">
    <div class="note info"><b>What happens next.</b> Saving creates the student record and nothing more.
@@ -1713,6 +1770,55 @@ P['/students/onboard']=()=>({eyebrow:'Students',title:'Onboard a student',
     course, the price and the payment schedule are decided.</div>
    <div class="note"><b>College students.</b> A college user can create these themselves from the college
     portal. Same form, same validation — the college is fixed to theirs and cannot be changed.</div></div></div>`});
+
+/* Editing a student. Same form as onboarding, prefilled — which is how the
+   real route works too. Three things are NOT editable and say so rather than
+   being hidden: the business ID, which every reference points at; the segment,
+   because retail and college rosters never mix and flipping it would strand a
+   roster; and the college, for the same reason. */
+P['/students/edit']=()=>({eyebrow:'Students',title:'Edit student',
+ sub:'Ishaan Verma · STU-2026-0897. Corrections to the record — enrolment, money and batch are changed from their own screens.',
+ body:`<div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+  <div class="card">
+   <div class="fsec"><h3>Personal information</h3>
+    <div class="fset">${autoField('Student ID','STU-2026-0897','Generated on save and immutable — certificates, ledgers and reports all point at it.')}
+     ${field('Full legal name','Ishaan Verma',1)}${field('Email address','ishaan.v@gk.edu',1)}
+     ${field('Mobile number','+91 98470 33221',1)}${field('WhatsApp number','+91 98470 33221')}
+     ${field('Country','','','select',['India','United Arab Emirates'])}
+     ${field('City','','','select',['Kochi','Bengaluru','Coimbatore'])}</div></div>
+   <div class="fsec"><h3>Academic background</h3>
+    <div class="fset">${field('Degree / stream','B.Tech Computer Science')}${field('Year of passout','2026')}
+     ${field('CGPA / percentage','8.5 CGPA')}</div></div>
+   <div class="fsec"><h3>Segment</h3>
+    <p>A student may only sit in a batch whose college matches their own. Changing the segment
+     would strand the roster they are already on, so it is set at onboarding and fixed here.</p>
+    <div class="fset">${autoField('Segment','Retail — walk-in','Set at onboarding. Moving a student between segments is an enrolment change, not an edit.')}
+     ${autoField('College','None','A retail student has no college and never will.')}</div></div>
+   <div class="facts"><button class="btn sec" onclick="location.hash='#/students/detail'">Cancel</button>
+    <button class="btn pri" onclick="act('Student saved','Ishaan Verma updated. The record keeps its author and gains a last-modified entry — that is what makes the change auditable.')">Save changes</button></div></div>
+  <div class="stack">
+   <div class="note info"><b>What an edit does not touch.</b> Fees, batch and certificates each have
+    their own screen, because each is a transaction rather than a field.</div>
+   <div class="note"><b>Provenance survives.</b> The record keeps who created it and gains who
+    changed it — a college-created student still shows the college user as its author.</div></div></div>`});
+
+/* Editing a college. The code is generated and immutable; the city is not,
+   but changing it moves every batch's scope with it, so it warns rather than
+   refusing — an institution that actually relocated is a real thing. */
+P['/colleges/edit']=()=>({eyebrow:'Colleges',title:'Edit college',
+ sub:'Sree Narayana College · CLG-SNC-01. Contacts, requirements and portal access have their own tabs.',
+ body:formPage([
+  ['Institution','',
+   autoField('College ID','CLG-SNC-01','Generated on save. Every batch, contract and certificate points at it.')+
+   field('College name','Sree Narayana College of Engineering',1)+
+   field('Short name','SNC')+
+   field('Country','','','select',['India','United Arab Emirates'])+
+   field('City','','','select',['Kochi','Bengaluru','Coimbatore'])+
+   field('Affiliation','APJ Abdul Kalam Technological University')],
+  ['Address','Printed on invoices and on the receipts the institution is issued.',
+   field('Address line 1','Chelakkara Road')+field('Address line 2','Thrissur District')+
+   field('Postal code','680501')+field('Website','https://snc.ac.in')],
+ ],'Save changes','#/colleges/detail')});
 
 P['/students/allocate']=()=>({eyebrow:'Students',title:'Allocate to a batch',
  sub:'The step that turns a student record into an enrolment — course, batch, price, schedule and credentials in one transaction.',
@@ -1742,16 +1848,16 @@ P['/students/allocate']=()=>({eyebrow:'Students',title:'Allocate to a batch',
      ${field('Number of installments','',1,'select',['1','2','3','4','6','12','24','Custom…'])}
      ${field('First due date','',1,'date')}</div>
     <div style="margin-top:16px">${table([['#'],['Amount (₹)','r'],['Due date'],['']],
-     [['<b>I1</b>','<span class="money">22,000</span>','05 Aug 2026','<button class="btn lnk">Edit</button>'],
-      ['<b>I2</b>','<span class="money">21,000</span>','05 Sep 2026','<button class="btn lnk">Edit</button>'],
-      ['<b>I3</b>','<span class="money">21,000</span>','05 Oct 2026','<button class="btn lnk">Edit</button>']])}
-     <button class="btn sec sm" style="margin-top:12px">${svg(I.plus,14)} Add installment</button></div></div>
+     [['<b>I1</b>','<span class="money">22,000</span>','05 Aug 2026','<button class="btn lnk" onclick="act(&quot;Edit&quot;,&quot;Opens the same form the record was created with, prefilled. The business ID is generated and stays put.&quot;)">Edit</button>'],
+      ['<b>I2</b>','<span class="money">21,000</span>','05 Sep 2026','<button class="btn lnk" onclick="act(&quot;Edit&quot;,&quot;Opens the same form the record was created with, prefilled. The business ID is generated and stays put.&quot;)">Edit</button>'],
+      ['<b>I3</b>','<span class="money">21,000</span>','05 Oct 2026','<button class="btn lnk" onclick="act(&quot;Edit&quot;,&quot;Opens the same form the record was created with, prefilled. The business ID is generated and stays put.&quot;)">Edit</button>']])}
+     <button class="btn sec sm" style="margin-top:12px" onclick="act(&quot;Add installment&quot;,&quot;Adds a row to the hand-authored schedule. The installments must total the enrolment value.&quot;)">${svg(I.plus,14)} Add installment</button></div></div>
    <div class="fsec"><h3>Step 5 — access</h3>
     ${switchList([['Issue student portal credentials','Generates a username and temporary password for handover.',1],
      ['Email the welcome pack','Login details, batch schedule and payment plan.',1],
      ['Grant access to past session recordings','Everything already delivered in this batch.',1]])}</div>
-   <div class="facts"><button class="btn sec">Back</button>
-    <button class="btn pri">Allocate &amp; create ledger</button></div></div>
+   <div class="facts"><button class="btn sec" onclick="location.hash='#/students/onboard'">Back</button>
+    <button class="btn pri" onclick="act(&quot;Allocate & create ledger&quot;,&quot;ONE transaction: batch mapping, session access, the ledger and the credentials. All of it, or none.&quot;)">Allocate &amp; create ledger</button></div></div>
   <div class="stack">
    <div class="card"><div class="sechead"><h2>Allocation summary</h2></div>
     <dl class="kv"><dt>Student</dt><dd>Aarav Menon</dd><dt>Segment</dt><dd>Retail</dd>
@@ -1769,7 +1875,7 @@ P['/students/allocate']=()=>({eyebrow:'Students',title:'Allocate to a batch',
 
 P['/students/certificates']=()=>({eyebrow:'Students',title:'Certificates',
  sub:'Issued on course completion in both segments. Retail students download their own; colleges download their students’.',
- acts:`<button class="btn sec">Template settings</button><button class="btn pri">${svg(I.seal,18)} Bulk issue for batch</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Template settings&quot;,&quot;The certificate template \u2014 what is printed, and the verifier URL each one carries.&quot;)">Template settings</button><button class="btn pri" onclick="act(&quot;Bulk issue for batch&quot;,&quot;Issues certificates for everyone in the batch who clears the attendance and marks floors.&quot;)">${svg(I.seal,18)} Bulk issue for batch</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--success-s)','seal','Issued to date','1,204','Across 18 completed batches')}
   ${tile('var(--brand)','check','Eligible, not issued','62','BTC-DA-MAY-A awaiting sign-off')}
@@ -1779,12 +1885,12 @@ P['/students/certificates']=()=>({eyebrow:'Students',title:'Certificates',
   <div style="flex:1;min-width:0"><b style="font-weight:600">Every certificate carries a public verification code</b>
    <p style="font-size:14px;color:var(--ink-subtle);margin-top:2px">An employer confirms it at
     <span class="mono">gurukulam.in/verify/&lt;code&gt;</span> without contacting us.</p></div>
-  <button class="btn sec sm">Open verifier</button></div>`+
+  <button class="btn sec sm" onclick="act(&quot;Open verifier&quot;,&quot;The public page a certificate\u2019s QR code resolves to.&quot;)">Open verifier</button></div>`+
  toolbar('Search by student, number or course…',[['All segments','Retail','College']])+
  `<div class="card flush">${table([['Certificate number'],['Student'],['Course'],['Segment'],['College'],['Issued'],['Status'],['']],
   D.certs.map(([no,n,c,sg,cl,d,s])=>[`<span class="mono" style="font-size:13px">${no}</span>`,`<b class="tmain">${n}</b>`,
    c,segTag(sg),cl==='—'?'<span style="color:var(--ink-subtle)">—</span>':cl,d,pill(s),
-   `<button class="btn lnk">${svg(I.down,15)} PDF</button>`]),'1250px')}${pager(5,1204)}</div>`});
+   `<button class="btn lnk" onclick="act(&quot;PDF&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,15)} PDF</button>`]),'1250px')}${pager(5,1204)}</div>`});
 
 
 /* ---- student record: everything about one student in one place ---- */
@@ -1795,8 +1901,8 @@ const stuHead=()=>`${crumb(['Students','#/students'],['Ishaan Verma'])}
   <div class="meta"><h2>Ishaan Verma</h2>
    <div class="row"><span class="tid">STU-2026-0897</span><span>·</span><span>ishaan.v@gk.edu</span><span>·</span>
     <span>+91 98470 33221</span>${segTag('retail')}${pill('at_risk')}</div></div>
-  <div class="pacts"><button class="btn sec">Edit</button>
-   <button class="btn sec">Suspend</button>
+  <div class="pacts"><button class="btn sec" onclick="location.hash='#/students/edit'">Edit</button>
+   <button class="btn sec" onclick="act(&quot;Suspend&quot;,&quot;Suspension needs a stated reason. It withdraws the account without touching anything already in flight.&quot;)">Suspend</button>
    <button class="btn pri" onclick="location.hash='#/students/allocate'">${svg(I.plus,18)} Allocate to batch</button></div></div>`;
 
 P['/students/detail']=()=>({title:'',hideHead:1,
@@ -1807,7 +1913,7 @@ P['/students/detail']=()=>({title:'',hideHead:1,
   ${tile('var(--danger)','rupee','Balance due','₹36,500','1 installment overdue')}
   ${tile('var(--warning-s)','bell','Progress','22%','Flagged at risk')}</div>
  <div class="grid g2">
-  <div class="card"><div class="sechead"><h2>Profile</h2><button class="btn lnk">Edit</button></div>
+  <div class="card"><div class="sechead"><h2>Profile</h2><button class="btn lnk" onclick="location.hash='#/students/edit'">Edit</button></div>
    <dl class="kv"><dt>Student ID</dt><dd class="mono">STU-2026-0897</dd>
     <dt>Email</dt><dd>ishaan.v@gk.edu</dd><dt>Phone</dt><dd>+91 98470 33221</dd>
     <dt>WhatsApp</dt><dd>+91 98470 33221</dd>
@@ -1910,7 +2016,7 @@ const nClass=c=>`<span class="ncls ${c}">${c==='act'?'Action required':c==='aler
 
 P['/notifications']=()=>({eyebrow:'Notifications',title:'Notifications',
  sub:'Grouped by situation, not by record. Action items clear themselves when the underlying work is done.',
- acts:`<button class="btn sec">Preferences</button><button class="btn sec">Mark all read</button>`,
+ acts:`<button class="btn sec" onclick="location.hash='#/settings/general'">Preferences</button><button class="btn sec" onclick="act(&quot;Mark all read&quot;,&quot;Clears the unread count. Nothing is deleted \u2014 the log is the record.&quot;)">Mark all read</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--brand)','flag','Action required','6','Clears as work is done')}
   ${tile('var(--danger)','warn','Alerts','3','1 critical — cron failure')}
@@ -1933,7 +2039,7 @@ P['/notifications']=()=>({eyebrow:'Notifications',title:'Notifications',
 /* ---- unallocated students: the gap between a record and an enrolment ---- */
 P['/students/unallocated']=()=>({eyebrow:'Students',title:'Unallocated students',
  sub:'Onboarded, quoted, and generating nothing until they are in a batch. Oldest first — those are the ones going cold.',
- acts:`<button class="btn sec">${svg(I.down,18)} Export</button>
+ acts:`<button class="btn sec" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,18)} Export</button>
        <button class="btn pri" onclick="location.hash='#/students/allocate'">Allocate next</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--danger)','users','Unallocated','7','₹4.88 L quoted, uncommitted')}
@@ -1976,12 +2082,12 @@ P['/students/unallocated']=()=>({eyebrow:'Students',title:'Unallocated students'
      background:color-mix(in srgb,currentColor 12%,transparent);margin-bottom:12px">${svg(I[i],20)}</span>
     <b style="display:block;font-size:15px;font-weight:600;color:var(--ink);margin-bottom:4px">${t}</b>
     <p style="font-size:13px;line-height:19px;color:var(--ink-subtle)">${d}</p>
-    <button class="btn lnk" style="margin-top:12px">Open queue</button></div>`).join('')}</div>`});
+    <button class="btn lnk" style="margin-top:12px" onclick="act(&quot;Open queue&quot;,&quot;Opens the follow-up queue for this unallocated student.&quot;)">Open queue</button></div>`).join('')}</div>`});
 
 /* ---- fee ledger ---- */
 P['/fee-ledger']=()=>({eyebrow:'Fee ledger',title:'Retail fee ledger',
  sub:'One row per student — the summary. Installment counts vary from one to a hundred, so the schedule lives in the student’s own ledger.',
- acts:`<button class="btn sec">${svg(I.down,18)} Export</button><button class="btn pri">${svg(I.plus,18)} Record payment</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,18)} Export</button><button class="btn pri" onclick="act(&quot;Record payment&quot;,&quot;One transaction: the receipt, the installment, and the parent\u2019s recomputed totals. Overpayment is refused rather than corrected.&quot;)">${svg(I.plus,18)} Record payment</button>`,
  body:`<div class="grid g5" style="margin-bottom:24px">
   ${tile('var(--ink-subtle)','book','Total course value','₹55.2 L','Before discounts')}
   ${tile('var(--warning-s)','rupee','Discount given','₹7.0 L','12.7% average')}
@@ -2011,8 +2117,8 @@ P['/fee-ledger/student']=()=>({title:'',hideHead:1,
    <div class="row"><span class="tid">STU-2026-0897</span><span>·</span><span>ishaan.v@gk.edu</span><span>·</span>
     ${segTag('retail')}<span>Python Fullstack</span><span>·</span>
     <span class="mono" style="font-size:13px">BTC-PF-AUG-B</span>${pill('partial')}</div></div>
-  <div class="pacts"><button class="btn sec">${svg(I.mail,18)} Email statement</button>
-   <button class="btn pri">${svg(I.plus,18)} Record payment</button></div></div>
+  <div class="pacts"><button class="btn sec" onclick="act(&quot;Email statement&quot;,&quot;Sends to the payer resolved from the installment\u2019s parent \u2014 the student for retail, the institution for a college.&quot;)">${svg(I.mail,18)} Email statement</button>
+   <button class="btn pri" onclick="act(&quot;Record payment&quot;,&quot;One transaction: the receipt, the installment, and the parent\u2019s recomputed totals. Overpayment is refused rather than corrected.&quot;)">${svg(I.plus,18)} Record payment</button></div></div>
  <div class="grid g5" style="margin-bottom:24px">
   ${tile('var(--ink-subtle)','book','Total course value','₹92,000','Standard catalog price')}
   ${tile('var(--warning-s)','rupee','Discount given','₹12,000','13.0% off standard')}
@@ -2034,7 +2140,7 @@ P['/fee-ledger/student']=()=>({title:'',hideHead:1,
      D.txns.map(([id,d,amt,mode,ref,ag,by,rc])=>[`<span class="mono" style="font-size:12px">${id}</span>`,d,
       `<span class="money">${inr(amt)}</span>`,`<span class="tag">${mode}</span>`,
       `<span class="mono" style="font-size:12px">${ref}</span>`,`<b>${ag}</b>`,by,
-      rc?`<button class="btn lnk">${svg(I.mail,14)} Resend</button>`:'<span style="color:var(--ink-subtle);font-size:13px">Not emailed</span>']),'1100px')}</div></div>
+      rc?`<button class="btn lnk" onclick="act(&quot;Resend&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.mail,14)} Resend</button>`:'<span style="color:var(--ink-subtle);font-size:13px">Not emailed</span>']),'1100px')}</div></div>
   <div class="stack">
    <div class="card"><div class="sechead"><h2>Record a payment</h2></div>
     <div class="fset one">
@@ -2050,8 +2156,8 @@ P['/fee-ledger/student']=()=>({title:'',hideHead:1,
      ['Email receipt to the student','Sent to ishaan.v@gk.edu with a PDF receipt attached.',1],
      ['WhatsApp confirmation','Short confirmation to the registered number.',1],
      ['Mark installment paid in full','Otherwise it stays partially paid.',1]])}</div>
-    <div class="facts" style="margin-top:16px"><button class="btn sec">Cancel</button>
-     <button class="btn pri">Save payment</button></div></div>
+    <div class="facts" style="margin-top:16px"><button class="btn sec" onclick="this.closest('.scrim')?this.closest('.scrim').remove():history.back()">Cancel</button>
+     <button class="btn pri" onclick="act(&quot;Save payment&quot;,&quot;One transaction: the receipt, the installment, and the parent\u2019s recomputed totals.&quot;)">Save payment</button></div></div>
    <div class="note"><b>Overpayment is refused.</b> An amount larger than the installment’s remaining due
     is rejected at save, not corrected afterwards. Balance and status are recalculated in the same
     transaction that writes the receipt.</div>
@@ -2067,7 +2173,7 @@ P['/fee-ledger/student']=()=>({title:'',hideHead:1,
 
 P['/fee-ledger/contracts']=()=>({eyebrow:'Fee ledger',title:'Institutional contracts',
  sub:'The college is billed, not its students. College students carry no individual ledger.',
- acts:`<button class="btn sec">${svg(I.down,18)} Export</button><button class="btn pri">${svg(I.plus,18)} New contract</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,18)} Export</button><button class="btn pri" onclick="act(&quot;New contract&quot;,&quot;A college contract bills the institution. Its students have no individual ledger.&quot;)">${svg(I.plus,18)} New contract</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--gold)','rupee','Contract value','₹1.31 Cr','Across 4 contracts')}
   ${tile('var(--success-s)','check','Collected','₹52.6 L','40.2% of contracted')}
@@ -2088,7 +2194,7 @@ P['/fee-ledger/contracts']=()=>({eyebrow:'Fee ledger',title:'Institutional contr
 /* ---- content ---- */
 P['/courses/question-bank']=()=>({eyebrow:'Courses',title:'Question bank',
  sub:'Assessment items by subject, topic and difficulty. AI-generated variants are flagged as such.',
- acts:`<button class="btn sec">${svg(I.brain,18)} Generate with AI</button><button class="btn pri">${svg(I.plus,18)} Add question</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Generate with AI&quot;,&quot;Drafts questions against a topic. Every one is reviewed before it enters the bank.&quot;)">${svg(I.brain,18)} Generate with AI</button><button class="btn pri" onclick="act(&quot;Add question&quot;,&quot;Adds a question to the bank, against a topic of a course.&quot;)">${svg(I.plus,18)} Add question</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--d-qbank)','brain','Total questions','1,250','Across 24 topics')}
   ${tile('var(--brand)','check','Human authored','932','74.6% of bank')}
@@ -2107,7 +2213,7 @@ P['/courses/question-bank']=()=>({eyebrow:'Courses',title:'Question bank',
 /* ---- hiring ---- */
 P['/hiring']=()=>({eyebrow:'Hiring',title:'Job announcements',
  sub:'Post a role, aim it at the students who took the relevant course, and publish when the reach looks right.',
- acts:`<button class="btn sec">Naukri feed — later stage</button><button class="btn pri" onclick="location.hash='#/hiring/new'">${svg(I.plus,18)} Add job post</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Naukri feed \u2014 later stage&quot;,&quot;The Naukri feed is deferred. job_postings already carries source, external_ref and external_url for it.&quot;)">Naukri feed — later stage</button><button class="btn pri" onclick="location.hash='#/hiring/new'">${svg(I.plus,18)} Add job post</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--brand)','brief','Published roles','3','Visible to students now')}
   ${tile('var(--d-students)','users','Students reached','385','Across all live postings')}
@@ -2135,8 +2241,8 @@ P['/hiring']=()=>({eyebrow:'Hiring',title:'Job announcements',
      ${field('City','','','select',['Any','Bengaluru','Kochi'])}</div></div>
    <div class="note" style="margin-top:18px">This posting would reach <b>248 students</b> — 192 retail,
     56 college. Check the reach before publishing.</div>
-   <div class="facts" style="margin-top:18px"><button class="btn sec">Save draft</button>
-    <button class="btn pri">Publish</button></div></div></div>`});
+   <div class="facts" style="margin-top:18px"><button class="btn sec" onclick="act(&quot;Save draft&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Save draft</button>
+    <button class="btn pri" onclick="act(&quot;Publish&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Publish</button></div></div></div>`});
 
 
 /* ---- reports: measures x dimensions x filters, saved as a catalogue ---- */
@@ -2189,7 +2295,7 @@ const CATICON={Financial:'rupee',Academic:'book',Students:'users',Colleges:'coll
 
 P['/reports']=()=>({eyebrow:'Reports',title:'Report library',
  sub:'Every report is a saved combination of measures, dimensions and filters. Scope is applied server-side — you only ever see your own regions.',
- acts:`<button class="btn sec">Scheduled reports</button><button class="btn pri">${svg(I.plus,18)} Build a report</button>`,
+ acts:`<button class="btn sec" onclick="act(&quot;Scheduled reports&quot;,&quot;Reports that run on a cadence and land in an inbox.&quot;)">Scheduled reports</button><button class="btn pri" onclick="act(&quot;Build a report&quot;,&quot;Opens the report builder \u2014 measures, dimensions and a window.&quot;)">${svg(I.plus,18)} Build a report</button>`,
  body:`<div class="grid g4" style="margin-bottom:24px">
   ${tile('var(--gold)','chart','Reports available','31','Across 5 categories')}
   ${tile('var(--brand)','check','Built and live','4','The rest are specified')}
@@ -2221,9 +2327,9 @@ const reportBar=(title,range='01 – 10 September 2026')=>`<div class="toolbar">
  <select class="sel"><option>All regions</option><option>Kochi</option><option>Bengaluru</option></select>
  <select class="sel"><option>All segments</option><option>Retail</option><option>College</option></select>
  <span style="flex:1"></span>
- <button class="btn sec sm">Compare to previous</button>
- <button class="btn sec sm">${svg(I.down,16)} Export</button>
- <button class="btn sec sm">Schedule</button></div>`;
+ <button class="btn sec sm" onclick="act(&quot;Compare to previous&quot;,&quot;Runs the same report over the preceding window and shows the movement.&quot;)">Compare to previous</button>
+ <button class="btn sec sm" onclick="act(&quot;Export&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">${svg(I.down,16)} Export</button>
+ <button class="btn sec sm" onclick="act(&quot;Schedule&quot;,&quot;Not wired in the prototype \u2014 this is the design reference, not the build.&quot;)">Schedule</button></div>`;
 
 P['/reports/outstanding']=()=>({eyebrow:'Reports › Financial',title:'Outstanding &amp; ageing',
  sub:'What is owed, and how long it has been owed. Retail ledgers and institutional contracts side by side.',
@@ -2302,7 +2408,7 @@ P['/reports/collections']=()=>({eyebrow:'Reports › Financial',title:'Collectio
     on every transaction — the same field the student record shows as provenance.</div></div></div>
 
  <div class="sechead"><h2>Receipts — 09 September 2026</h2>
-  <button class="btn sec sm">${svg(I.down,16)} Export register</button></div>
+  <button class="btn sec sm" onclick="act(&quot;Export register&quot;,&quot;Exports the collection register for the window \u2014 what reconciles against the bank.&quot;)">${svg(I.down,16)} Export register</button></div>
  <div class="card flush">${table(
   [['Transaction'],['Time'],['Student'],['Course'],['Against'],['Mode'],['Reference'],['Amount','r'],['Recorded by']],
   [['TXN-01302','09:12','Ishaan Verma','Python Fullstack','I6','Debit Card','DC-4410882',4583,'Rekha Iyer'],
@@ -2392,7 +2498,7 @@ P['/reports/batch-progress']=()=>({eyebrow:'Reports › Academic',title:'Batch p
 P['/settings/roles']=()=>{const mods=['Dashboard','Colleges','Courses','Batches','Fee ledger','Students','Hiring'];
  return{eyebrow:'Settings',title:'Roles &amp; permissions',
  sub:'Module-level permissions per role. A role plus a scope is what every query is filtered by.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Create role</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Create role&quot;,&quot;A role is a permission matrix. City scope is set per administrator, not per role.&quot;)">${svg(I.plus,18)} Create role</button>`,
  body:`<div class="card flush"><div class="tw"><table class="matrix">
   <thead><tr><th>Role</th>${mods.map(m=>`<th style="text-align:center">${m}</th>`).join('')}</tr></thead>
   <tbody>${D.roles.map(([n,perms])=>`<tr><td>${n}</td>
@@ -2404,12 +2510,12 @@ P['/settings/roles']=()=>{const mods=['Dashboard','Colleges','Courses','Batches'
 
 P['/settings/administrators']=()=>({eyebrow:'Settings',title:'Administrators',
  sub:'Admin accounts and the regions each one is allowed to see.',
- acts:`<button class="btn pri">${svg(I.plus,18)} Invite administrator</button>`,
+ acts:`<button class="btn pri" onclick="act(&quot;Invite administrator&quot;,&quot;Creates the account and emails the invitation. Their city scope is set here.&quot;)">${svg(I.plus,18)} Invite administrator</button>`,
  body:toolbar('Search administrators…',[['All roles','Super Admin','Ops Manager']])+
  `<div class="card flush">${table([['Name'],['Email'],['Role'],['Region scope'],['Status'],['']],
   D.admins.map(([n,e,r,s,st])=>[`<b class="tmain">${n}</b>`,
    `<span style="font-size:14px;color:var(--ink-muted)">${e}</span>`,r,`<span style="font-size:14px">${s}</span>`,
-   pill(st),'<button class="btn lnk">Manage</button>']))}</div>`});
+   pill(st),'<button class="btn lnk" onclick="act(&quot;Manage&quot;,&quot;Opens the administrator\u2019s record \u2014 their role, their city scope and their account status.&quot;)">Manage</button>']))}</div>`});
 
 P['/settings/general']=()=>({eyebrow:'Settings',title:'General',
  sub:'Platform-wide policies, integrations and notification defaults.',
@@ -2435,8 +2541,8 @@ P['/account']=()=>({eyebrow:'Account',title:'My account',
    <div class="fsec"><h3>Profile photo</h3>
     <p>The only field on this page you can edit. JPG or PNG, square, at least 200×200.</p>
     <div class="photo"><span class="big">AG</span>
-     <div><button class="btn pri sm">${svg(I.plus,16)} Upload photo</button>
-      <button class="btn lnk" style="margin-left:14px">Remove</button>
+     <div><button class="btn pri sm" onclick="act(&quot;Upload photo&quot;,&quot;Replaces the profile photo.&quot;)">${svg(I.plus,16)} Upload photo</button>
+      <button class="btn lnk" style="margin-left:14px" onclick="act(&quot;Remove&quot;,&quot;Soft-delete \u2014 the mapping is retired and the history it carries stays attached.&quot;)">Remove</button>
       <p style="font-size:12px;color:var(--ink-subtle);margin-top:8px">Shown in the top bar, the
        operations log, and against every record you create.</p></div></div></div>
 
@@ -2450,7 +2556,7 @@ P['/account']=()=>({eyebrow:'Account',title:'My account',
      <div class="f"><label>Region scope</label><input class="locked" value="All regions" disabled></div>
      <div class="f"><label>Member since</label><input class="locked" value="14 March 2024" disabled></div></div></div>
 
-   <div class="facts"><button class="btn pri">Save photo</button></div></div>
+   <div class="facts"><button class="btn pri" onclick="act(&quot;Save photo&quot;,&quot;Replaces the profile photo.&quot;)">Save photo</button></div></div>
 
   <div class="stack">
    <div class="note info"><b>Why the rest is locked.</b> Name, email, role and region scope decide
@@ -2458,12 +2564,12 @@ P['/account']=()=>({eyebrow:'Account',title:'My account',
     model advisory. A Super Admin changes these under Settings › Administrators.</div>
    <div class="card"><div class="sechead"><h2>Security</h2></div>
     <div class="switchrow"><div><b style="font-weight:600;font-size:15px">Password</b>
-      <p>Last changed 22 July 2026.</p></div><button class="btn sec sm">Change</button></div>
+      <p>Last changed 22 July 2026.</p></div><button class="btn sec sm" onclick="act(&quot;Change&quot;,&quot;Opens the password change, which needs the current password.&quot;)">Change</button></div>
     <div class="switchrow"><div><b style="font-weight:600;font-size:15px">Two-factor authentication</b>
       <p>Enabled — required for every administrator.</p></div><span class="sw on"></span></div>
     <div class="switchrow"><div><b style="font-weight:600;font-size:15px">Active sessions</b>
       <p>2 devices — this Mac, and Chrome on Windows.</p></div>
-      <button class="btn sec sm">Sign out all</button></div></div>
+      <button class="btn sec sm" onclick="act(&quot;Sign out all&quot;,&quot;Ends every other session. The one you are using stays signed in.&quot;)">Sign out all</button></div></div>
    <div class="card"><div class="sechead"><h2>Recent activity</h2></div>
     ${table([['Action'],['When']],[
      ['Signed in from Kochi, IN','Today, 09:12'],
@@ -2490,8 +2596,8 @@ const renderLogin=()=>`<div class="login">
    <div><button onclick="location.hash='#/'">Super Admin</button>
     <button onclick="location.hash='#/fee-ledger'">Finance Admin</button>
     <button onclick="location.hash='#/batches'">Ops Manager</button>
-    <button disabled style="opacity:.5;cursor:not-allowed">Trainer — portal not built</button>
-    <button disabled style="opacity:.5;cursor:not-allowed">College — portal not built</button></div></div>
+    <button disabled style="opacity:.5;cursor:not-allowed" onclick="act(&quot;Trainer \u2014 portal not built&quot;,&quot;The trainer portal is specified but not built. Admin performs every action it will.&quot;)">Trainer — portal not built</button>
+    <button disabled style="opacity:.5;cursor:not-allowed" onclick="act(&quot;College \u2014 portal not built&quot;,&quot;The college portal is specified but not built. Admin performs every action it will.&quot;)">College — portal not built</button></div></div>
  </div></div></div>`;
 
 /* ----------------------------- router ------------------------------- */
@@ -2509,6 +2615,24 @@ function syncSub(route){const m=moduleOf(route);
 function toggleMenu(e){e.stopPropagation();menuOpen=!menuOpen;bellOpen=false;render();}
 function toggleBell(e){e.stopPropagation();bellOpen=!bellOpen;menuOpen=false;render();}
 function signOut(){menuOpen=false;location.hash='#/login';}
+/* What a terminal action does in a prototype.
+   There is no server here, so Delete cannot delete — but a button that looks
+   like a verb and does nothing is worse than one that explains itself. Every
+   such control names the action and where the rule that governs it lives, so
+   a reviewer can tell "not built yet" from "built and I clicked the wrong
+   thing". Navigation actions do NOT use this: they go to the screen. */
+function act(title,detail){
+ let host=document.querySelector('.toasts');
+ if(!host){host=document.createElement('div');host.className='toasts';document.body.appendChild(host);}
+ const el=document.createElement('div');
+ el.className='toast';
+ el.innerHTML=`<b></b><span></span><button type="button" onclick="act(&quot;Dismiss&quot;,&quot;Clears this notification from the tray.&quot;)">Dismiss</button>`;
+ el.querySelector('b').textContent=title;
+ el.querySelector('span').textContent=detail;
+ el.querySelector('button').onclick=()=>el.remove();
+ host.appendChild(el);
+ setTimeout(()=>el.remove(),6000);
+}
 addEventListener('click',()=>{if(menuOpen||bellOpen){menuOpen=false;bellOpen=false;render();}});
 /* Localisation keeps its own route prefix but now lives under Settings, so it
    maps there explicitly rather than by prefix match. */
@@ -2554,7 +2678,7 @@ function shell(route,page){
        onclick="toggleBell(event)">${svg(I.bell,20)}<span class="badge">6</span></button>
       ${bellOpen?`<div class="npanel" onclick="event.stopPropagation()">
        <div class="nhead"><b>Notifications</b>
-        <button class="btn lnk" style="font-size:13px">Mark all read</button></div>
+        <button class="btn lnk" style="font-size:13px" onclick="act(&quot;Mark all read&quot;,&quot;Clears the unread count. Nothing is deleted \u2014 the log is the record.&quot;)">Mark all read</button></div>
        <div class="nbody">${D.notifs.slice(0,6).map(([c,m,t,d,w,ur,href])=>`
         <button class="nitem${ur?' unread':''}" onclick="location.hash='${href}'">
          <span class="ico" style="background:${c==='alert'?'#fdeaea':c==='act'?'#e7f0fb':'var(--muted)'};

@@ -249,6 +249,19 @@ ul{padding:0;list-style:none}
 
 .back{display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-size:13px;font-weight:600}
 .foot{color:var(--ink-subtle);font-size:12px;line-height:18px;text-align:center;padding-top:8px}
+
+/* An action with no server behind it still has to answer for itself. A control
+   that looks like a verb and does nothing teaches a reviewer the feature is
+   broken, so every terminal action says what it would do. */
+.toasts{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;
+ gap:10px;max-width:min(360px,calc(100vw - 40px));pointer-events:none}
+.toast{background:#191C1D;color:#fff;border-radius:14px;padding:14px 16px;
+ box-shadow:0 12px 28px rgb(25 28 29/.28);pointer-events:auto}
+.toast b{display:block;font-size:14px;font-weight:600;margin-bottom:3px}
+.toast span{display:block;font-size:13px;line-height:19px;color:rgb(255 255 255/.72)}
+.toast button{margin-top:8px;background:none;border:0;color:rgb(255 255 255/.72);
+ font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+@media(max-width:700px){.toasts{right:12px;left:12px;bottom:76px;max-width:none}}
 </style>
 
 <div class="protobar">
@@ -443,6 +456,20 @@ function sessionRow(s,link){
 }
 
 /* ------------------------------ screens ------------------------------- */
+/* What a terminal action does in a prototype: there is no server here, so it
+   names the action and what it would do rather than doing nothing. */
+function act(title,detail){
+ let host=document.querySelector('.toasts');
+ if(!host){host=document.createElement('div');host.className='toasts';document.body.appendChild(host);}
+ const el=document.createElement('div');
+ el.className='toast';
+ el.innerHTML='<b></b><span></span><button type="button">Dismiss</button>';
+ el.querySelector('b').textContent=title;
+ el.querySelector('span').textContent=detail;
+ el.querySelector('button').onclick=()=>el.remove();
+ host.appendChild(el);
+ setTimeout(()=>el.remove(),6000);
+}
 const V={};
 
 /* ── the decision, as a screen ────────────────────────────────────────────
@@ -627,7 +654,7 @@ V['#/assignments/one']=()=>{
         <label for="sub-note">Notes for the trainer</label>
         <textarea id="sub-note" placeholder="Anything you want read alongside it."></textarea>
       </div>
-      <button class="btn pri full" type="button">Submit</button>
+      <button class="btn pri full" type="button" onclick="act(&quot;Submit&quot;,&quot;Uploads the work against this assignment. A submission is the only row on this portal a student writes about themselves.&quot;)">Submit</button>
     </div>
   </div>
 
@@ -701,7 +728,7 @@ V['#/certificates']=()=>{
       code above — hand it to an employer rather than a copy of the PDF.</p>
     <div style="margin-top:14px">
       ${SEG==='retail'
-        ? '<button class="btn pri" type="button">'+svg(I.down,17)+' Download</button>'
+        ? '<button class="btn pri" type="button" onclick="act(&quot;Download&quot;,&quot;Renders the certificate and hands it to the browser. A retail student downloads their own; a college\u2019s are downloaded by the institution.&quot;)">'+svg(I.down,17)+' Download</button>'
         : '<div class="absent" style="text-align:left;padding:16px"><h3>'+p.college+' holds your download</h3><p style="margin-left:0">You earned this certificate on the same terms as anyone else. Your institution collects and issues the certificates for its students, so ask your placement office for the copy.</p></div>'}
     </div>
   </div>
@@ -759,8 +786,8 @@ V['#/account']=()=>{
         <span class="hint">Deliberately different from your own address.</span></div>
     </div>
     <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn pri" type="button">Save changes</button>
-      <button class="btn sec" type="button">Change password</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Save changes&quot;,&quot;Saves the profile. A student may correct their own contact details and nothing else.&quot;)">Save changes</button>
+      <button class="btn sec" type="button" onclick="act(&quot;Change password&quot;,&quot;Opens the password change, which needs the current password.&quot;)">Change password</button>
     </div>
   </div>
   ${p.college?`<div class="card"><div class="sechead"><h2>Your college</h2></div>

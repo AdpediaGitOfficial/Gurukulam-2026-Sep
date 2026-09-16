@@ -343,6 +343,19 @@ ul{padding:0;list-style:none}
 
 .back{display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-size:13px;font-weight:600}
 .foot{color:var(--ink-subtle);font-size:12px;line-height:18px;text-align:center;padding-top:8px}
+
+/* An action with no server behind it still has to answer for itself. A control
+   that looks like a verb and does nothing teaches a reviewer the feature is
+   broken, so every terminal action says what it would do. */
+.toasts{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;
+ gap:10px;max-width:min(360px,calc(100vw - 40px));pointer-events:none}
+.toast{background:#191C1D;color:#fff;border-radius:14px;padding:14px 16px;
+ box-shadow:0 12px 28px rgb(25 28 29/.28);pointer-events:auto}
+.toast b{display:block;font-size:14px;font-weight:600;margin-bottom:3px}
+.toast span{display:block;font-size:13px;line-height:19px;color:rgb(255 255 255/.72)}
+.toast button{margin-top:8px;background:none;border:0;color:rgb(255 255 255/.72);
+ font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+@media(max-width:700px){.toasts{right:12px;left:12px;bottom:76px;max-width:none}}
 </style>
 
 <div class="protobar">
@@ -556,6 +569,20 @@ function sessionRow(s,link='#/session'){
 }
 
 /* ------------------------------ screens ------------------------------- */
+/* What a terminal action does in a prototype: there is no server here, so it
+   names the action and what it would do rather than doing nothing. */
+function act(title,detail){
+ let host=document.querySelector('.toasts');
+ if(!host){host=document.createElement('div');host.className='toasts';document.body.appendChild(host);}
+ const el=document.createElement('div');
+ el.className='toast';
+ el.innerHTML='<b></b><span></span><button type="button">Dismiss</button>';
+ el.querySelector('b').textContent=title;
+ el.querySelector('span').textContent=detail;
+ el.querySelector('button').onclick=()=>el.remove();
+ host.appendChild(el);
+ setTimeout(()=>el.remove(),6000);
+}
 const V={};
 
 /* ── 1. Dashboard — overall analytics ─────────────────────────────────── */
@@ -734,10 +761,10 @@ V['#/sessions']=()=>{
     'Across every batch. A session is the unit that actually happens on a day — attendance, the recording and any assignment all hang off it.')}
 
   <div class="tabsrow" role="tablist">
-    <button role="tab" aria-selected="true" type="button">All</button>
-    <button role="tab" aria-selected="false" type="button">BTC-DS-OCT-A</button>
-    <button role="tab" aria-selected="false" type="button">BTC-SNC-DS-01</button>
-    <button role="tab" aria-selected="false" type="button">Needs something</button>
+    <button role="tab" aria-selected="true" type="button" onclick="act(&quot;All&quot;,&quot;Filters the list to every batch you teach.&quot;)">All</button>
+    <button role="tab" aria-selected="false" type="button" onclick="act(&quot;BTC-DS-OCT-A&quot;,&quot;Filters the list to this batch.&quot;)">BTC-DS-OCT-A</button>
+    <button role="tab" aria-selected="false" type="button" onclick="act(&quot;BTC-SNC-DS-01&quot;,&quot;Filters the list to this batch.&quot;)">BTC-SNC-DS-01</button>
+    <button role="tab" aria-selected="false" type="button" onclick="act(&quot;Needs something&quot;,&quot;Filters to sessions still missing attendance, a recording or marking.&quot;)">Needs something</button>
   </div>
 
   <div class="card tight">
@@ -772,7 +799,7 @@ V['#/session']=()=>{
       <div><dt>Topic</dt><dd>${s.topic}</dd></div>
     </dl>
     <div class="btnrow" style="margin-top:16px">
-      <button class="btn go" type="button">${svg(I.check,17)} Mark delivered</button>
+      <button class="btn go" type="button" onclick="act(&quot;Mark delivered&quot;,&quot;Completion is a deliberate act, not a date passing. It releases the assignment tab and prompts for the recording.&quot;)">${svg(I.check,17)} Mark delivered</button>
       <a class="btn sec" href="#/availability">Request a reschedule</a>
     </div>
     <p class="sub" style="margin-top:12px">Marking it delivered opens the three below. Until then
@@ -833,8 +860,8 @@ V['#/assign']=()=>`
         <span class="hint">Only delivered sessions appear. One still to come cannot carry work.</span></div>
     </div>
     <div class="btnrow" style="margin-top:18px">
-      <button class="btn pri" type="button">Publish to the batch</button>
-      <button class="btn sec" type="button">Save as draft</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Publish to the batch&quot;,&quot;Publishes the assignment to the roster. It can only be set against a session already marked delivered.&quot;)">Publish to the batch</button>
+      <button class="btn sec" type="button" onclick="act(&quot;Save as draft&quot;,&quot;Held as a draft. Nothing is visible to the roster until it is published.&quot;)">Save as draft</button>
     </div>
   </div>
 
@@ -861,7 +888,7 @@ V['#/recording']=()=>`
         <span class="hint">Unpublished, it is attached but nobody can watch it yet.</span></div>
     </div>
     <div class="btnrow" style="margin-top:18px">
-      <button class="btn pri" type="button">${svg(I.link,16)} Attach recording</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Attach recording&quot;,&quot;Attaches the recording to this delivered session.&quot;)">${svg(I.link,16)} Attach recording</button>
       <a class="btn sec" href="#/batch">Cancel</a>
     </div>
   </div>
@@ -884,7 +911,7 @@ V['#/attendance']=()=>{
 
   <div class="card tight">
     <div class="card pad0"><div class="sechead"><h2>Roster</h2>
-      <button class="lnk" type="button">Mark all present</button></div></div>
+      <button class="lnk" type="button" onclick="act(&quot;Mark all present&quot;,&quot;Marks the whole roster present, to be corrected row by row.&quot;)">Mark all present</button></div></div>
     ${ROSTER.map((r,i)=>`
       <div class="att">
         <div class="nm"><b>${r.n}</b><span>${r.c}</span></div>
@@ -897,7 +924,7 @@ V['#/attendance']=()=>{
     <div class="stickybar">
       <span class="tally"><b>${tally.P||0}</b> present · <b>${tally.L||0}</b> late ·
         <b>${tally.A||0}</b> absent</span>
-      <button class="btn go" type="button">Save attendance</button>
+      <button class="btn go" type="button" onclick="act(&quot;Save attendance&quot;,&quot;Attendance has no server side yet \u2014 the table exists and nothing writes to it, which is why certificate eligibility reports NOT_EVALUATED rather than 0%.&quot;)">Save attendance</button>
     </div>
   </div>
 
@@ -919,7 +946,7 @@ V['#/grade']=()=>`
         <div class="lead"><b>${s.n}</b><span>${s.when}</span>
           <span class="mono" style="font-size:12px;color:var(--ink-subtle)">${s.c}</span></div>
         <div class="trail">${s.mark?`<span class="pill ok">${s.mark}</span>`
-            :'<button class="btn sm pri" type="button">Grade</button>'}</div></div>`).join('')}
+            :'<button class="btn sm pri" type="button" onclick="act(&quot;Grade&quot;,&quot;Grading has no endpoint yet. assignment_submissions carries marks_awarded, feedback and graded_by, and nothing writes them.&quot;)">Grade</button>'}</div></div>`).join('')}
     </div>
   </div>
 
@@ -935,8 +962,8 @@ V['#/grade']=()=>`
         <textarea id="fb" placeholder="What was right, and what to look at again."></textarea></div>
     </div>
     <div class="btnrow" style="margin-top:16px">
-      <button class="btn pri" type="button">Save and open the next</button>
-      <button class="btn sec" type="button">Save</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Save and open the next&quot;,&quot;Saves this mark and opens the next submission in the queue.&quot;)">Save and open the next</button>
+      <button class="btn sec" type="button" onclick="act(&quot;Save&quot;,&quot;Saves this mark.&quot;)">Save</button>
     </div>
   </div>
 
@@ -960,8 +987,8 @@ V['#/availability']=()=>{
 
   <div class="card">
     <div class="sechead"><h2>${CAL.month}</h2>
-      <div class="btnrow"><button class="btn sm sec" type="button">‹ Aug</button>
-        <button class="btn sm sec" type="button">Oct ›</button></div></div>
+      <div class="btnrow"><button class="btn sm sec" type="button" onclick="act(&quot;\u2039 Aug&quot;,&quot;The previous month. Availability is a write that changes what Ops is allowed to do.&quot;)">‹ Aug</button>
+        <button class="btn sm sec" type="button" onclick="act(&quot;Oct \u203a&quot;,&quot;The next month. Availability is a write that changes what Ops is allowed to do.&quot;)">Oct ›</button></div></div>
     <div class="calhead">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')}</div>
     <div class="cal">${cells.join('')}</div>
     <div class="barkey">
@@ -984,8 +1011,8 @@ V['#/availability']=()=>{
         06, 08 and 10 October that are already committed. Declaring this will not move them —
         it raises an alert for Ops, who will need to arrange cover.</div></div>
     <div class="btnrow" style="margin-top:16px">
-      <button class="btn pri" type="button">Declare anyway, and notify Ops</button>
-      <button class="btn sec" type="button">Cancel</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Declare anyway, and notify Ops&quot;,&quot;Declared leave that collides with a confirmed session raises an alert to Ops rather than quietly creating a contradiction.&quot;)">Declare anyway, and notify Ops</button>
+      <button class="btn sec" type="button" onclick="this.closest('.sheet,.modal,.scrim')?this.closest('.sheet,.modal,.scrim').remove():history.back()">Cancel</button>
     </div>
   </div>
 
@@ -1029,8 +1056,8 @@ V['#/invitations']=()=>{
     <p class="sub" style="margin-top:12px">${v.proposed}. Nothing clashes with what you already
       have, and you are approved for this course.</p>
     <div class="btnrow" style="margin-top:16px">
-      <button class="btn go" type="button">${svg(I.check,17)} Accept</button>
-      <button class="btn sec" type="button">Decline</button>
+      <button class="btn go" type="button" onclick="act(&quot;Accept&quot;,&quot;Confirming commits the delivery. Only a confirmed assignment is committed delivery.&quot;)">${svg(I.check,17)} Accept</button>
+      <button class="btn sec" type="button" onclick="act(&quot;Decline&quot;,&quot;Declining needs a reason, which goes back to whoever proposed it.&quot;)">Decline</button>
     </div>
   </div>`).join('')}
   ${rule('Confirming this is the <b>same write</b> an admin makes when recording your answer on your behalf — one endpoint, not two. What has to be added is a check nobody needed before: that the proposal being answered is <b>yours</b>.')}`;
@@ -1062,8 +1089,8 @@ V['#/account']=()=>{
       <div class="field"><label>You sign in as</label><div class="locked mono">${p.login}</div></div>
     </div>
     <div class="btnrow" style="margin-top:16px">
-      <button class="btn pri" type="button">Save changes</button>
-      <button class="btn sec" type="button">Change password</button>
+      <button class="btn pri" type="button" onclick="act(&quot;Save changes&quot;,&quot;Saves the profile. A student may correct their own contact details and nothing else.&quot;)">Save changes</button>
+      <button class="btn sec" type="button" onclick="act(&quot;Change password&quot;,&quot;Opens the password change, which needs the current password.&quot;)">Change password</button>
     </div>
   </div>
 

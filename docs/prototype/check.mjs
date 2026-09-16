@@ -9,6 +9,11 @@
  *
  *   · every `href` and every `location.hash` target resolves to a real route —
  *     a prototype with a dead link teaches the wrong thing about the product;
+ *   · every BUTTON is armed — it has a handler, and that handler actually
+ *     parses. Both halves earn their keep: a control with no handler at all is
+ *     a decoration that looks like a verb, and a handler carrying an unescaped
+ *     quote closes its own HTML attribute and is disarmed while still looking
+ *     wired in the source. The second is the one you cannot see by reading;
  *   · every screen renders a heading, so nothing is silently blank;
  *   · nothing scrolls sideways, at either width;
  *   · no page errors.
@@ -63,9 +68,9 @@ for (const spec of FILES) {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     page.on("pageerror", (e) => problems.add(`${width}px — ${e}`));
     page.on("console", (m) => {
-      // The font stylesheet fails on a box with no egress; that is the sandbox,
-      // not the page.
-      if (m.type() === "error" && !/ERR_CONNECTION|ERR_NAME/.test(m.text())) {
+      // The font stylesheet fails on a box with no egress, or behind a proxy
+      // whose CA the browser does not carry. That is the sandbox, not the page.
+      if (m.type() === "error" && !/ERR_CONNECTION|ERR_NAME|ERR_CERT/.test(m.text())) {
         problems.add(`${width}px — ${m.text()}`);
       }
     });
@@ -98,6 +103,24 @@ for (const spec of FILES) {
         );
         if (overflow > 1) {
           problems.add(`scrolls ${overflow}px sideways — ${segment ?? "default"} ${route} @${width}px`);
+        }
+
+        // A button must be armed, and its handler must parse. An `onclick`
+        // built by string interpolation can carry a quote that closes the
+        // attribute early, which leaves a control that reads as wired in the
+        // source and does nothing in the browser.
+        for (const problem of await page.evaluate(() => {
+          const found = [];
+          document.querySelectorAll("button").forEach((el) => {
+            if (el.disabled || el.closest("a")) return;
+            const label = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 40);
+            const handler = el.getAttribute("onclick");
+            if (!handler) { found.push(`does nothing — “${label}”`); return; }
+            try { new Function(handler); } catch { found.push(`handler does not parse — “${label}”`); }
+          });
+          return found;
+        })) {
+          problems.add(`${problem} · ${segment ?? "default"} ${route} @${width}px`);
         }
 
         for (const target of await page.evaluate(() => {
