@@ -517,11 +517,21 @@ export class DashboardService {
     facts: readonly BatchFact[],
     batchScope: Prisma.BatchWhereInput,
   ): Promise<Dashboard["portfolio"]> {
-    const [totalCourses, coursesWithoutTopics] = await Promise.all([
+    const onRoster: Prisma.StudentBatchMappingWhereInput = {
+      deletedAt: null,
+      batch: batchScope,
+    };
+
+    const [totalCourses, coursesWithoutTopics, enrolments, completed, exited] = await Promise.all([
       this.prisma.course.count({ where: liveOnly() }),
       this.prisma.course.count({
         where: { ...liveOnly(), topics: { none: { deletedAt: null } }, batches: { some: batchScope } },
       }),
+      this.prisma.studentBatchMapping.count({ where: onRoster }),
+      this.prisma.studentBatchMapping.count({ where: { ...onRoster, completedAt: { not: null } } }),
+      // A soft-deleted mapping is "should not have been here" and is excluded
+      // above; this is somebody who genuinely attended and then left.
+      this.prisma.studentBatchMapping.count({ where: { ...onRoster, isActive: false } }),
     ]);
 
     const byCourse = new Map<
@@ -585,6 +595,9 @@ export class DashboardService {
       coursesWithoutEnrolment,
       batchesOverCapacity,
       coursesWithoutTopics,
+      enrolments,
+      completedEnrolments: completed,
+      exitedEnrolments: exited,
     };
   }
 
@@ -726,6 +739,8 @@ export class DashboardService {
       unstaffedBatchesSoon,
       staleProposals,
       trainersWithoutCourses,
+      sessionsDecided,
+      sessionsOnPlan,
     ] = await Promise.all([
       this.prisma.trainer.findMany({
         where: { ...liveOnly(), ...cityScope(principal), accountStatus: "ACTIVE" },
@@ -793,6 +808,26 @@ export class DashboardService {
           ...cityScope(principal),
           accountStatus: "ACTIVE",
           courses: { none: { deletedAt: null } },
+        },
+      }),
+      // Adherence, over sessions that have actually been decided one way or
+      // the other in the last month. A scheduled session in the future is not
+      // evidence about anything yet.
+      this.prisma.batchSession.count({
+        where: {
+          ...liveOnly(),
+          status: { in: ["COMPLETED", "CANCELLED"] },
+          scheduledDate: { gte: addDays(startOfToday(), -30) },
+          batch: deliveryScope,
+        },
+      }),
+      this.prisma.batchSession.count({
+        where: {
+          ...liveOnly(),
+          status: "COMPLETED",
+          rescheduledFrom: null,
+          scheduledDate: { gte: addDays(startOfToday(), -30) },
+          batch: deliveryScope,
         },
       }),
     ]);
@@ -864,6 +899,8 @@ export class DashboardService {
         doubleBookedTrainers,
         staleProposals,
         trainersWithoutCourses,
+        sessionsDecided,
+        sessionsOnPlan,
       },
     };
   }

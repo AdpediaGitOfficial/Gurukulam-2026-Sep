@@ -11,6 +11,7 @@ import { CollectionsTrend } from "@/features/dashboard/components/collections-tr
 import { SegmentSplit } from "@/features/dashboard/components/segment-split";
 import { AttentionQueue, type QueueRow } from "@/features/dashboard/components/attention-queue";
 import { DistributionBand, type BandSlice } from "@/features/dashboard/components/distribution-band";
+import { RatePair, type Rate } from "@/features/dashboard/components/rate-pair";
 import { getDashboard } from "@/features/dashboard/server/dashboard-service";
 import {
   brandTokens,
@@ -252,6 +253,47 @@ export default async function DashboardPage() {
     href: b.href as Route,
   }));
 
+  /* Completion and drop-out are independent: a student can finish, and a
+     student can walk away, and neither implies the other — so both are rates
+     over the same roster rather than two halves of one pie. */
+  const outcomeRates: Rate[] = [
+    {
+      label: "Completion",
+      count: portfolio.completedEnrolments,
+      of: portfolio.enrolments,
+      ofNoun: "enrolments",
+      tone: "good",
+      emptyHint: "Nobody on a roster yet",
+    },
+    {
+      label: "Drop-out",
+      count: portfolio.exitedEnrolments,
+      of: portfolio.enrolments,
+      ofNoun: "enrolments",
+      tone: "bad",
+      emptyHint: "Nobody on a roster yet",
+    },
+  ];
+
+  const adherenceRates: Rate[] = [
+    {
+      label: "Schedule adherence",
+      count: capacity.sessionsOnPlan,
+      of: capacity.sessionsDecided,
+      ofNoun: "sessions",
+      tone: "good",
+      emptyHint: "No session decided in 30 days",
+    },
+    {
+      label: "Carrying delivery",
+      count: capacity.carryingDelivery,
+      of: capacity.activeTrainers,
+      ofNoun: "trainers",
+      tone: "plain",
+      emptyHint: "No active trainers",
+    },
+  ];
+
   /* Ordered by how much it hurts to leave alone, not by size. A batch that is
      quietly not happening outranks a catalogue-hygiene problem however many
      rows the second one has. */
@@ -473,13 +515,15 @@ export default async function DashboardPage() {
         description="The whole catalogue and the whole bench, described rather than sampled."
       >
         <div className="grid items-stretch gap-8 xl:grid-cols-2">
-          <Card className="flex h-full flex-col gap-7">
+          <Card className="flex h-full min-w-0 flex-col gap-7">
             <CardHeader
               className="pb-0"
               as="h2"
               title="Course portfolio"
               description={`${formatCount(portfolio.totalCourses)} courses · ${formatCount(portfolio.withLiveDelivery)} with live delivery`}
             />
+
+            <RatePair rates={outcomeRates} />
 
             <DistributionBand
               caption={`Delivery progress, all ${formatCount(portfolio.totalCourses)}`}
@@ -489,7 +533,7 @@ export default async function DashboardPage() {
 
             <AttentionQueue caption="Needs a decision" rows={portfolioQueue} />
 
-            <section className="mt-auto flex flex-col gap-3">
+            <section className="mt-auto flex min-w-0 flex-col gap-3">
               <p className="text-caption font-semibold uppercase tracking-wide text-ink-subtle">
                 Largest by enrolment —{" "}
                 <span className="normal-case tracking-normal">
@@ -514,13 +558,15 @@ export default async function DashboardPage() {
             </section>
           </Card>
 
-          <Card className="flex h-full flex-col gap-7">
+          <Card className="flex h-full min-w-0 flex-col gap-7">
             <CardHeader
               className="pb-0"
               as="h2"
               title="Trainer capacity"
               description={`${formatCount(capacity.activeTrainers)} active · ${formatCount(capacity.carryingDelivery)} carrying delivery`}
             />
+
+            <RatePair rates={adherenceRates} />
 
             <DistributionBand
               caption={`Utilisation, all ${formatCount(capacity.activeTrainers)}`}
@@ -530,7 +576,7 @@ export default async function DashboardPage() {
 
             <AttentionQueue caption="Needs a decision" rows={capacityQueue} />
 
-            <section className="mt-auto flex flex-col gap-3">
+            <section className="mt-auto flex min-w-0 flex-col gap-3">
               <p className="text-caption font-semibold uppercase tracking-wide text-ink-subtle">
                 Most loaded —{" "}
                 <span className="normal-case tracking-normal">

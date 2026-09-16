@@ -87,10 +87,44 @@ export const studentBatchSchema = z.object({
   courseId: z.string(),
   courseName: z.string().nullable(),
   enrolledAt: z.string(),
+  /** Set when somebody signs off that this student finished this batch. */
   completedAt: z.string().nullable(),
+  /** False once they have left it. The two are independent: a student can
+   *  finish, and a student can leave, and neither implies the other. */
+  isActive: z.boolean(),
+  /** Why they left. Required when they did — an unexplained drop-out is a
+   *  number nobody can act on. */
+  exitReason: z.string().nullable(),
 });
 
 export type StudentBatch = z.infer<typeof studentBatchSchema>;
+
+/**
+ * How a student's time on a batch ended — the write that makes completion and
+ * drop-out measurable.
+ *
+ * The columns have been on `student_batch_mapping` since the schema was
+ * written and have sat empty on every row, because nothing could set them. So
+ * the dashboard could not report a completion rate at all, and reporting one
+ * anyway would have printed 0% — which reads as "nobody finishes" rather than
+ * "nobody is recording it".
+ *
+ * ACTIVE is here on purpose: an outcome recorded by mistake has to be
+ * reversible, and a correction that requires a database ticket is a correction
+ * nobody makes.
+ */
+export const rosterOutcomeSchema = z
+  .object({
+    batchId: z.string().min(1, "Choose a batch"),
+    outcome: z.enum(["ACTIVE", "COMPLETED", "EXITED"]),
+    reason: z.string().trim().max(400).optional(),
+  })
+  .refine((v) => v.outcome !== "EXITED" || (v.reason !== undefined && v.reason.length > 0), {
+    message: "Say why they left — a drop-out without a reason cannot be acted on",
+    path: ["reason"],
+  });
+
+export type RosterOutcomeInput = z.infer<typeof rosterOutcomeSchema>;
 
 /**
  * One fee ledger. RETAIL ONLY, always — a college student is billed through

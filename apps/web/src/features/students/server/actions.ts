@@ -11,6 +11,7 @@ import {
   studentSchema,
   suspendStudentSchema,
   type StudentImportResult,
+  rosterOutcomeSchema,
 } from "@gurukulam/contracts";
 
 /*
@@ -186,6 +187,48 @@ export async function saveStudent(
  * is required and stored — an account that stopped working with no explanation
  * is the thing whoever finds it has to go and ask about.
  */
+/**
+ * How a student's time on one batch ended.
+ *
+ * Deliberately NOT the delete verb beside it. Deallocation says the student
+ * should not have been on this roster and soft-deletes the mapping; this
+ * records that a real enrolment finished, or that the student left — and the
+ * row stays live, because both are facts about somebody who genuinely attended
+ * and both belong in the completion and drop-out rates the dashboard reports.
+ *
+ * Those two rates read "—" until this verb is used. The columns behind them
+ * have been in the schema since the beginning and empty on every row, because
+ * until now nothing could write them.
+ */
+export async function setRosterOutcome(
+  studentId: string,
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = rosterOutcomeSchema.safeParse({
+    batchId,
+    outcome: text(formData, "outcome"),
+    reason: text(formData, "reason"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/students/${studentId}/roster-outcome`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/students/${studentId}`);
+  // The dashboard's completion and drop-out rates read these rows, so the
+  // figure an operator just changed is stale until this runs.
+  revalidatePath("/dashboard");
+  redirect(`/students/${studentId}?outcome=1`);
+}
+
 export async function suspendStudent(
   studentId: string,
   _previous: FormState,

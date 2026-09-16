@@ -6,7 +6,9 @@ import { ApiException } from "../../common/errors";
 import { assertInScope } from "../../common/scope/scope";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { hashPassword } from "../auth/password";
-import { studentLoginEmail } from "@gurukulam/contracts";
+import { studentLoginEmail,
+  type RosterOutcomeInput,
+} from "@gurukulam/contracts";
 import { parseMoneyField } from "./students.service";
 import { randomBytes } from "node:crypto";
 
@@ -245,6 +247,62 @@ export class AllocationService {
     await this.prisma.studentBatchMapping.update({
       where: { mappingId: mapping.mappingId },
       data: { deletedAt: new Date(), deletedBy: principal.id, exitReason: reason, isActive: false },
+    });
+  }
+
+  /**
+   * How a student's time on a batch ended.
+   *
+   * ── Why this exists ─────────────────────────────────────────────────
+   *
+   * `completed_at`, `is_active` and `exit_reason` have been on the mapping
+   * since the schema was written and were empty on every row, because nothing
+   * could write them. That is why the dashboard had no completion rate: not a
+   * missing query, a missing verb. A figure computed over columns nobody fills
+   * reads 0%, and 0% drop-out says "nobody leaves" when the truth is "nobody
+   * is counting".
+   *
+   * ── Distinct from deallocate ────────────────────────────────────────
+   *
+   * `deallocate` SOFT-DELETES the mapping: the student should not have been on
+   * this roster. This records how a real enrolment ended — they finished, or
+   * they left — and the row stays live, because both are facts about a student
+   * who genuinely attended and both belong in the rate.
+   *
+   * Completion and exit are independent flags rather than one status, because
+   * they genuinely are: somebody can finish the course and somebody can walk
+   * away, and a single column would force a batch that did both at different
+   * times into one answer.
+   */
+  async setRosterOutcome(
+    principal: Principal,
+    studentId: string,
+    input: RosterOutcomeInput,
+  ): Promise<void> {
+    const student = await this.prisma.student.findFirst({
+      where: { studentId, deletedAt: null },
+    });
+    if (!student) throw ApiException.notFound("Student");
+    assertInScope(principal, student);
+
+    const mapping = await this.prisma.studentBatchMapping.findFirst({
+      where: { studentId, batchId: input.batchId, deletedAt: null },
+    });
+    if (!mapping) throw ApiException.notFound("Roster entry");
+
+    // Each outcome sets ALL THREE fields rather than only the one it is named
+    // after. Leaving the others alone is how a student ends up both completed
+    // and dropped out, which is a state no report can describe.
+    const data =
+      input.outcome === "COMPLETED"
+        ? { completedAt: new Date(), isActive: true, exitReason: null }
+        : input.outcome === "EXITED"
+          ? { completedAt: null, isActive: false, exitReason: input.reason ?? null }
+          : { completedAt: null, isActive: true, exitReason: null };
+
+    await this.prisma.studentBatchMapping.update({
+      where: { mappingId: mapping.mappingId },
+      data: { ...data, updatedAt: new Date() },
     });
   }
 

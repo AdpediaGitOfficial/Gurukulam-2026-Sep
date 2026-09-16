@@ -5,6 +5,8 @@ import {
   suspendStudentSchema, updateStudentSchema,
   type AllocateStudentInput, type CreateStudentInput, type Principal, type StudentQuery,
   type StudentImportInput, type SuspendStudentInput, type UpdateStudentInput,
+  rosterOutcomeSchema,
+  type RosterOutcomeInput,
 } from "@gurukulam/contracts";
 import { StudentsService } from "./students.service";
 import { AllocationService } from "./allocation.service";
@@ -90,6 +92,21 @@ export class StudentsController {
   @RequirePermission("students", "edit")
   async deallocate(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(deallocateSchema)) body: { batchId: string; reason: string }): Promise<void> {
     await this.allocation.deallocate(p, id, body.batchId, body.reason);
+  }
+
+  /**
+   * How a student's time on a batch ended. Not a delete — see the note on
+   * `setRosterOutcome`.
+   */
+  @Post(":id/roster-outcome")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission("students", "edit")
+  async rosterOutcome(
+    @CurrentPrincipal() p: Principal,
+    @Param("id") id: string,
+    @Body(zodBody(rosterOutcomeSchema)) body: RosterOutcomeInput,
+  ): Promise<void> {
+    await this.allocation.setRosterOutcome(p, id, body);
   }
 
   @Post(":id/suspend")

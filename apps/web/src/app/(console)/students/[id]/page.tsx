@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts";
+import { can, formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts";
 
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
@@ -16,6 +16,7 @@ import {
   reinstateStudent,
   suspendStudent,
 } from "@/features/students/server/actions";
+import { RosterOutcomeForm } from "@/features/students/components/roster-outcome-form";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { formatCount } from "@/lib/format";
@@ -43,7 +44,10 @@ export default async function StudentDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("students");
+  const principal = await requireModule("students");
+  // The outcome is a write, so the control only appears for somebody who may
+  // make one — a disabled control is a promise the screen cannot keep.
+  const mayEdit = can(principal, "students", "edit");
   const { id } = await params;
   const query = await searchParams;
   const student = await getStudent(id);
@@ -257,6 +261,13 @@ export default async function StudentDetailPage({
                   <StatusPill intent={batch.status === "COMPLETED" ? "success" : "info"}>
                     {batch.status.replace(/_/g, " ").toLowerCase()}
                   </StatusPill>
+                  {/* The BATCH's status is above; this is the STUDENT's outcome
+                      on it. A batch can finish with somebody who left halfway
+                      still on its roster, and the completion rate has to be
+                      able to tell those two apart. */}
+                  {mayEdit ? (
+                    <RosterOutcomeForm studentId={student.studentId} batch={batch} />
+                  ) : null}
                 </li>
               ))}
             </ul>

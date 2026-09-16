@@ -166,6 +166,8 @@ export class StudentsService {
         courseName: m.batch.course.name,
         enrolledAt: m.enrolledAt.toISOString(),
         completedAt: m.completedAt?.toISOString() ?? null,
+        isActive: m.isActive,
+        exitReason: m.exitReason,
       })),
       // A college student has none of these by design (invariant 3).
       ledgers: student.ledgers.map((l) => ({

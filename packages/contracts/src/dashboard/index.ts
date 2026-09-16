@@ -197,6 +197,19 @@ export const coursePortfolioSchema = z.object({
   batchesOverCapacity: z.number().int(),
   /** No topics, so no schedule can be built from the course. */
   coursesWithoutTopics: z.number().int(),
+
+  /**
+   * Outcomes, as COUNTS rather than percentages.
+   *
+   * The card divides them; the API does not, because a rate with no
+   * denominator cannot be checked and "88.4%" hides whether it was measured
+   * over four students or four hundred. It also lets the screen say "not
+   * recorded yet" when nothing has been signed off, instead of printing 0%
+   * and claiming nobody finishes.
+   */
+  enrolments: z.number().int(),
+  completedEnrolments: z.number().int(),
+  exitedEnrolments: z.number().int(),
 });
 
 export type CoursePortfolio = z.infer<typeof coursePortfolioSchema>;
@@ -222,6 +235,21 @@ export const trainerCapacitySchema = z.object({
   staleProposals: z.number().int(),
   /** Active, but approved to deliver nothing — capacity that cannot be used. */
   trainersWithoutCourses: z.number().int(),
+
+  /**
+   * Schedule adherence, as counts, over the last 30 days.
+   *
+   * The honest stand-in for "punctuality", which this schema cannot measure:
+   * nothing records when a session actually STARTED — `completed_at` is when
+   * somebody pressed the button, and the schema says so in as many words. What
+   * the columns do support is whether a sitting happened on the day it was
+   * planned for, and that is a real delivery signal.
+   *
+   * Counts rather than a rate, for the same reason as completion: a percentage
+   * over three sessions is noise wearing a decimal point.
+   */
+  sessionsDecided: z.number().int(),
+  sessionsOnPlan: z.number().int(),
 });
 
 export type TrainerCapacity = z.infer<typeof trainerCapacitySchema>;

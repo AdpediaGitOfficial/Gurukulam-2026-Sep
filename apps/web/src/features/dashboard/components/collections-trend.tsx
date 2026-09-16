@@ -82,7 +82,11 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
   if (points.length === 0 || peak === 0n) {
     return (
       <Card>
-        <CardHeader as="h2" title="Collections over time" description="Retail against college, by month." />
+        <CardHeader
+          as="h2"
+          title="Collections over time"
+          description="Retail against college, by month."
+        />
         <EmptyState
           title="Nothing collected yet"
           description="Once payments are recorded against a schedule, twelve months of them appear here."
@@ -161,7 +165,13 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
           return (
             <g key={point.month}>
               <path
-                d={columnPath(x, retailUp ? baseline - retailH : baseline, barWidth, retailH, retailUp)}
+                d={columnPath(
+                  x,
+                  retailUp ? baseline - retailH : baseline,
+                  barWidth,
+                  retailH,
+                  retailUp,
+                )}
                 fill={seriesTokens.retail}
               >
                 <title>
@@ -223,29 +233,47 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
         <summary className="cursor-pointer text-body-sm text-ink-muted">
           The same twelve months as a table
         </summary>
-        <table className="mt-3 w-full border-collapse text-body-sm">
-          <caption className="sr-only">Collections by month, retail and college</caption>
-          <thead>
-            <tr className="border-b border-hairline text-left text-caption uppercase tracking-wide text-ink-muted">
-              <th scope="col" className="py-2 pr-4 font-medium">Month</th>
-              <th scope="col" className="py-2 pr-4 text-right font-medium">Retail</th>
-              <th scope="col" className="py-2 pr-4 text-right font-medium">College</th>
-              <th scope="col" className="py-2 text-right font-medium">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {points.map((p) => (
-              <tr key={p.month} className="border-b border-hairline/60 last:border-0">
-                <td className="py-2 pr-4 tabular-nums text-ink-muted">{p.month}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{formatRupees(p.retail, { paise: false })}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{formatRupees(p.college, { paise: false })}</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {formatRupees(p.retail + p.college, { paise: false })}
-                </td>
+        {/* Its own scroll container: four money columns cannot fit a phone, and
+            a table that overflows the page makes the WHOLE page scroll
+            sideways — which is how a dashboard that is fine on a laptop
+            becomes unusable on the device an operator actually carries. */}
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-96 border-collapse text-body-sm">
+            <caption className="sr-only">Collections by month, retail and college</caption>
+            <thead>
+              <tr className="border-b border-hairline text-left text-caption uppercase tracking-wide text-ink-muted">
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  Month
+                </th>
+                <th scope="col" className="py-2 pr-4 text-right font-medium">
+                  Retail
+                </th>
+                <th scope="col" className="py-2 pr-4 text-right font-medium">
+                  College
+                </th>
+                <th scope="col" className="py-2 text-right font-medium">
+                  Total
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {points.map((p) => (
+                <tr key={p.month} className="border-b border-hairline/60 last:border-0">
+                  <td className="py-2 pr-4 tabular-nums text-ink-muted">{p.month}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">
+                    {formatRupees(p.retail, { paise: false })}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums">
+                    {formatRupees(p.college, { paise: false })}
+                  </td>
+                  <td className="py-2 text-right font-semibold tabular-nums">
+                    {formatRupees(p.retail + p.college, { paise: false })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </details>
     </Card>
   );
