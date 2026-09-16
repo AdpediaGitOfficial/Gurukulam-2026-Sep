@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import {
-  allocateStudentSchema, createStudentSchema, studentQuerySchema, suspendStudentSchema, updateStudentSchema,
+  allocateStudentSchema, createStudentSchema, studentImportSchema, studentQuerySchema,
+  suspendStudentSchema, updateStudentSchema,
   type AllocateStudentInput, type CreateStudentInput, type Principal, type StudentQuery,
-  type SuspendStudentInput, type UpdateStudentInput,
+  type StudentImportInput, type SuspendStudentInput, type UpdateStudentInput,
 } from "@gurukulam/contracts";
 import { StudentsService } from "./students.service";
 import { AllocationService } from "./allocation.service";
@@ -22,7 +23,6 @@ export class StudentsController {
     private readonly allocation: AllocationService,
   ) {}
 
-  /** Declared before ":id" so it is never read as a student id. */
   /** Headline figures for the register's tiles. Before ":id", like every
       static segment, so it is never read as a student id. */
   @Get("summary")
@@ -47,6 +47,19 @@ export class StudentsController {
   @RequirePermission("students", "edit")
   create(@CurrentPrincipal() p: Principal, @Body(zodBody(createStudentSchema)) body: CreateStudentInput) {
     return this.students.create(p, body);
+  }
+
+  /**
+   * A file of students, loaded into the register. Records only — no batch, no
+   * price, no credentials; every imported student lands unallocated.
+   *
+   * `dryRun` returns the plan and writes nothing, and the console always asks
+   * for the plan first. Declared before ":id" so it is never read as one.
+   */
+  @Post("import")
+  @RequirePermission("students", "edit")
+  import(@CurrentPrincipal() p: Principal, @Body(zodBody(studentImportSchema)) body: StudentImportInput) {
+    return this.students.importStudents(p, body);
   }
 
   @Get(":id")

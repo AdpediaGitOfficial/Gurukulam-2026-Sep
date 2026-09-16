@@ -328,6 +328,17 @@ export default async function CollegeDetailPage({
       <PageSection
         title="Students"
         description="Added by this institution, and billed through its contract rather than individually."
+        action={
+          /* Pinned to THIS college, so the file's own college_code is ignored
+             and a stray value in row 30 of a handed-over sheet cannot enrol
+             somebody at another institution. */
+          <Link
+            href={`/students/import?collegeId=${college.collegeId}`}
+            className={buttonVariants({ variant: "secondary", size: "sm" })}
+          >
+            Import students
+          </Link>
+        }
       >
         <Card padding="none" className="overflow-hidden">
           <DataTable

@@ -66,13 +66,33 @@ export function assertInScope(
   principal: Principal,
   row: { cityId?: string | null; collegeId?: string | null },
 ): void {
+  if (!inScope(principal, row)) throw ApiException.outOfScope();
+}
+
+/**
+ * The same test, answered rather than thrown.
+ *
+ * A bulk import decides one row at a time and reports each refusal against its
+ * line number, so it needs the answer, not an exception that would take the
+ * other 499 rows with it.
+ *
+ * `assertInScope` is written in terms of THIS function rather than repeating
+ * the test, because two copies of a rule diverge on exactly the case that
+ * matters — and here that case is "a NULL city is not visible to a scoped
+ * principal", which is the half everyone gets backwards.
+ */
+export function inScope(
+  principal: Principal,
+  row: { cityId?: string | null; collegeId?: string | null },
+): boolean {
   if (principal.cityScope !== null) {
     const city = row.cityId ?? null;
-    if (city === null || !principal.cityScope.includes(city)) throw ApiException.outOfScope();
+    if (city === null || !principal.cityScope.includes(city)) return false;
   }
   if (principal.collegeScope !== null) {
-    if (row.collegeId !== principal.collegeScope) throw ApiException.outOfScope();
+    if ((row.collegeId ?? null) !== principal.collegeScope) return false;
   }
+  return true;
 }
 
 /**

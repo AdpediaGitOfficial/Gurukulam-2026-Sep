@@ -153,9 +153,12 @@ export default async function StudentsPage({
           >
             Export CSV
           </a>
-        <Link href="/students/new" className={buttonVariants({ variant: "primary" })}>
-          Add student
-        </Link>
+          <Link href="/students/import" className={buttonVariants({ variant: "secondary" })}>
+            Import
+          </Link>
+          <Link href="/students/new" className={buttonVariants({ variant: "primary" })}>
+            Add student
+          </Link>
         </div>
       }
       summary={

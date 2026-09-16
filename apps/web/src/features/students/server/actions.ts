@@ -6,8 +6,11 @@ import {
   allocateStudentSchema,
   allocationResultSchema,
   createStudentSchema,
+  parseStudentImport,
+  studentImportResultSchema,
   studentSchema,
   suspendStudentSchema,
+  type StudentImportResult,
 } from "@gurukulam/contracts";
 
 /*
@@ -223,4 +226,79 @@ export async function reinstateStudent(
 
   revalidatePath(`/students/${studentId}`);
   redirect(`/students/${studentId}?reinstated=1`);
+}
+
+/**
+ * The state a bulk import round trip carries.
+ *
+ * `result` is the PLAN before it is committed and the outcome afterwards — one
+ * shape, because they answer the same question and the screen should not have
+ * two ways of showing it. `csv` survives the round trip so the commit sends the
+ * very text that was planned.
+ */
+export interface ImportState {
+  status: "idle" | "error";
+  message?: string;
+  result?: StudentImportResult;
+  csv?: string;
+}
+
+/**
+ * A file of students, loaded into the register.
+ *
+ * Parsed HERE, in the console, against the same schema the API validates
+ * against — so a malformed spreadsheet is answered immediately with a row
+ * number instead of a 400, and the API still refuses anything that slips past.
+ *
+ * `collegeId` pins every row to one institution, which is how the college
+ * detail screen imports: the operator is looking at one college, and a stray
+ * college_code in row 30 of a handed-over sheet must not enrol somebody
+ * elsewhere.
+ */
+export async function importStudents(
+  collegeId: string | null,
+  _previous: ImportState,
+  formData: FormData,
+): Promise<ImportState> {
+  const commit = formData.get("intent") === "commit";
+
+  const file = formData.get("file");
+  const pasted = text(formData, "csv") ?? "";
+  const fromFile = file instanceof File && file.size > 0 ? await file.text() : "";
+  /* On a commit the pasted text IS the planned text — the hidden field carries
+     it back — so the file input is ignored rather than re-read, which is what
+     stops a swapped file committing a plan nobody looked at. */
+  const source = commit ? pasted : fromFile || pasted;
+
+  if (source.trim() === "") {
+    return { status: "error", message: "Paste the rows, or choose a file." };
+  }
+
+  const parsed = parseStudentImport(source);
+  if (!parsed.ok) return { status: "error", message: parsed.error, csv: source };
+
+  try {
+    const result = await apiFetch<StudentImportResult>("/students/import", {
+      method: "POST",
+      body: {
+        dryRun: !commit,
+        rows: parsed.rows,
+        // The header goes with the rows: it is what tells the API a column the
+        // file never carried is silence rather than an instruction to clear.
+        columns: parsed.columns,
+        ...(collegeId ? { collegeId } : {}),
+      },
+    });
+    checkShape(studentImportResultSchema, result, "POST /students/import");
+
+    if (result.committed) {
+      revalidatePath("/students");
+      revalidatePath("/students/unallocated");
+      if (collegeId) revalidatePath(`/colleges/${collegeId}`);
+    }
+    return { status: result.rejected > 0 ? "error" : "idle", result, csv: source };
+  } catch (error) {
+    const state = apiFormError(error);
+    return { status: "error", message: state.message ?? "That file could not be read.", csv: source };
+  }
 }

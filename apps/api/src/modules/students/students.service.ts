@@ -6,12 +6,13 @@ import {
   type StudentQuery, type SuspendStudentInput, type UnallocatedSummary,
   type UpdateStudentInput,
   type StudentDetail,
+  type StudentImportInput, type StudentImportLine, type StudentImportResult,
   type StudentSummary,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import { assertInScope, cityScope, collegeScope, inScope, liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 
@@ -431,6 +432,356 @@ export class StudentsService {
     };
   }
 
+
+  /**
+   * Bulk import — records only, never allocation.
+   *
+   * The plan is drawn against the database, reported in full, and committed as
+   * ONE transaction. The two refusals worth knowing on sight:
+   *
+   *   · A row that would move an existing student to a different college. That
+   *     changes who bills them (invariant 3) and which rosters they may join
+   *     (invariant 2), so it is a deliberate act with its own screen, not a
+   *     cell somebody retyped.
+   *   · A row naming a college or city outside the caller's scope. Scope is
+   *     applied here, inside the service (invariant 11) — a file is not a way
+   *     around it.
+   */
+  async importStudents(
+    principal: Principal,
+    input: StudentImportInput,
+  ): Promise<StudentImportResult> {
+    /* A college portal user can only ever import into their OWN college, and
+       the college detail screen pins one explicitly. Either way the file's own
+       college_code column stops being consulted — see `pinnedCollegeId` below. */
+    const pinnedCollegeId =
+      principal.collegeScope !== null ? principal.collegeScope : (input.collegeId ?? null);
+
+    let pinned: { collegeId: string; name: string; cityId: string; countryId: string } | null = null;
+    if (pinnedCollegeId) {
+      const found = await this.prisma.college.findFirst({
+        where: { collegeId: pinnedCollegeId, deletedAt: null },
+        select: { collegeId: true, name: true, cityId: true, countryId: true },
+      });
+      if (!found) throw ApiException.validation({ collegeId: "That college no longer exists" });
+      assertInScope(principal, { cityId: found.cityId, collegeId: found.collegeId });
+      pinned = found;
+    }
+
+    // Everything the file names, resolved in three reads rather than three per
+    // row — a 500-row file should not be 1,500 round trips.
+    const collegeCodes = pinned
+      ? []
+      : [...new Set(input.rows.map((r) => r.collegeCode?.toUpperCase()).filter((c): c is string => Boolean(c)))];
+    const cityCodes = [...new Set(
+      input.rows.map((r) => r.cityCode?.toUpperCase()).filter((c): c is string => Boolean(c)),
+    )];
+    const studentCodes = [...new Set(
+      input.rows.map((r) => r.studentCode?.toUpperCase()).filter((c): c is string => Boolean(c)),
+    )];
+    const emails = [...new Set(input.rows.map((r) => r.email))];
+
+    const [colleges, cities, byCodeRows, byEmailRows] = await Promise.all([
+      collegeCodes.length === 0 ? [] : this.prisma.college.findMany({
+        where: { collegeCode: { in: collegeCodes }, deletedAt: null },
+        select: { collegeId: true, collegeCode: true, name: true, cityId: true, countryId: true },
+      }),
+      cityCodes.length === 0 ? [] : this.prisma.city.findMany({
+        where: { cityCode: { in: cityCodes }, deletedAt: null },
+        select: { cityId: true, cityCode: true, name: true, countryId: true },
+      }),
+      studentCodes.length === 0 ? [] : this.prisma.student.findMany({
+        where: { studentCode: { in: studentCodes }, deletedAt: null },
+        select: EXISTING_SELECT,
+      }),
+      emails.length === 0 ? [] : this.prisma.student.findMany({
+        // Matched case-insensitively, exactly as the live unique index is —
+        // otherwise a row typed Aarti.Rao@ would plan an ADD and then be
+        // refused by the database at commit.
+        where: { email: { in: emails, mode: "insensitive" }, deletedAt: null },
+        select: EXISTING_SELECT,
+      }),
+    ]);
+
+    /* Which columns the file carried — the difference between "not stated" and
+       "blank". Normalised by the parser, so the service compares like with
+       like rather than re-deriving a header it never saw. */
+    const stated = new Set(input.columns);
+
+    const collegesByCode = new Map(colleges.map((c) => [c.collegeCode.toUpperCase(), c]));
+    const citiesByCode = new Map(cities.map((c) => [c.cityCode.toUpperCase(), c]));
+    const existingByCode = new Map(byCodeRows.map((s) => [s.studentCode.toUpperCase(), s]));
+    const existingByEmail = new Map(byEmailRows.map((s) => [s.email.toLowerCase(), s]));
+
+    /* The colleges the matched students ALREADY belong to — needed so a plan
+       row can name the institution it is leaving alone, not just the one the
+       file mentions. */
+    const targetCollegeIds = [...new Set(
+      [...byCodeRows, ...byEmailRows].map((s) => s.collegeId).filter((id): id is string => Boolean(id)),
+    )];
+    const targetColleges = targetCollegeIds.length === 0 ? [] : await this.prisma.college.findMany({
+      where: { collegeId: { in: targetCollegeIds } },
+      select: { collegeId: true, name: true },
+    });
+    const collegeNameById = new Map(targetColleges.map((c) => [c.collegeId, c.name]));
+
+    type Planned = {
+      line: StudentImportLine;
+      /** Present for an ADD; absent for everything else. */
+      create?: Prisma.StudentUncheckedCreateInput;
+      /** Present for an UPDATE. */
+      update?: { studentId: string; data: Prisma.StudentUpdateInput };
+    };
+
+    const planned: Planned[] = [];
+
+    for (const row of input.rows) {
+      const name = [row.firstName, row.lastName].filter(Boolean).join(" ");
+      const base = {
+        rowNumber: row.rowNumber,
+        studentId: null as string | null,
+        studentCode: row.studentCode ?? null,
+        name,
+        email: row.email,
+        segment: null as "RETAIL" | "COLLEGE" | null,
+        collegeName: null as string | null,
+      };
+      const reject = (detail: string): Planned => ({ line: { ...base, outcome: "REJECT", detail } });
+
+      // ── College. Blank is RETAIL, and that is a legitimate answer.
+      let college = pinned;
+      if (!pinned && row.collegeCode) {
+        const found = collegesByCode.get(row.collegeCode.toUpperCase());
+        if (!found) { planned.push(reject(`No college with code ${row.collegeCode}.`)); continue; }
+        if (!inScope(principal, { cityId: found.cityId, collegeId: found.collegeId })) {
+          planned.push(reject(`${found.name} is outside your scope.`));
+          continue;
+        }
+        college = found;
+      }
+
+      // ── City. Named outright, or inherited from the college.
+      let cityId: string | null = null;
+      let countryId: string | null = null;
+      if (row.cityCode) {
+        const found = citiesByCode.get(row.cityCode.toUpperCase());
+        if (!found) { planned.push(reject(`No city with code ${row.cityCode}.`)); continue; }
+        if (!inScope(principal, { cityId: found.cityId })) {
+          planned.push(reject(`${found.name} is outside your region.`));
+          continue;
+        }
+        cityId = found.cityId;
+        countryId = found.countryId;
+      } else if (college) {
+        cityId = college.cityId;
+        countryId = college.countryId;
+      } else if (principal.cityScope !== null) {
+        // A regional sub-admin importing a retail student with no city would
+        // otherwise create a record they cannot then see.
+        planned.push(reject("Give a city_code — a retail student needs one within your region."));
+        continue;
+      }
+
+      // ── Which student, if any, this row lands on.
+      const target = row.studentCode
+        ? existingByCode.get(row.studentCode.toUpperCase())
+        : existingByEmail.get(row.email);
+
+      /* The segment the student will be in AFTER this row, which for an update
+         with no college column is the one they are in already. Reporting the
+         row's own reading instead would print RETAIL beside a college student
+         the import is not touching — a plan that lies about the one column
+         everybody checks. */
+      const landsUnder = college ?? (
+        target?.collegeId
+          ? { collegeId: target.collegeId, name: collegeNameById.get(target.collegeId) ?? "their college" }
+          : null
+      );
+      const segment: "RETAIL" | "COLLEGE" = landsUnder ? "COLLEGE" : "RETAIL";
+      const withSegment = { ...base, segment, collegeName: landsUnder?.name ?? null };
+
+      if (row.studentCode && !target) {
+        planned.push(reject(`No student with code ${row.studentCode}.`));
+        continue;
+      }
+
+      if (target) {
+        if (!inScope(principal, target)) {
+          planned.push({
+            line: { ...withSegment, outcome: "REJECT", studentId: null, studentCode: row.studentCode ?? null,
+              detail: `${row.email} belongs to a record outside your scope.` },
+          });
+          continue;
+        }
+        // The refusal this whole method exists to make. Moving a student
+        // between segments changes who bills them and which rosters they may
+        // join; a spreadsheet is the wrong instrument for it.
+        const targetCollegeId = target.collegeId ?? null;
+        const rowCollegeId = college?.collegeId ?? null;
+        /* A BLANK college_code means "not stated", not "make them retail" — so
+           a file of contact corrections leaves everybody's segment alone. The
+           refusal only fires when the row actually names a college, or the
+           screen pinned one, and it disagrees with the record. */
+        const namesACollege = pinned !== null || Boolean(row.collegeCode);
+        if (namesACollege && targetCollegeId !== rowCollegeId) {
+          planned.push({
+            line: { ...withSegment, outcome: "REJECT", studentId: target.studentId, studentCode: target.studentCode,
+              detail: targetCollegeId === null
+                ? `${target.studentCode} is a retail student. Attaching them to a college changes who bills them — do it on their record.`
+                : `${target.studentCode} already belongs to another college. Moving them changes who bills them — do it on their record.` },
+          });
+          continue;
+        }
+        // An email edit that collides with somebody else's record. The database
+        // would refuse it at commit and take the whole transaction with it.
+        if (target.email.toLowerCase() !== row.email) {
+          const clash = existingByEmail.get(row.email);
+          if (clash && clash.studentId !== target.studentId) {
+            planned.push({
+              line: { ...withSegment, outcome: "REJECT", studentId: target.studentId, studentCode: target.studentCode,
+                detail: `${row.email} is already ${clash.studentCode}'s address.` },
+            });
+            continue;
+          }
+        }
+
+        const changes: string[] = [];
+        const data: Prisma.StudentUpdateInput = {};
+        /**
+         * Applies one field, IF the file carried its column.
+         *
+         * A column the header never mentioned is not an instruction to clear
+         * the field — it is silence. Without this test a three-column file of
+         * phone corrections erases every other thing known about forty people,
+         * and the plan calls it an update.
+         */
+        const set = <K extends keyof Prisma.StudentUpdateInput>(
+          label: string, column: string, current: unknown, next: unknown, key: K,
+        ) => {
+          if (!stated.has(column)) return;
+          if (current === next) return;
+          changes.push(label);
+          (data as Record<string, unknown>)[key as string] = next;
+        };
+
+        set("first name", "first_name", target.firstName, row.firstName, "firstName");
+        set("last name", "last_name", target.lastName ?? null, row.lastName ?? null, "lastName");
+        set("email", "email", target.email, row.email, "email");
+        set("phone", "phone", target.phone ?? null, row.phone ?? null, "phone");
+        set("alternate phone", "alt_phone", target.altPhone ?? null, row.altPhone ?? null, "altPhone");
+        set("date of birth", "date_of_birth", target.dateOfBirth ? isoDate(target.dateOfBirth) : null, row.dateOfBirth ?? null, "dateOfBirth");
+        set("gender", "gender", target.gender ?? null, row.gender ?? null, "gender");
+        set("address", "address_line1", target.addressLine1 ?? null, row.addressLine1 ?? null, "addressLine1");
+        set("address", "address_line2", target.addressLine2 ?? null, row.addressLine2 ?? null, "addressLine2");
+        set("postal code", "postal_code", target.postalCode ?? null, row.postalCode ?? null, "postalCode");
+        set("discipline", "discipline", target.discipline ?? null, row.discipline ?? null, "discipline");
+        set("passout year", "passout_year", target.passoutYear ?? null, row.passoutYear ?? null, "passoutYear");
+        set("qualification", "qualification", target.qualification ?? null, row.qualification ?? null, "qualification");
+        set("notes", "notes", target.notes ?? null, row.notes ?? null, "notes");
+        // City moves are ordinary — a student relocating is not a segment change.
+        if (cityId !== null && cityId !== target.cityId) {
+          changes.push("city");
+          data.city = { connect: { cityId } };
+          if (countryId) data.country = { connect: { countryId } };
+        }
+        // A date has to become a Date after the string comparison above.
+        if (data.dateOfBirth !== undefined) {
+          data.dateOfBirth = row.dateOfBirth ? new Date(`${row.dateOfBirth}T00:00:00Z`) : null;
+        }
+
+        planned.push(changes.length === 0
+          ? { line: { ...withSegment, outcome: "UNCHANGED", studentId: target.studentId, studentCode: target.studentCode, detail: "Already exactly this." } }
+          : {
+              line: { ...withSegment, outcome: "UPDATE", studentId: target.studentId, studentCode: target.studentCode,
+                detail: `Changes ${[...new Set(changes)].join(", ")}.` },
+              update: { studentId: target.studentId, data },
+            });
+        continue;
+      }
+
+      planned.push({
+        line: { ...withSegment, outcome: "ADD", studentId: null, studentCode: null, detail: null },
+        create: {
+          // Filled in inside the transaction — a business ID is generated on
+          // save and never earlier (invariant 9).
+          studentCode: "",
+          firstName: row.firstName,
+          lastName: row.lastName || null,
+          email: row.email,
+          phone: row.phone || null,
+          altPhone: row.altPhone || null,
+          dateOfBirth: row.dateOfBirth ? new Date(`${row.dateOfBirth}T00:00:00Z`) : null,
+          gender: row.gender || null,
+          collegeId: college?.collegeId ?? null,
+          // Explicit, never inferred from collegeId being null.
+          enrolmentChannel: segment,
+          createdByCollegeId: principal.collegeScope !== null ? principal.collegeScope : null,
+          createdByType: principal.actor === "COLLEGE_USER" ? "COLLEGE_USER" : "ADMIN_USER",
+          createdBy: principal.id,
+          countryId,
+          cityId,
+          addressLine1: row.addressLine1 || null,
+          addressLine2: row.addressLine2 || null,
+          postalCode: row.postalCode || null,
+          discipline: row.discipline || null,
+          passoutYear: row.passoutYear ?? null,
+          qualification: row.qualification || null,
+          notes: row.notes || null,
+        },
+      });
+    }
+
+    const count = (outcome: StudentImportLine["outcome"]) =>
+      planned.filter((p) => p.line.outcome === outcome).length;
+    const rejected = count("REJECT");
+
+    const result = (committed: boolean): StudentImportResult => ({
+      committed,
+      added: count("ADD"),
+      updated: count("UPDATE"),
+      unchanged: count("UNCHANGED"),
+      rejected,
+      // Every added student is unallocated, by construction — this import does
+      // not allocate. Stated rather than implied: "I imported 40 and nothing
+      // happened" is the support call this number answers.
+      unallocated: count("ADD"),
+      lines: planned.map((p) => p.line),
+    });
+
+    // A dry run, or anything refused, writes nothing. Both come back as a plan
+    // the operator reads before committing.
+    if (input.dryRun || rejected > 0) return result(false);
+
+    const toCreate = planned.filter((p) => p.create !== undefined);
+    const toUpdate = planned.filter((p) => p.update !== undefined);
+
+    /* Codes are generated inside the transaction and can lose a race with a
+       concurrent onboarding. The retry re-runs the whole block, which is safe
+       because every update sets fixed values and every create is keyed on an
+       email the plan proved free — replaying either lands in the same place. */
+    await withBusinessIdRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        for (const item of toUpdate) {
+          const update = item.update;
+          if (!update) continue;
+          await tx.student.update({ where: { studentId: update.studentId }, data: update.data });
+        }
+        for (const item of toCreate) {
+          const create = item.create;
+          if (!create) continue;
+          const student = await tx.student.create({
+            data: { ...create, studentCode: await this.ids.studentCode() },
+            select: { studentId: true, studentCode: true },
+          });
+          item.line.studentId = student.studentId;
+          item.line.studentCode = student.studentCode;
+        }
+      }),
+    );
+
+    return result(true);
+  }
+
   private async mustExist(principal: Principal, studentId: string) {
     const student = await this.prisma.student.findFirst({ where: { studentId, deletedAt: null } });
     if (!student) throw ApiException.notFound("Student");
@@ -514,3 +865,20 @@ export function parseMoneyField(value: string, field: string): bigint {
     throw ApiException.validation({ [field]: "Enter an amount like 40000 or 40,000.00" });
   }
 }
+
+/**
+ * What the import needs to know about a student already on file.
+ *
+ * Declared once and used for BOTH lookups — by code and by email — so the two
+ * maps hold the same shape and a field added for one is never missing from the
+ * other.
+ */
+const EXISTING_SELECT = {
+  studentId: true, studentCode: true, firstName: true, lastName: true, email: true,
+  phone: true, altPhone: true, dateOfBirth: true, gender: true,
+  collegeId: true, cityId: true, addressLine1: true, addressLine2: true, postalCode: true,
+  discipline: true, passoutYear: true, qualification: true, notes: true,
+} satisfies Prisma.StudentSelect;
+
+/** A stored date as the file writes it, for comparing like with like. */
+const isoDate = (value: Date): string => value.toISOString().slice(0, 10);
