@@ -7,12 +7,20 @@ import {
   type Eligibility,
   type Page,
   type Submission,
+  certificateQuerySchema,
+  submissionQuerySchema,
 } from "@gurukulam/contracts";
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, queryString, type SearchParams } from "@/server/list";
 
 export const CERTIFICATE_FILTERS = [
-  ...PAGE_KEYS, "studentId", "batchId", "courseId", "collegeId", "status", "segment",
+  ...PAGE_KEYS,
+  "studentId",
+  "batchId",
+  "courseId",
+  "collegeId",
+  "status",
+  "segment",
 ] as const;
 
 /**
@@ -21,7 +29,13 @@ export const CERTIFICATE_FILTERS = [
  * does (invariant 7). The admin sees both.
  */
 export async function listCertificates(params: SearchParams): Promise<Page<Certificate>> {
-  return fetchPage("/certificates", certificateSchema, params, CERTIFICATE_FILTERS);
+  return fetchPage(
+    "/certificates",
+    certificateSchema,
+    params,
+    CERTIFICATE_FILTERS,
+    certificateQuerySchema,
+  );
 }
 
 export async function getCertificate(certificateId: string): Promise<Certificate> {
@@ -36,10 +50,7 @@ export async function getCertificate(certificateId: string): Promise<Certificate
  * point of the screen is that nobody signs off blind, and a blocker discovered
  * on submit is a blocker the operator never had the chance to weigh.
  */
-export async function checkEligibility(
-  studentId: string,
-  batchId: string,
-): Promise<Eligibility> {
+export async function checkEligibility(studentId: string, batchId: string): Promise<Eligibility> {
   const query = queryString({ studentId, batchId }, ["studentId", "batchId"]);
   return eligibilitySchema.parse(await apiFetch(`/certificates/eligibility${query}`));
 }
@@ -54,7 +65,13 @@ export const SUBMISSION_FILTERS = [...PAGE_KEYS, "collegeId", "batchId", "status
  * where somebody checks it.
  */
 export async function listSubmissions(params: SearchParams): Promise<Page<Submission>> {
-  return fetchPage("/certificates/submissions", submissionSchema, params, SUBMISSION_FILTERS);
+  return fetchPage(
+    "/certificates/submissions",
+    submissionSchema,
+    params,
+    SUBMISSION_FILTERS,
+    submissionQuerySchema,
+  );
 }
 
 /** One submission with its rows, each carrying its own eligibility. */

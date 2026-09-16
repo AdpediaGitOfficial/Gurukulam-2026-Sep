@@ -1,7 +1,7 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { apiErrorSchema, type ApiError } from "@gurukulam/contracts";
 
 import { safePath } from "@/lib/safe-path";
@@ -97,6 +97,12 @@ export interface ApiRequest {
    * would send it back to itself.
    */
   onExpired?: "redirect" | "throw";
+  /**
+   * What a 404 on a GET means. The default renders `not-found.tsx`, which is
+   * what a detail page wants. `"throw"` is for a caller that is ASKING whether
+   * something exists and has its own answer for "no".
+   */
+  onNotFound?: "notFound" | "throw";
 }
 
 /**
@@ -107,7 +113,14 @@ export interface ApiRequest {
  * same commit.
  */
 export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promise<T> {
-  const { method = "GET", body, anonymous = false, revalidate, onExpired = "redirect" } = request;
+  const {
+    method = "GET",
+    body,
+    anonymous = false,
+    revalidate,
+    onExpired = "redirect",
+    onNotFound = "notFound",
+  } = request;
 
   const expired = async (): Promise<never> => {
     if (onExpired === "redirect") await recoverSession();
@@ -138,6 +151,14 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
     // A 401 from an authenticated call means the token we sent is no longer
     // good, whatever the endpoint was.
     if (response.status === 401 && !anonymous) await expired();
+
+    // A GET that 404s during a render is not a failure — it is the answer.
+    // The record is gone, and the honest screen for that is `not-found.tsx`,
+    // not a stack trace. Restricted to GET on purpose: a DELETE or PATCH that
+    // 404s is a write that did not land, and the operator has to be told so
+    // rather than shown a page saying the record does not exist.
+    if (response.status === 404 && method === "GET" && onNotFound === "notFound") notFound();
+
     throw new ApiRequestError(response.status, readError(text, response.status));
   }
 

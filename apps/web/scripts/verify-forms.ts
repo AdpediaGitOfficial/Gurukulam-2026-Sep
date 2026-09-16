@@ -186,7 +186,12 @@ async function main(): Promise<void> {
 
   for (const testCase of cases) {
     const { id, original } = await testCase.find();
-    const want = `${original.slice(0, 20)} ${MARK}`.slice(0, 60);
+    /* `.trim()` because the contract trims: a record whose field is null gives
+       an `original` of "", and the expectation would otherwise carry a leading
+       space the API correctly strips — which reads as a failed save when the
+       save was perfect. Whether that happens depends on which row
+       `findFirstOrThrow` returns, so it surfaced as a flake. */
+    const want = `${original.slice(0, 20)} ${MARK}`.trim().slice(0, 60);
     try {
       const problem = await submitEdit(page, testCase.route(id), testCase.field, want);
       if (problem !== null) {

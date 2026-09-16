@@ -1,8 +1,13 @@
 import "server-only";
 
-import { jobPostingSchema,
-  hiringSummarySchema, type JobPosting,
-  type HiringSummary, type Page } from "@gurukulam/contracts";
+import {
+  jobPostingSchema,
+  hiringSummarySchema,
+  type JobPosting,
+  type HiringSummary,
+  type Page,
+  jobQuerySchema,
+} from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
@@ -10,7 +15,7 @@ import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 export const JOB_FILTERS = [...PAGE_KEYS, "status", "courseId"] as const;
 
 export async function listJobs(params: SearchParams): Promise<Page<JobPosting>> {
-  return fetchPage("/hiring", jobPostingSchema, params, JOB_FILTERS);
+  return fetchPage("/hiring", jobPostingSchema, params, JOB_FILTERS, jobQuerySchema);
 }
 
 /** One posting, with its audience rules and the reach they currently give it. */

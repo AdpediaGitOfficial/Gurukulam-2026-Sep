@@ -1,5 +1,10 @@
 import "server-only";
-import { requirementSchema, type Page, type Requirement } from "@gurukulam/contracts";
+import {
+  requirementSchema,
+  type Page,
+  type Requirement,
+  requirementQuerySchema,
+} from "@gurukulam/contracts";
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
@@ -11,7 +16,13 @@ export const REQUIREMENT_FILTERS = [...PAGE_KEYS, "collegeId", "courseId", "stat
  * always carries the batch code it produced.
  */
 export async function listRequirements(params: SearchParams): Promise<Page<Requirement>> {
-  return fetchPage("/colleges/requirements", requirementSchema, params, REQUIREMENT_FILTERS);
+  return fetchPage(
+    "/colleges/requirements",
+    requirementSchema,
+    params,
+    REQUIREMENT_FILTERS,
+    requirementQuerySchema,
+  );
 }
 
 /** One requirement, with the batch it produced if it has been confirmed. */

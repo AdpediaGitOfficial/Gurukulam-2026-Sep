@@ -13,6 +13,8 @@ import {
   type SessionDetail,
   type TrainerCandidate,
   type Page,
+  batchQuerySchema,
+  sessionQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -29,10 +31,17 @@ export const BATCH_FILTERS = [
 ] as const;
 
 export async function listBatches(params: SearchParams): Promise<Page<Batch>> {
-  return fetchPage("/batches", batchSchema, params, BATCH_FILTERS);
+  return fetchPage("/batches", batchSchema, params, BATCH_FILTERS, batchQuerySchema);
 }
 
-export const SESSION_FILTERS = [...PAGE_KEYS, "batchId", "trainerId", "status", "from", "to"] as const;
+export const SESSION_FILTERS = [
+  ...PAGE_KEYS,
+  "batchId",
+  "trainerId",
+  "status",
+  "from",
+  "to",
+] as const;
 
 /**
  * Every session across every batch.
@@ -41,7 +50,13 @@ export const SESSION_FILTERS = [...PAGE_KEYS, "batchId", "trainerId", "status", 
  * session is a login — the two would collide in every import otherwise.
  */
 export async function listSessions(params: SearchParams): Promise<Page<BatchSession>> {
-  return fetchPage("/batches/sessions", batchSessionSchema, params, SESSION_FILTERS);
+  return fetchPage(
+    "/batches/sessions",
+    batchSessionSchema,
+    params,
+    SESSION_FILTERS,
+    sessionQuerySchema,
+  );
 }
 
 /** One batch with its roster counts and trainer assignments. */

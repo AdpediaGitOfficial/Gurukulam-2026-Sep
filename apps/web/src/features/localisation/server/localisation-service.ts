@@ -1,6 +1,14 @@
 import "server-only";
 
-import { citySchema, countrySchema, type City, type Country, type Page } from "@gurukulam/contracts";
+import {
+  citySchema,
+  countrySchema,
+  type City,
+  type Country,
+  type Page,
+  countryQuerySchema,
+  cityQuerySchema,
+} from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
@@ -16,11 +24,17 @@ export const CITY_FILTERS = [...PAGE_KEYS, "countryId", "isActive"] as const;
  * so the list is also the vocabulary the permission model draws on.
  */
 export async function listCountries(params: SearchParams): Promise<Page<Country>> {
-  return fetchPage("/localisation/countries", countrySchema, params, COUNTRY_FILTERS);
+  return fetchPage(
+    "/localisation/countries",
+    countrySchema,
+    params,
+    COUNTRY_FILTERS,
+    countryQuerySchema,
+  );
 }
 
 export async function listCities(params: SearchParams): Promise<Page<City>> {
-  return fetchPage("/localisation/cities", citySchema, params, CITY_FILTERS);
+  return fetchPage("/localisation/cities", citySchema, params, CITY_FILTERS, cityQuerySchema);
 }
 
 /**

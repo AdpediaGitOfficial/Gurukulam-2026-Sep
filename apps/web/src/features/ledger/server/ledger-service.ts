@@ -12,6 +12,8 @@ import {
   type LedgerRegisterSummary,
   type Page,
   type Receipt,
+  ledgerQuerySchema,
+  contractQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -35,7 +37,7 @@ export const LEDGER_FILTERS = [
  * under a contract instead, which is the `/fee-ledger/contracts` list.
  */
 export async function listLedgers(params: SearchParams): Promise<Page<LedgerSummary>> {
-  return fetchPage("/fee-ledger", ledgerSummarySchema, params, LEDGER_FILTERS);
+  return fetchPage("/fee-ledger", ledgerSummarySchema, params, LEDGER_FILTERS, ledgerQuerySchema);
 }
 
 export const CONTRACT_FILTERS = [...PAGE_KEYS, "collegeId", "courseId", "status"] as const;
@@ -45,7 +47,13 @@ export const CONTRACT_FILTERS = [...PAGE_KEYS, "collegeId", "courseId", "status"
  * installment engine, two parents, and exactly one of them is set per schedule.
  */
 export async function listContracts(params: SearchParams): Promise<Page<Contract>> {
-  return fetchPage("/fee-ledger/contracts", contractSchema, params, CONTRACT_FILTERS);
+  return fetchPage(
+    "/fee-ledger/contracts",
+    contractSchema,
+    params,
+    CONTRACT_FILTERS,
+    contractQuerySchema,
+  );
 }
 
 /** One student's ledger: the schedule, with the receipts posted against each row. */

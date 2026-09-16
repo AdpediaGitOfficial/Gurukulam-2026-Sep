@@ -9,6 +9,8 @@ import {
   type AdminUser,
   type Page,
   type Role,
+  roleQuerySchema,
+  adminUserQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -20,12 +22,16 @@ export async function getAccount(): Promise<Account> {
 }
 
 export async function listRoles(params: SearchParams): Promise<Page<Role>> {
-  const response = await apiFetch(`/settings/roles${queryString(params, PAGE_KEYS)}`);
+  const response = await apiFetch(
+    `/settings/roles${queryString(params, PAGE_KEYS, roleQuerySchema)}`,
+  );
   return pageOf(roleSchema).parse(response) as Page<Role>;
 }
 
 export async function listAdministrators(params: SearchParams): Promise<Page<AdminUser>> {
-  const response = await apiFetch(`/settings/administrators${queryString(params, PAGE_KEYS)}`);
+  const response = await apiFetch(
+    `/settings/administrators${queryString(params, PAGE_KEYS, adminUserQuerySchema)}`,
+  );
   return pageOf(adminUserSchema).parse(response) as Page<AdminUser>;
 }
 

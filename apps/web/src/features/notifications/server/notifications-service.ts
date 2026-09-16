@@ -1,6 +1,11 @@
 import "server-only";
 import {
-  bellSchema, notificationSchema, type Bell, type Notification, type Page,
+  bellSchema,
+  notificationSchema,
+  type Bell,
+  type Notification,
+  type Page,
+  notificationQuerySchema,
 } from "@gurukulam/contracts";
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
@@ -8,7 +13,13 @@ import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 export const NOTIFICATION_FILTERS = [...PAGE_KEYS, "class", "status"] as const;
 
 export async function listNotifications(params: SearchParams): Promise<Page<Notification>> {
-  return fetchPage("/notifications", notificationSchema, params, NOTIFICATION_FILTERS);
+  return fetchPage(
+    "/notifications",
+    notificationSchema,
+    params,
+    NOTIFICATION_FILTERS,
+    notificationQuerySchema,
+  );
 }
 
 /**

@@ -14,6 +14,9 @@ import {
   studentSummarySchema,
   type AssignmentSubmission,
   type StudentSummary,
+  studentQuerySchema,
+  batchQuerySchema,
+  assignmentSubmissionQuerySchema,
 } from "@gurukulam/contracts";
 
 import { BATCH_FILTERS } from "@/features/batches/server/batches-service";
@@ -33,7 +36,7 @@ export const STUDENT_FILTERS = [
 ] as const;
 
 export async function listStudents(params: SearchParams): Promise<Page<Student>> {
-  return fetchPage("/students", studentSchema, params, STUDENT_FILTERS);
+  return fetchPage("/students", studentSchema, params, STUDENT_FILTERS, studentQuerySchema);
 }
 
 /**
@@ -49,7 +52,13 @@ export async function getUnallocatedSummary(): Promise<UnallocatedSummary> {
 
 /** The working queue itself: students with no live batch mapping. */
 export async function listUnallocated(params: SearchParams): Promise<Page<Student>> {
-  return fetchPage("/students", studentSchema, { ...params, allocated: "false" }, STUDENT_FILTERS);
+  return fetchPage(
+    "/students",
+    studentSchema,
+    { ...params, allocated: "false" },
+    STUDENT_FILTERS,
+    studentQuerySchema,
+  );
 }
 
 /** One student's record, with where they are enrolled and what they owe. */
@@ -74,8 +83,12 @@ export async function listJoinableBatches(student: StudentDetail): Promise<Page<
       ? { segment: "RETAIL", status: "SCHEDULED", pageSize: "100" }
       : { collegeId: student.collegeId, status: "SCHEDULED", pageSize: "100" },
     BATCH_FILTERS,
+    batchQuerySchema,
   );
-  return { ...page, rows: page.rows.filter((batch) => !already.has(batch.batchId)) };
+  return {
+    ...page,
+    rows: page.rows.filter((batch) => !already.has(batch.batchId)),
+  };
 }
 
 /**
@@ -96,6 +109,7 @@ export async function listStudentSubmissions(
     assignmentSubmissionSchema,
     { ...params, studentId, pageSize: params["pageSize"] ?? "50" },
     SUBMISSION_FILTERS,
+    assignmentSubmissionQuerySchema,
   );
 }
 

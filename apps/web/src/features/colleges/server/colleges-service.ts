@@ -17,6 +17,11 @@ import {
   type CollegeUser,
   type Page,
   type Student,
+  collegeQuerySchema,
+  studentQuerySchema,
+  batchQuerySchema,
+  contactQuerySchema,
+  portalAccessQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -39,7 +44,7 @@ export const ACCESS_FILTERS = [...PAGE_KEYS, "collegeId", "cityId", "accessStatu
  * would not be a scope.
  */
 export async function listColleges(params: SearchParams): Promise<Page<College>> {
-  return fetchPage("/colleges", collegeSchema, params, COLLEGE_FILTERS);
+  return fetchPage("/colleges", collegeSchema, params, COLLEGE_FILTERS, collegeQuerySchema);
 }
 
 /** One college with its points of contact. Exactly one contact is primary. */
@@ -58,7 +63,13 @@ export async function listCollegeStudents(
   collegeId: string,
   params: SearchParams,
 ): Promise<Page<Student>> {
-  return fetchPage("/students", studentSchema, { ...params, collegeId }, STUDENT_FILTERS);
+  return fetchPage(
+    "/students",
+    studentSchema,
+    { ...params, collegeId },
+    STUDENT_FILTERS,
+    studentQuerySchema,
+  );
 }
 
 /**
@@ -70,7 +81,13 @@ export async function listCollegeStudents(
  * many there are and link to the rest rather than rendering all of them.
  */
 export async function listCollegeBatches(collegeId: string): Promise<Page<Batch>> {
-  return fetchPage("/batches", batchSchema, { collegeId, pageSize: "10" }, BATCH_FILTERS);
+  return fetchPage(
+    "/batches",
+    batchSchema,
+    { collegeId, pageSize: "10" },
+    BATCH_FILTERS,
+    batchQuerySchema,
+  );
 }
 
 /**
@@ -80,9 +97,7 @@ export async function listCollegeBatches(collegeId: string): Promise<Page<Batch>
  * returns the lot.
  */
 export async function listPortalAccess(collegeId: string): Promise<CollegeUser[]> {
-  return z
-    .array(collegeUserSchema)
-    .parse(await apiFetch(`/colleges/${collegeId}/access`));
+  return z.array(collegeUserSchema).parse(await apiFetch(`/colleges/${collegeId}/access`));
 }
 
 /**
@@ -94,7 +109,13 @@ export async function listPortalAccess(collegeId: string): Promise<CollegeUser[]
  * portal, which is the gap this view exists to make visible.
  */
 export async function listContacts(params: SearchParams): Promise<Page<CollegeContact>> {
-  return fetchPage("/colleges/contacts", collegeContactSchema, params, CONTACT_FILTERS);
+  return fetchPage(
+    "/colleges/contacts",
+    collegeContactSchema,
+    params,
+    CONTACT_FILTERS,
+    contactQuerySchema,
+  );
 }
 
 /**
@@ -104,7 +125,13 @@ export async function listContacts(params: SearchParams): Promise<Page<CollegeCo
  * accounts, the estate has as many as there are colleges.
  */
 export async function listAllPortalAccess(params: SearchParams): Promise<Page<CollegeUser>> {
-  return fetchPage("/colleges/access", collegeUserSchema, params, ACCESS_FILTERS);
+  return fetchPage(
+    "/colleges/access",
+    collegeUserSchema,
+    params,
+    ACCESS_FILTERS,
+    portalAccessQuerySchema,
+  );
 }
 
 /** The directory's headline figures, scoped exactly as the list is. */

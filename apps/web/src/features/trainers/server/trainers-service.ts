@@ -11,6 +11,8 @@ import {
   type Page,
   type Trainer,
   type TrainerDetail,
+  trainerQuerySchema,
+  calendarQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -25,7 +27,7 @@ export const TRAINER_FILTERS = [
 ] as const;
 
 export async function listTrainers(params: SearchParams): Promise<Page<Trainer>> {
-  return fetchPage("/trainers", trainerSchema, params, TRAINER_FILTERS);
+  return fetchPage("/trainers", trainerSchema, params, TRAINER_FILTERS, trainerQuerySchema);
 }
 
 /** One trainer with the courses they are approved to deliver. */
@@ -44,9 +46,7 @@ export async function getTrainer(trainerId: string): Promise<TrainerDetail> {
  * the other.
  */
 export async function listAvailability(trainerId: string): Promise<Availability[]> {
-  return z
-    .array(availabilitySchema)
-    .parse(await apiFetch(`/trainers/${trainerId}/availability`));
+  return z.array(availabilitySchema).parse(await apiFetch(`/trainers/${trainerId}/availability`));
 }
 
 export const CALENDAR_FILTERS = ["from", "to", "cityId", "courseId", "freeOnly"] as const;
@@ -65,5 +65,9 @@ export const CALENDAR_FILTERS = ["from", "to", "cityId", "courseId", "freeOnly"]
 export async function getCalendar(params: SearchParams): Promise<CalendarEntry[]> {
   return z
     .array(calendarEntrySchema)
-    .parse(await apiFetch(`/trainers/calendar${queryString(params, CALENDAR_FILTERS)}`));
+    .parse(
+      await apiFetch(
+        `/trainers/calendar${queryString(params, CALENDAR_FILTERS, calendarQuerySchema)}`,
+      ),
+    );
 }

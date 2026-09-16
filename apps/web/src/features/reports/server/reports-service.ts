@@ -8,6 +8,7 @@ import {
   type Measure,
   type ReportCatalogueEntry,
   type ReportMeta,
+  reportQuerySchema,
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
@@ -47,7 +48,16 @@ export interface Report<TRow> {
 }
 
 /** Filters every report accepts, on top of its window. */
-const REPORT_FILTERS = ["from", "to", "compare", "cityId", "collegeId", "courseId", "batchId", "segment"] as const;
+const REPORT_FILTERS = [
+  "from",
+  "to",
+  "compare",
+  "cityId",
+  "collegeId",
+  "courseId",
+  "batchId",
+  "segment",
+] as const;
 
 /**
  * Runs one report.
@@ -65,7 +75,11 @@ export async function runReport<TRow extends z.ZodTypeAny>(
   row: TRow,
   params: SearchParams,
 ): Promise<Report<z.infer<TRow>>> {
-  const query = queryString({ ...defaultWindow(params), ...params }, REPORT_FILTERS);
+  const query = queryString(
+    { ...defaultWindow(params), ...params },
+    REPORT_FILTERS,
+    reportQuerySchema,
+  );
   const response = await apiFetch(`/reports/${key}${query}`);
   return reportEnvelope(row).parse(response) as Report<z.infer<TRow>>;
 }
@@ -83,8 +97,12 @@ export async function runReport<TRow extends z.ZodTypeAny>(
  * began last April. A calendar-year default would split each year's
  * collections across two reports.
  */
-export function defaultWindow(params: SearchParams): { from: string; to: string } {
-  const from = typeof params["from"] === "string" && params["from"] !== "" ? params["from"] : undefined;
+export function defaultWindow(params: SearchParams): {
+  from: string;
+  to: string;
+} {
+  const from =
+    typeof params["from"] === "string" && params["from"] !== "" ? params["from"] : undefined;
   const to = typeof params["to"] === "string" && params["to"] !== "" ? params["to"] : undefined;
   if (from !== undefined && to !== undefined) return { from, to };
 
