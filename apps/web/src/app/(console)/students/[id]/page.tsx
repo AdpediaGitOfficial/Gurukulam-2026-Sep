@@ -69,7 +69,17 @@ export default async function StudentDetailPage({
             >
               Edit
             </Link>
-            {student.isAllocated === true ? null : (
+            {/* Only once they are on a roster: a certificate names the
+                delivery it certifies, so there is nothing to issue against an
+                unallocated student. */}
+            {student.isAllocated === true ? (
+              <Link
+                href={`/students/${student.studentId}/certificate`}
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                Issue a certificate
+              </Link>
+            ) : (
               <Link
                 href={`/students/${student.studentId}/allocate`}
                 className={buttonVariants({ variant: "primary" })}

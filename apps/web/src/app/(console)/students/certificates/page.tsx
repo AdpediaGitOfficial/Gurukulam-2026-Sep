@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { Certificate } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { buttonVariants } from "@/components/ui/button";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -28,12 +30,15 @@ const COLUMNS: Column<Certificate>[] = [
     // Never reused, deleted or not — receipts, reports and the public verifier
     // all point at it.
     cell: (row) => (
-      <div className="flex flex-col">
+      <Link
+        href={`/students/certificates/${row.certificateId}`}
+        className="flex flex-col hover:underline"
+      >
         <span className="font-mono text-body-sm text-ink">{row.certificateNumber}</span>
         <span className="font-mono text-caption text-ink-subtle">
           verify: {row.verificationCode}
         </span>
-      </div>
+      </Link>
     ),
   },
   {
@@ -120,6 +125,15 @@ export default async function CertificatesPage({
       eyebrow="Students"
       title="Certificates"
       description="Issued on course completion in both segments. A retail student downloads their own; a college downloads its students’."
+      action={
+        /* Issuing starts from the STUDENT, because a certificate certifies one
+           of their deliveries and the eligibility check needs to know which.
+           A college's certificates do not start here at all — they come from a
+           reviewed list (invariant 18). */
+        <Link href="/colleges/submissions" className={buttonVariants({ variant: "secondary" })}>
+          College lists
+        </Link>
+      }
       toolbar={
         <ListFilters
           params={params}

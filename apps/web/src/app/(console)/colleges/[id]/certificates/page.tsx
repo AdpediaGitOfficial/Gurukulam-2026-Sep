@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -141,6 +142,25 @@ export default async function CollegeCertificatesPage({
           { label: college.name, href: `/colleges/${college.collegeId}` },
           { label: "Certificates" },
         ]}
+        action={
+          /* Where a certificate for this college actually comes FROM
+             (invariant 18): a list of names, reviewed row by row. Nothing on
+             this screen can be issued from this screen. */
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/colleges/submissions?collegeId=${college.collegeId}`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Certificate lists
+            </Link>
+            <Link
+              href={`/colleges/submissions/new?collegeId=${college.collegeId}`}
+              className={buttonVariants({ variant: "primary" })}
+            >
+              File a list
+            </Link>
+          </div>
+        }
       />
 
       <Alert intent="info" title="The institution downloads these, not the student">

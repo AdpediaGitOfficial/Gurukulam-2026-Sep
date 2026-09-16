@@ -61,6 +61,7 @@ export const primaryNavItems: readonly NavItem[] = [
       { href: "/colleges", label: "All colleges" },
       { href: "/colleges/contacts", label: "Contacts" },
       { href: "/colleges/requirements", label: "Requirements" },
+      { href: "/colleges/submissions", label: "Certificate lists" },
       { href: "/colleges/access", label: "Portal access" },
     ],
   },
