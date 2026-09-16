@@ -45,19 +45,22 @@ export class DashboardService {
       ...collegeScope(principal, "collegeId"),
     };
 
-    const [headline, actions, collections, delivery, topCourses, trainerLoad] = await Promise.all([
-      this.headline(principal, studentScope, collegeWhere),
-      this.actions(principal, studentScope, batchScope, collegeWhere),
-      this.collections(principal, studentScope, collegeWhere),
-      this.delivery(batchScope, studentScope),
-      this.topCourses(batchScope, studentScope),
-      this.trainerLoad(principal),
-    ]);
+    const [headline, actions, collections, trend, delivery, topCourses, trainerLoad] =
+      await Promise.all([
+        this.headline(principal, studentScope, collegeWhere),
+        this.actions(principal, studentScope, batchScope, collegeWhere),
+        this.collections(principal, studentScope, collegeWhere),
+        this.trend(principal, studentScope, collegeWhere),
+        this.delivery(batchScope, studentScope),
+        this.topCourses(batchScope, studentScope),
+        this.trainerLoad(principal),
+      ]);
 
     return {
       headline,
       actions,
       collections,
+      trend,
       delivery,
       topCourses,
       trainerLoad,
@@ -182,6 +185,131 @@ export class DashboardService {
       collected: segmented(n(ledgers._sum.totalPaidMinor), n(contracts._sum.totalPaidMinor)),
       outstanding: segmented(n(ledgers._sum.balancePendingMinor), n(contracts._sum.balancePendingMinor)),
       overdue: segmented(retailOverdueMinor, collegeOverdueMinor),
+    };
+  }
+
+
+  /**
+   * Twelve months of history, oldest first.
+   *
+   * **Every month is present, including the empty ones.** A series that drops
+   * the months where nothing happened draws a straight line through the
+   * quarter where collections stopped — which is precisely the shape somebody
+   * needed to see. So the buckets are built first and the rows are dropped
+   * into them.
+   *
+   * A payment's segment comes from its installment's PARENT, never from a
+   * stored column: `fee_installments` carries a nullable `ledger_id` and a
+   * nullable `contract_id` with a CHECK that exactly one is set (invariant 4),
+   * so the parent IS the segment. The same reasoning as invariant 6 — a copy
+   * alongside the fact is a second fact that can disagree with it.
+   *
+   * Two queries, not twenty-four. Grouping in the database and bucketing here
+   * is one round trip per series; a month-by-month loop would be twelve.
+   */
+  private async trend(
+    principal: Principal,
+    studentScope: Prisma.StudentWhereInput,
+    collegeWhere: Prisma.CollegeWhereInput,
+  ): Promise<Dashboard["trend"]> {
+    const MONTHS = 12;
+    const now = new Date();
+    // UTC throughout. A month boundary in local time puts a payment taken at
+    // 11pm on the 31st into the wrong bucket for half the world.
+    const startOfMonth = (offset: number): Date =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1));
+
+    const from = startOfMonth(MONTHS - 1);
+    const key = (date: Date): string => date.toISOString().slice(0, 7);
+
+    const buckets = new Map<string, { retailMinor: bigint; collegeMinor: bigint; retail: number; college: number }>();
+    for (let i = MONTHS - 1; i >= 0; i -= 1) {
+      buckets.set(key(startOfMonth(i)), { retailMinor: 0n, collegeMinor: 0n, retail: 0, college: 0 });
+    }
+
+    const [payments, enrolments] = await Promise.all([
+      this.prisma.paymentTransaction.findMany({
+        where: {
+          ...liveOnly(),
+          paidAt: { gte: from },
+          // Scope reaches a payment through whichever parent its installment
+          // has, which is also what tells us its segment.
+          installment: {
+            deletedAt: null,
+            OR: [
+              { ledger: { deletedAt: null, student: studentScope } },
+              { contract: { deletedAt: null, college: collegeWhere } },
+            ],
+          },
+        },
+        select: {
+          amountMinor: true,
+          paidAt: true,
+          // A REVERSAL is stored positive with this flag rather than as a
+          // negative amount (the CHECK forbids negatives), and
+          // `recordPayment`'s own comment warns about "a report that sums the
+          // column without reading the flag". This is that report, so it reads
+          // the flag.
+          isReversal: true,
+          installment: { select: { ledgerId: true, contractId: true } },
+        },
+      }),
+      this.prisma.studentBatchMapping.findMany({
+        where: {
+          ...liveOnly(),
+          enrolledAt: { gte: from },
+          student: studentScope,
+          batch: { ...liveOnly(), ...cityScope(principal), ...collegeScope(principal) },
+        },
+        select: { enrolledAt: true, student: { select: { enrolmentChannel: true } } },
+      }),
+    ]);
+
+    for (const payment of payments) {
+      const bucket = buckets.get(key(payment.paidAt));
+      if (bucket === undefined) continue;
+      /* A reversal SUBTRACTS, in the month it was recorded rather than the
+         month of the payment it reverses. That is what actually happened to
+         the money: it arrived in one month and went back out in another, and
+         restating the earlier month would silently change a figure somebody
+         has already reported. */
+      const signed = payment.isReversal ? -payment.amountMinor : payment.amountMinor;
+      // Exactly one of the two is set — the CHECK guarantees it — so this is a
+      // resolution, not a guess.
+      if (payment.installment.contractId !== null) bucket.collegeMinor += signed;
+      else bucket.retailMinor += signed;
+    }
+
+    for (const mapping of enrolments) {
+      const bucket = buckets.get(key(mapping.enrolledAt));
+      if (bucket === undefined) continue;
+      if (mapping.student.enrolmentChannel === "COLLEGE") bucket.college += 1;
+      else bucket.retail += 1;
+    }
+
+    const months = [...buckets.entries()].map(([month, b]) => ({
+      month,
+      collected: {
+        total: (b.retailMinor + b.collegeMinor).toString(),
+        retail: b.retailMinor.toString(),
+        college: b.collegeMinor.toString(),
+      },
+      enrolments: { total: b.retail + b.college, retail: b.retail, college: b.college },
+    }));
+
+    // The last two buckets are this month and the one before it. They exist
+    // even when empty, which is why this can index rather than search.
+    const blankMoney = { total: "0", retail: "0", college: "0" };
+    const blankCount = { total: 0, retail: 0, college: 0 };
+    const current = months[months.length - 1];
+    const previous = months[months.length - 2];
+
+    return {
+      months,
+      collectedThisMonth: current?.collected ?? blankMoney,
+      collectedLastMonth: previous?.collected ?? blankMoney,
+      enrolmentsThisMonth: current?.enrolments ?? blankCount,
+      enrolmentsLastMonth: previous?.enrolments ?? blankCount,
     };
   }
 

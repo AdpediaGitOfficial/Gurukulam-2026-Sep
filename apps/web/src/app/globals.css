@@ -47,6 +47,15 @@
   --color-accent: #f9ab00;
   --color-accent-glow: #ffddb0;
   --color-gold: #805600;
+
+  /* Chart series: retail and college, the one distinction the whole product
+     turns on. Kept as their own tokens rather than reusing --color-accent
+     because that amber sits at 1.88:1 on a white card — fine behind a label,
+     too light to carry meaning alone in a plot. These two were checked with a
+     palette validator: CVD separation ΔE 28.9 (protan) and 23.1 (tritan),
+     normal-vision ΔE 33.2, both above 3:1 on the chart surface. */
+  --color-series-retail: #0058bb;
+  --color-series-college: #b07a00;
   --color-rail: #b63a13;
   --color-rail-raised: #b53a13;
 

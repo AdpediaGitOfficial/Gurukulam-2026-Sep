@@ -32,6 +32,19 @@ export const feedbackTextTokens = {
   neutral: "var(--color-ink-muted)",
 } as const satisfies Record<keyof typeof feedbackTokens, string>;
 
+/**
+ * The two series every chart splits on.
+ *
+ * Retail bills the student, college bills the institution — the distinction
+ * the whole product turns on, so it gets one pair of colours used everywhere
+ * and never reassigned. Colour follows the ENTITY: a filter that drops one
+ * series must not repaint the other.
+ */
+export const seriesTokens = {
+  retail: "var(--color-series-retail)",
+  college: "var(--color-series-college)",
+} as const;
+
 export const domainTokens = {
   students: "var(--color-domain-students)",
   trainers: "var(--color-domain-trainers)",

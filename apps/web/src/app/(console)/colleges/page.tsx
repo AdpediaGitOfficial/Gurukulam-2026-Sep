@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { can, formatRupees, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
+import { can, formatRupees, formatRupeesShort, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -182,8 +182,8 @@ export default async function CollegesPage({
             />
             <StatTile
               label="Contract value"
-              value={formatRupees(fromWire(summary.contractValueMinor), { paise: false })}
-              caption={`${formatRupees(fromWire(summary.contractOutstandingMinor), { paise: false })} outstanding`}
+              value={formatRupeesShort(fromWire(summary.contractValueMinor))}
+              caption={`${formatRupeesShort(fromWire(summary.contractOutstandingMinor))} outstanding`}
               icon="rupee"
               color={brandTokens.gold}
               href="/fee-ledger/contracts"

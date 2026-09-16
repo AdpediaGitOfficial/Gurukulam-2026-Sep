@@ -86,10 +86,56 @@ export const trainerLoadSchema = z.object({
   approvedCourses: z.number().int(),
 });
 
+/**
+ * One month of history.
+ *
+ * `month` is `YYYY-MM` in UTC — a string rather than a Date because it is a
+ * BUCKET, not an instant, and serialising an instant invites a reader to
+ * subtract two of them.
+ *
+ * A payment's segment is resolved from its installment's PARENT — a retail
+ * ledger or a college contract — never from a stored column, for the same
+ * reason invariant 6 resolves a reminder's recipient that way. The parent is
+ * the fact; anything copied alongside it is a second fact that can disagree.
+ */
+export const monthlyPointSchema = z.object({
+  month: z.string(),
+  /** What was actually received that month, by when it was received. */
+  collected: segmentedMoneySchema,
+  /** Students who joined a roster that month. */
+  enrolments: segmentedCountSchema,
+});
+
+export type MonthlyPoint = z.infer<typeof monthlyPointSchema>;
+
+/**
+ * The time axis — the thing a dashboard of point-in-time counts cannot answer.
+ *
+ * "206 students" is a fact. "206 students, twelve more than last month" is the
+ * beginning of a decision, and every figure above is the first kind until
+ * something here gives it a direction.
+ *
+ * Twelve months, oldest first, INCLUDING months where nothing happened. A
+ * series that silently drops its empty months draws a flat line through a
+ * quarter where collections stopped, which is the one shape somebody needed
+ * to see.
+ */
+export const trendSchema = z.object({
+  months: z.array(monthlyPointSchema),
+  /** This calendar month so far, against the whole of the last one. */
+  collectedThisMonth: segmentedMoneySchema,
+  collectedLastMonth: segmentedMoneySchema,
+  enrolmentsThisMonth: segmentedCountSchema,
+  enrolmentsLastMonth: segmentedCountSchema,
+});
+
+export type Trend = z.infer<typeof trendSchema>;
+
 export const dashboardSchema = z.object({
   headline: headlineSchema,
   actions: actionsSchema,
   collections: collectionsSchema,
+  trend: trendSchema,
   delivery: deliverySchema,
   topCourses: z.array(coursePerformanceSchema),
   trainerLoad: z.array(trainerLoadSchema),

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatRupees, fromWire, type LedgerSummary } from "@gurukulam/contracts";
+import { formatRupees, formatRupeesShort, fromWire, type LedgerSummary } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -28,8 +28,14 @@ const STATUS = {
 } as const;
 
 /** Money is `bigint` paise from the wire to the formatter — never a float, never a number. */
-/** Tile values drop the paise — a lakh-scale total does not need them. */
-const rupees = (minor: string) => formatRupees(fromWire(minor), { paise: false });
+/**
+ * TILE values, abbreviated: ₹2.86 Cr rather than ₹2,86,55,000. A headline
+ * number is read in a glance and eight grouped digits cannot be.
+ *
+ * `money` below is the TABLE formatter and stays exact on purpose — nobody
+ * reconciles a column against "2.86 Cr".
+ */
+const rupees = (minor: string) => formatRupeesShort(fromWire(minor));
 
 /** "65.1% of enrolment", or an honest dash when there is nothing to divide by. */
 function percentOf(part: string, whole: string): string {

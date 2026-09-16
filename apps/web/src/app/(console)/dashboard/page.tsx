@@ -1,5 +1,5 @@
 import type { Metadata, Route } from "next";
-import { formatRupees, fromWire, type Dashboard } from "@gurukulam/contracts";
+import { formatRupees, formatRupeesShort, fromWire, type Dashboard } from "@gurukulam/contracts";
 
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection, SplitLayout } from "@/components/patterns/page-section";
@@ -7,6 +7,7 @@ import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Card, CardHeader } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CollectionsTrend } from "@/features/dashboard/components/collections-trend";
 import { SegmentSplit } from "@/features/dashboard/components/segment-split";
 import { getDashboard } from "@/features/dashboard/server/dashboard-service";
 import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
@@ -133,7 +134,54 @@ const TRAINER_COLUMNS: Column<TrainerLoad>[] = [
 
 export default async function DashboardPage() {
   const dashboard = await getDashboard();
-  const { headline, actions, collections, delivery, scope } = dashboard;
+  const { headline, actions, collections, trend, delivery, scope } = dashboard;
+
+  const thisMonth = fromWire(trend.collectedThisMonth.total);
+  const lastMonth = fromWire(trend.collectedLastMonth.total);
+
+  /*
+   * Month-over-month, as a percentage of the month it is compared against.
+   *
+   * Computed in MINOR UNITS through bigint arithmetic — a percentage of money
+   * is still money arithmetic, and `Number(paise)` passes 2^53 at about ₹9
+   * crore, which these figures reach.
+   *
+   * The two cases worth naming: a previous month of zero has no percentage to
+   * give (everything is an infinite rise from nothing), so it says what
+   * happened instead; and DOWN is not automatically bad here — a fall in
+   * collections is, which is why the direction is computed from the sign and
+   * the colour is left to say only that.
+   */
+  const delta = (current: bigint, previous: bigint): { text: string; direction: "up" | "down" | "flat" } => {
+    if (previous === 0n) {
+      if (current === 0n) return { text: "no change", direction: "flat" };
+      return { text: current > 0n ? "first this month" : "net negative", direction: current > 0n ? "up" : "down" };
+    }
+    const change = current - previous;
+    if (change === 0n) return { text: "no change", direction: "flat" };
+    const absPrevious = previous < 0n ? -previous : previous;
+    const percent = Number((change * 1000n) / absPrevious) / 10;
+    const rounded = Math.abs(percent) >= 10 ? Math.round(percent) : Math.round(percent * 10) / 10;
+    return {
+      text: `${rounded > 0 ? "+" : ""}${rounded}%`,
+      direction: change > 0n ? "up" : "down",
+    };
+  };
+
+  const collectedDelta = delta(thisMonth, lastMonth);
+
+  const countDelta = (current: number, previous: number): { text: string; direction: "up" | "down" | "flat" } => {
+    const change = current - previous;
+    if (change === 0) return { text: "no change", direction: "flat" };
+    // A count moves by whole people, so it reads better as a count than a
+    // percentage: "+12" is what somebody would say out loud.
+    return { text: `${change > 0 ? "+" : ""}${change}`, direction: change > 0 ? "up" : "down" };
+  };
+
+  const enrolmentDelta = countDelta(
+    trend.enrolmentsThisMonth.total,
+    trend.enrolmentsLastMonth.total,
+  );
 
   return (
     <PageBody>
@@ -177,6 +225,37 @@ export default async function DashboardPage() {
             href="/courses/question-bank"
           />
         </StatTileGrid>
+      </PageSection>
+
+      {/* This month against last, and the twelve months behind them. Kept out
+          of the headline row above: those are STANDING counts and these are a
+          period, and mixing the two invites reading "206 students" as a
+          monthly figure. */}
+      <PageSection title="This month" hideTitle>
+        <StatTileGrid>
+          <StatTile
+            label="Collected this month"
+            value={formatRupeesShort(thisMonth)}
+            caption={`Last month ${formatRupeesShort(lastMonth)}`}
+            delta={collectedDelta}
+            icon="rupee"
+            color={brandTokens.gold}
+            href="/fee-ledger"
+          />
+          <StatTile
+            label="Enrolled this month"
+            value={formatCount(trend.enrolmentsThisMonth.total)}
+            caption={`${formatCount(trend.enrolmentsThisMonth.retail)} retail · ${formatCount(trend.enrolmentsThisMonth.college)} college`}
+            delta={enrolmentDelta}
+            icon="users"
+            color={domainTokens.students}
+            href="/students"
+          />
+        </StatTileGrid>
+      </PageSection>
+
+      <PageSection title="Collections over time" hideTitle>
+        <CollectionsTrend months={trend.months} />
       </PageSection>
 
       <PageSection
