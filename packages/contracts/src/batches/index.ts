@@ -381,3 +381,66 @@ export const linkRecordingSchema = z.object({
 });
 
 export type LinkRecordingInput = z.infer<typeof linkRecordingSchema>;
+
+// ── Assignment submissions ────────────────────────────────────────────────
+
+/**
+ * What a student handed in, and what it was marked.
+ *
+ * Read-only for now, deliberately. `marks_awarded`, `feedback`, `graded_by`
+ * and `graded_at` are on the table and **nothing writes them yet** — grading
+ * is the trainer portal's, and the plan has it built as an ordinary endpoint
+ * for both actors rather than as a portal feature, because the admin console
+ * cannot grade either. Until that lands these fields read null, which is the
+ * honest answer rather than a zero.
+ */
+/* Named for the assignment, not bare `submissionStatus`: the certificates
+   module has its own submission — a college sending a cohort up for
+   certification — and two different things called the same thing in one
+   namespace is a bug waiting for a tired afternoon. */
+export const assignmentSubmissionStatusSchema = z.enum([
+  "PENDING",
+  "SUBMITTED",
+  "GRADED",
+  "LATE",
+]);
+export type AssignmentSubmissionStatus = z.infer<typeof assignmentSubmissionStatusSchema>;
+
+export const assignmentSubmissionSchema = z.object({
+  submissionId: z.string(),
+  assignmentId: z.string(),
+  assignmentCode: z.string().nullable(),
+  assignmentTitle: z.string().nullable(),
+  /** The assignment's ceiling, so a mark is legible without a second lookup. */
+  maxMarks: z.number().int().nullable(),
+  dueAt: z.string().nullable(),
+  batchId: z.string().nullable(),
+  batchCode: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  sessionTitle: z.string().nullable(),
+
+  studentId: z.string(),
+  studentCode: z.string().nullable(),
+  studentName: z.string().nullable(),
+
+  status: assignmentSubmissionStatusSchema,
+  submittedAt: z.string().nullable(),
+  fileUrl: z.string().nullable(),
+  /** Null until grading exists. Not zero — nobody has marked it. */
+  marksAwarded: z.number().int().nullable(),
+  feedback: z.string().nullable(),
+  gradedAt: z.string().nullable(),
+  createdAt: z.string(),
+  deletedAt: z.string().nullable(),
+});
+
+export type AssignmentSubmission = z.infer<typeof assignmentSubmissionSchema>;
+
+export const assignmentSubmissionQuerySchema = pageQuerySchema.extend({
+  studentId: z.string().optional(),
+  assignmentId: z.string().optional(),
+  batchId: z.string().optional(),
+  status: assignmentSubmissionStatusSchema.optional(),
+});
+
+export type AssignmentSubmissionQuery = z.infer<typeof assignmentSubmissionQuerySchema>;

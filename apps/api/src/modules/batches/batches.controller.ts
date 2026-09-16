@@ -4,11 +4,13 @@ import {
   batchQuerySchema, createAssignmentSchema, createBatchSchema, createSessionSchema,
   linkRecordingSchema, proposeTrainerSchema, releaseTrainerSchema, rescheduleSessionSchema,
   respondToProposalSchema,
+  assignmentSubmissionQuerySchema,
   sessionQuerySchema, sessionUploadSchema, updateAssignmentSchema, updateBatchSchema,
   updateSessionSchema,
   type BatchQuery, type CreateAssignmentInput, type CreateBatchInput, type CreateSessionInput,
   type LinkRecordingInput, type Principal, type ProposeTrainerInput, type ReleaseTrainerInput,
   type RescheduleSessionInput,
+  type AssignmentSubmissionQuery,
   type RespondToProposalInput, type SessionQuery, type SessionUploadInput,
   type UpdateAssignmentInput, type UpdateBatchInput,
   type UpdateSessionInput,
@@ -56,6 +58,19 @@ export class BatchesController {
     @Body(zodBody(sessionUploadSchema)) body: SessionUploadInput,
   ) {
     return this.sessions.bulkUpload(p, batchId, body);
+  }
+
+  /**
+   * What students have handed in. Read-only — nothing grades yet.
+   * Declared before ":sessionId" so it is never read as a session id.
+   */
+  @Get("submissions")
+  @RequirePermission("batches", "read")
+  listSubmissions(
+    @CurrentPrincipal() p: Principal,
+    @Query(zodBody(assignmentSubmissionQuerySchema)) q: AssignmentSubmissionQuery,
+  ) {
+    return this.sessions.listSubmissions(p, q);
   }
 
   @Get("sessions/:sessionId")

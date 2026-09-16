@@ -29,8 +29,8 @@ const MODE = { ONLINE: "Online", OFFLINE: "Offline", HYBRID: "Hybrid" } as const
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="text-right text-body-sm font-medium text-ink">{value}</dd>
+      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
     </div>
   );
 }

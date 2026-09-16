@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
-import { getStudent } from "@/features/students/server/students-service";
+import { getStudent, listStudentSubmissions } from "@/features/students/server/students-service";
 import {
   reinstateStudent,
   suspendStudent,
@@ -30,8 +30,8 @@ const money = (minor: string) => formatRupees(fromWire(minor), { paise: false })
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="text-right text-body-sm font-medium text-ink">{value}</dd>
+      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
     </div>
   );
 }
@@ -47,6 +47,7 @@ export default async function StudentDetailPage({
   const { id } = await params;
   const query = await searchParams;
   const student = await getStudent(id);
+  const submissions = await listStudentSubmissions(id);
 
   const retail = student.enrolmentChannel === "RETAIL";
 
@@ -245,6 +246,75 @@ export default async function StudentDetailPage({
                   </span>
                   <StatusPill intent={batch.status === "COMPLETED" ? "success" : "info"}>
                     {batch.status.replace(/_/g, " ").toLowerCase()}
+                  </StatusPill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </PageSection>
+
+      {/* What they have handed in. Read-only: nothing in the API grades yet, so
+          a mark reads "not marked" rather than a zero — those are different
+          answers and a zero is the one that looks like a decision. */}
+      <PageSection
+        title="Assignments"
+        description="Work set against the sessions of this student's batches, and what they have submitted."
+      >
+        <Card padding="none" className="overflow-hidden">
+          {submissions.rows.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="Nothing submitted yet"
+                description="An assignment can only be set against a session already marked delivered, so a batch early in its schedule will have none."
+              />
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {submissions.rows.map((submission) => (
+                <li
+                  key={submission.submissionId}
+                  className="flex flex-wrap items-center gap-6 border-b border-hairline p-4 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-[2]">
+                    <span className="block text-body font-semibold text-ink">
+                      {submission.assignmentTitle ?? "—"}
+                    </span>
+                    <span className="block text-caption text-ink-subtle">
+                      {[submission.batchCode, submission.sessionTitle].filter(Boolean).join(" · ") ||
+                        "—"}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Submitted</span>
+                    <span className="block text-body-sm text-ink">
+                      {submission.submittedAt === null
+                        ? "—"
+                        : new Date(submission.submittedAt).toLocaleDateString("en-IN")}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Mark</span>
+                    <span className="block text-body-sm text-ink tabular-nums">
+                      {submission.marksAwarded === null
+                        ? "Not marked"
+                        : `${submission.marksAwarded}${
+                            submission.maxMarks === null ? "" : ` / ${submission.maxMarks}`
+                          }`}
+                    </span>
+                  </span>
+                  <StatusPill
+                    intent={
+                      submission.status === "GRADED"
+                        ? "success"
+                        : submission.status === "SUBMITTED"
+                          ? "info"
+                          : submission.status === "LATE"
+                            ? "danger"
+                            : "warning"
+                    }
+                  >
+                    {submission.status.charAt(0) + submission.status.slice(1).toLowerCase()}
                   </StatusPill>
                 </li>
               ))}

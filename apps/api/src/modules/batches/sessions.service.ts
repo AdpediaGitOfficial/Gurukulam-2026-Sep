@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type {
   BatchSession, CreateAssignmentInput, CreateSessionInput, LinkRecordingInput, Page, Principal,
+  AssignmentSubmission, AssignmentSubmissionQuery,
   RescheduleSessionInput, SessionQuery, SessionUploadInput, SessionUploadLine,
   SessionUploadResult, UpdateAssignmentInput, UpdateSessionInput,
 } from "@gurukulam/contracts";
@@ -13,6 +14,7 @@ import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { parseDate } from "./batches.service";
 
 const SORTABLE = ["scheduledDate", "sequence", "createdAt"] as const;
+const SUBMISSION_SORTABLE = ["createdAt", "submittedAt", "status"] as const;
 
 /**
  * Sessions, and the things that hang off them.
@@ -658,6 +660,52 @@ export class SessionsService {
     });
   }
 
+  // ── Submissions ─────────────────────────────────────────────────────────
+
+  /**
+   * What students have handed in.
+   *
+   * READ ONLY, and that is the honest shape of it today: `assignment_
+   * submissions` carries marks_awarded, feedback, graded_by and graded_at, and
+   * **nothing in this API writes any of them**. Grading is specified as an
+   * ordinary endpoint serving both actors — an admin and a trainer mark the
+   * same row — and until that exists these come back null rather than zero,
+   * because "nobody has marked this" and "this scored nothing" are different
+   * answers and a report cannot tell them apart afterwards.
+   *
+   * Scope reaches a submission through its assignment's batch, the same two
+   * hops attendance will use: a submission has no city or college of its own.
+   */
+  async listSubmissions(
+    principal: Principal,
+    query: AssignmentSubmissionQuery,
+  ): Promise<Page<AssignmentSubmission>> {
+    const where: Prisma.AssignmentSubmissionWhereInput = {
+      ...liveOnly(query.includeDeleted),
+      assignment: {
+        deletedAt: null,
+        batch: { ...cityScope(principal), ...collegeScope(principal) },
+        ...(query.batchId ? { batchId: query.batchId } : {}),
+      },
+      ...(query.studentId ? { studentId: query.studentId } : {}),
+      ...(query.assignmentId ? { assignmentId: query.assignmentId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
+
+    return listPage(query, async () => {
+      const [rows, total] = await this.prisma.$transaction([
+        this.prisma.assignmentSubmission.findMany({
+          where,
+          orderBy: orderBy(query, SUBMISSION_SORTABLE, "createdAt", "submissionId"),
+          ...paginate(query),
+          include: SUBMISSION_INCLUDE,
+        }),
+        this.prisma.assignmentSubmission.count({ where }),
+      ]);
+      return [rows.map(toSubmission), total];
+    });
+  }
+
   // ── Recording ───────────────────────────────────────────────────────────
 
   /**
@@ -830,3 +878,38 @@ const hhmm = (value: Date): string => value.toISOString().slice(11, 16);
  * once, so this is what identifies a sitting when no code was typed.
  */
 const slotKey = (date: string, start: string): string => `${date}|${start}`;
+
+const SUBMISSION_INCLUDE = {
+  assignment: { include: { batch: { select: { batchCode: true } }, session: { select: { title: true } } } },
+  student: { select: { studentCode: true, firstName: true, lastName: true } },
+} satisfies Prisma.AssignmentSubmissionInclude;
+
+function toSubmission(
+  row: Prisma.AssignmentSubmissionGetPayload<{ include: typeof SUBMISSION_INCLUDE }>,
+): AssignmentSubmission {
+  const name = [row.student?.firstName, row.student?.lastName].filter(Boolean).join(" ");
+  return {
+    submissionId: row.submissionId,
+    assignmentId: row.assignmentId,
+    assignmentCode: row.assignment?.assignmentCode ?? null,
+    assignmentTitle: row.assignment?.title ?? null,
+    maxMarks: row.assignment?.maxMarks ?? null,
+    dueAt: row.assignment?.dueAt?.toISOString() ?? null,
+    batchId: row.assignment?.batchId ?? null,
+    batchCode: row.assignment?.batch?.batchCode ?? null,
+    sessionId: row.assignment?.sessionId ?? null,
+    sessionTitle: row.assignment?.session?.title ?? null,
+    studentId: row.studentId,
+    studentCode: row.student?.studentCode ?? null,
+    studentName: name === "" ? null : name,
+    status: row.status,
+    submittedAt: row.submittedAt?.toISOString() ?? null,
+    fileUrl: row.fileUrl,
+    // Null, never 0 — nothing writes these yet, and a zero would read as a mark.
+    marksAwarded: row.marksAwarded,
+    feedback: row.feedback,
+    gradedAt: row.gradedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    deletedAt: row.deletedAt?.toISOString() ?? null,
+  };
+}

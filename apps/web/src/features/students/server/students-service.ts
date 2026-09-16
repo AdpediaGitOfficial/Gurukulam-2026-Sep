@@ -10,6 +10,8 @@ import {
   type Student,
   type StudentDetail,
   type UnallocatedSummary,
+  assignmentSubmissionSchema,
+  type AssignmentSubmission,
 } from "@gurukulam/contracts";
 
 import { BATCH_FILTERS } from "@/features/batches/server/batches-service";
@@ -72,4 +74,25 @@ export async function listJoinableBatches(student: StudentDetail): Promise<Page<
     BATCH_FILTERS,
   );
   return { ...page, rows: page.rows.filter((batch) => !already.has(batch.batchId)) };
+}
+
+/**
+ * What this student has handed in.
+ *
+ * Read-only: nothing in the API grades yet, so marks and feedback come back
+ * null. Kept out of `getStudent` on purpose — a student with three years of
+ * coursework should not make their profile slow to open.
+ */
+export const SUBMISSION_FILTERS = [...PAGE_KEYS, "studentId", "batchId", "status"] as const;
+
+export async function listStudentSubmissions(
+  studentId: string,
+  params: SearchParams = {},
+): Promise<Page<AssignmentSubmission>> {
+  return fetchPage(
+    "/batches/submissions",
+    assignmentSubmissionSchema,
+    { ...params, studentId, pageSize: params["pageSize"] ?? "50" },
+    SUBMISSION_FILTERS,
+  );
 }
