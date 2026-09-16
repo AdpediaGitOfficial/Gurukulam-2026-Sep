@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { can } from "@gurukulam/contracts";
 import type { Question } from "@gurukulam/contracts";
 
@@ -11,6 +12,7 @@ import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { listQuestions } from "@/features/questions/server/questions-service";
+import { buttonVariants } from "@/components/ui/button";
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -33,7 +35,15 @@ const DIFFICULTY = {
  * truncating either makes the bank unreviewable — which is the one thing this
  * page exists for.
  */
-function QuestionCard({ question, mayDelete }: { question: Question; mayDelete: boolean }) {
+function QuestionCard({
+  question,
+  mayEdit,
+  mayDelete,
+}: {
+  question: Question;
+  mayEdit: boolean;
+  mayDelete: boolean;
+}) {
   const answers = new Set(question.correctAnswers ?? []);
 
   return (
@@ -54,6 +64,14 @@ function QuestionCard({ question, mayDelete }: { question: Question; mayDelete: 
         </span>
         {/* Retiring a question is soft: papers already set from it still
             explain themselves, which is why the API keeps the row. */}
+        {mayEdit ? (
+          <Link
+            href={`/courses/question-bank/${question.questionId}/edit`}
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
+            Edit
+          </Link>
+        ) : null}
         {mayDelete ? (
           <DeleteRecord
             target="question"
@@ -101,6 +119,7 @@ export default async function QuestionBankPage({
   searchParams: Promise<SearchParams>;
 }) {
   const principal = await requireModule("courses");
+  const mayEdit = can(principal, "courses", "edit");
   const mayDelete = can(principal, "courses", "delete");
   const params = await searchParams;
   const page = await listQuestions(params);
@@ -111,6 +130,13 @@ export default async function QuestionBankPage({
         eyebrow="Courses"
         title="Question bank"
         description="Assessment items by course, topic and difficulty. The bank lives under Courses because assessment belongs to a course."
+        action={
+          mayEdit ? (
+            <Link href="/courses/question-bank/new" className={buttonVariants({ variant: "primary" })}>
+              Add a question
+            </Link>
+          ) : undefined
+        }
       />
       <ModuleTabs />
 
@@ -140,7 +166,12 @@ export default async function QuestionBankPage({
         ) : (
           <ul className="flex flex-col gap-3">
             {page.rows.map((question) => (
-              <QuestionCard key={question.questionId} question={question} mayDelete={mayDelete} />
+              <QuestionCard
+                key={question.questionId}
+                question={question}
+                mayEdit={mayEdit}
+                mayDelete={mayDelete}
+              />
             ))}
           </ul>
         )}
