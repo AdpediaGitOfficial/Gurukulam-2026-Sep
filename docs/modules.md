@@ -139,6 +139,7 @@ Delivery. Sessions and assignments live inside here.
 | — Recordings | `/batches/detail/recordings` |
 | Sessions (all) | `/batches/sessions` |
 | Add / edit session | `/batches/sessions/new` · `/batches/sessions/edit` |
+| Upload sessions (bulk) | `/batches/{id}/sessions/upload` |
 | Session detail — Overview | `/batches/sessions/detail` |
 | — Assignments | `/batches/sessions/detail/assignments` |
 | — Recording | `/batches/sessions/detail/recording` |
@@ -146,8 +147,8 @@ Delivery. Sessions and assignments live inside here.
 **Entities** `batches` · `batch_sessions` · `batch_trainer_assignments` · `assignments` ·
 `session_recordings` · (`student_attendance` — schema only, UI deferred)
 
-**Operations** Batch: view/add/modify/delete. Session: view/add/modify/delete/**mark complete**.
-Assignment: add/modify/delete. Recording: link/replace/unpublish.
+**Operations** Batch: view/add/modify/delete. Session: view/add/modify/delete/**mark complete**/
+**bulk upload**. Assignment: add/modify/delete. Recording: link/replace/unpublish.
 
 **Key points**
 - `batches.college_id` nullable — set means dedicated to that college; null means retail.
@@ -158,6 +159,15 @@ Assignment: add/modify/delete. Recording: link/replace/unpublish.
   row says so rather than looking like an answer nobody gave.
 - **A session must be marked complete before assignments can be set against it.** Completion is a
   deliberate act, not a date passing; it releases the assignment tab and prompts for the recording.
+- **A schedule arrives in instalments, so an upload ADDS and never replaces.** There is no path in
+  the upload that reduces a batch's session count. Identity is the `session_code` when a row names
+  one; when it does not, `(batch, date, start time)` is the sitting — a batch cannot be in two
+  places at once — so the same file pasted twice lands on the same sessions instead of doubling the
+  fortnight. A partial unique index carries the same rule, because two operators pasting at once is
+  exactly when an in-process check is not enough. An upload cannot **move** a session: that is a
+  reschedule, and a reschedule tells the roster why.
+- A **completed** session cannot be deleted or edited — it is delivery history. What stays open on
+  one is its **recording**, which is the artefact of the sitting rather than a change to it.
 - Rescheduling notifies students, trainer and — for a college batch — the institution, from the
   same write.
 - Adding students to a batch emails them the schedule and credentials.
@@ -196,11 +206,12 @@ Two billing levels, one installment engine.
 | All students (summary) | `/fee-ledger` |
 | Student ledger | `/fee-ledger/student` |
 | Institutional contracts | `/fee-ledger/contracts` |
+| Receipt (a document, not a screen) | `/receipts/{transactionId}` |
 
 **Entities** `student_fee_ledger` · `college_contracts` · `fee_installments` · `payment_transactions`
 
-**Operations** View · Record payment · Email receipt/statement · Export. **No delete** — a receipt
-is a financial record; the correction is a reversing entry.
+**Operations** View · Record payment · **Issue receipt** · Reverse · Export. **No delete** — a
+receipt is a financial record; the correction is a reversing entry.
 
 **Key points**
 - Retail bills the **student**; college bills the **institution**. A college student has **no
@@ -215,6 +226,19 @@ is a financial record; the correction is a reversing entry.
 - Overpayment is refused at write time, not corrected afterwards.
 - Reminders resolve their recipient **from the installment's parent** — a college's students must
   never receive an invoice reminder.
+- **A receipt is issued, not stored.** Every field is derived at read time, because a receipt
+  snapshotted at payment would go on saying money was received after the entry was reversed — and
+  reversal is the only correction there is. A reversed receipt carries the reversal on its face;
+  the contra entry reads as a credit note.
+- **The receipt number is the generated `transaction_code`** (TXN-…). Business IDs are generated
+  and never typed, and a receipt number is the strongest case for that rule. The operator-typed
+  `receipt_number` column is a different thing — the bank's reference or a physical receipt book
+  number — and prints as *their* reference.
+- The receipt's payer follows the **segment**, resolved from the installment's parent exactly as a
+  reminder's recipient is: a college engagement's receipt is addressed to the institution and can
+  never be addressed to one of its students.
+- It renders as a **document** rather than a console screen — its own page, no rail — and printing
+  is the browser's job, which is where "save as PDF" comes from.
 
 ## 8. Hiring — `/hiring`
 

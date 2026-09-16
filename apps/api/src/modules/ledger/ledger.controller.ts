@@ -72,6 +72,20 @@ export class LedgerController {
     return this.ledger.recordPayment(p, body);
   }
 
+  /**
+   * The receipt for one payment — the document the payer keeps.
+   *
+   * Derived at read time rather than stored, so a receipt that was later
+   * reversed says so. Read permission, not edit: issuing a receipt changes
+   * nothing, and refusing to show one to someone who can already see the
+   * payment protects nothing.
+   */
+  @Get("payments/:transactionId/receipt")
+  @RequirePermission("feeLedger", "read")
+  receipt(@CurrentPrincipal() p: Principal, @Param("transactionId") id: string) {
+    return this.ledger.issueReceipt(p, id);
+  }
+
   @Post("payments/:transactionId/reverse")
   @HttpCode(HttpStatus.CREATED)
   @RequirePermission("feeLedger", "edit")

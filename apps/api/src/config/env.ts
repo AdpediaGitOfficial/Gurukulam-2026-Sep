@@ -56,6 +56,21 @@ const envSchema = z.object({
    */
   API_DOCS_ENABLED: z.string().optional(),
 
+  /**
+   * Who issues a receipt.
+   *
+   * The schema holds no organisation row — there is one operator, and a table
+   * with one row in it is a table waiting to grow a tenant column nobody asked
+   * for. So the issuer block is configured, and every field but the name is
+   * optional: a receipt that omits a GSTIN it does not have is honest, and one
+   * that prints a placeholder is a document somebody will file.
+   */
+  ORG_LEGAL_NAME: z.string().default("Gurukulam"),
+  ORG_ADDRESS: z.string().optional(),
+  ORG_GSTIN: z.string().optional(),
+  ORG_EMAIL: z.string().optional(),
+  ORG_PHONE: z.string().optional(),
+
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
   JWT_ACCESS_SECRET: z.string().min(16, "JWT_ACCESS_SECRET must be at least 16 characters"),

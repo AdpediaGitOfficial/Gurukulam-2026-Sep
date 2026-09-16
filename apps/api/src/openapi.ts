@@ -45,6 +45,9 @@ import {
   createContractSchema,
   recordPaymentSchema,
   paymentSchema,
+  receiptSchema,
+  sessionUploadSchema,
+  sessionUploadResultSchema,
   setScheduleSchema,
   reminderRecipientSchema,
   cronResultSchema,
@@ -140,6 +143,8 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const BatchSession = register("BatchSession", batchSessionSchema);
   const SessionPage = register("BatchSessionPage", pageOf(batchSessionSchema));
   const CreateSession = register("CreateSessionInput", createSessionSchema);
+  const SessionUpload = register("SessionUploadInput", sessionUploadSchema);
+  const SessionUploadResult = register("SessionUploadResult", sessionUploadResultSchema);
   const Assignment = register("Assignment", assignmentSchema);
   const Student = register("Student", studentSchema);
   const StudentPage = register("StudentPage", pageOf(studentSchema));
@@ -154,6 +159,7 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
   const CreateContract = register("CreateContractInput", createContractSchema);
   const RecordPayment = register("RecordPaymentInput", recordPaymentSchema);
   const Payment = register("Payment", paymentSchema);
+  const Receipt = register("Receipt", receiptSchema);
   const SetSchedule = register("SetScheduleInput", setScheduleSchema);
   const ReminderRecipient = register("ReminderRecipient", reminderRecipientSchema);
   const CronResult = register("CronResult", cronResultSchema);
@@ -513,6 +519,19 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
           responses: { "201": { description: "Recorded", content: json(Payment) }, "400": errorResponse("More than is due, or a missing transaction ID"), "409": errorResponse("Already settled, or the contract is cancelled") },
         },
       },
+      "/fee-ledger/payments/{transactionId}/receipt": {
+        get: {
+          tags: ["Fee ledger"], summary: "The receipt for one payment", parameters: [TXN_PARAM],
+          description:
+            "Derived at read time, never stored — a receipt snapshotted at payment would go on " +
+            "saying money was received after the entry was reversed, and reversal is the only " +
+            "correction this module has. Its number is the GENERATED transaction code; the " +
+            "operator-typed receiptNumber is carried separately as an external reference. The " +
+            "payer follows the segment: a college engagement's receipt is addressed to the " +
+            "institution and never to one of its students.",
+          responses: { "200": { description: "The receipt", content: json(Receipt) } },
+        },
+      },
       "/fee-ledger/payments/{transactionId}/reverse": {
         post: { tags: ["Fee ledger"], summary: "Reverse a receipt", description: "The original stays — that is the point of a reversing entry. A reversal cannot itself be reversed, and a receipt cannot be reversed twice.", parameters: [TXN_PARAM], responses: { "201": { description: "Reversed", content: json(Payment) }, "409": errorResponse("Already reversed, or is itself a reversal") } },
       },
@@ -642,6 +661,21 @@ export function buildOpenApiDocument(basePath: string): Record<string, unknown> 
       "/batches/sessions": {
         get: { tags: ["Sessions"], summary: "List sessions", description: "Scope reaches a session through its batch.", parameters: [...PAGE_PARAMS, { name: "batchId", in: "query", schema: { type: "string" } }, { name: "from", in: "query", schema: { type: "string", format: "date" } }, { name: "to", in: "query", schema: { type: "string", format: "date" } }], responses: { "200": { description: "A page of sessions", content: json(SessionPage) } } },
         post: { tags: ["Sessions"], summary: "Schedule a session", description: "The topic must belong to the batch's own course. Sequence is allocated, and the batch's confirmed trainer is inherited.", requestBody: { required: true, content: json(CreateSession) }, responses: { "201": { description: "Created", content: json(BatchSession) } } },
+      },
+      "/batches/sessions/upload/{batchId}": {
+        post: {
+          tags: ["Sessions"], summary: "Load a file of sessions into one batch", parameters: [{ name: "batchId", in: "path", required: true, schema: { type: "string" } }],
+          description:
+            "ADDS to the batch and never replaces it — there is no path here that reduces a " +
+            "schedule. A row naming a session_code updates that session; a row naming none is new, " +
+            "unless its date and start time are already taken, which identifies the same sitting " +
+            "whether or not a code was typed (the database holds the same rule as a partial unique " +
+            "index). An upload cannot MOVE a session: that is a reschedule, and a reschedule tells " +
+            "the roster why. One refused row refuses the whole file, and dryRun returns the plan " +
+            "without writing.",
+          requestBody: { required: true, content: json(SessionUpload) },
+          responses: { "201": { description: "The plan, committed or not", content: json(SessionUploadResult) }, "409": errorResponse("A day was taken between the plan and the commit") },
+        },
       },
       "/batches/sessions/{sessionId}": {
         get: { tags: ["Sessions"], summary: "One session with its assignments and recording", parameters: [SESSION_PARAM], responses: { "200": { description: "The session", content: json(BatchSession) } } },

@@ -303,3 +303,100 @@ export const cronResultSchema = z.object({
 });
 
 export type CronResult = z.infer<typeof cronResultSchema>;
+
+// ── The receipt ───────────────────────────────────────────────────────────
+
+/**
+ * A receipt is the document a payer keeps. It is issued, not stored.
+ *
+ * Every field below is derived at read time from the transaction and its
+ * parents, which is deliberate: a receipt snapshotted at payment would go on
+ * saying a reversed payment was received. Reversal is the ONLY correction a
+ * financial record has here — there is no delete anywhere in this module — so
+ * the receipt has to be able to show, afterwards, that it was reversed.
+ *
+ * **Its number is `transactionCode`**, the TXN-… generated on save. Business
+ * IDs are generated, never typed (invariant 9), and a receipt number is the
+ * strongest case for that rule there is. The separate `externalReference` is
+ * the OTHER thing: the bank's reference or the number off a physical receipt
+ * book, typed by the operator because it comes from outside this system.
+ */
+export const receiptPayerSchema = z.object({
+  /**
+   * Which one this is follows the segment, exactly as billing does
+   * (invariant 3) and exactly as a reminder's recipient does (invariant 6) —
+   * resolved from the installment's PARENT, never a stored column. A college
+   * student has no ledger, so a receipt against a college cohort is addressed
+   * to the institution and never to one of its students.
+   */
+  type: z.enum(["STUDENT", "COLLEGE"]),
+  id: z.string(),
+  code: z.string(),
+  name: z.string(),
+  email: z.string(),
+  phone: z.string().nullable(),
+  /** The institution's address on a college receipt; a student has none held. */
+  address: z.string().nullable(),
+});
+
+export type ReceiptPayer = z.infer<typeof receiptPayerSchema>;
+
+/** Who issued it. Configured, because the schema holds no organisation row. */
+export const receiptIssuerSchema = z.object({
+  name: z.string(),
+  address: z.string().nullable(),
+  gstin: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+});
+
+export const receiptSchema = z.object({
+  transactionId: z.string(),
+  /** TXN-…, generated on save. This IS the receipt number. */
+  receiptNumber: z.string(),
+  /** A reversal is a credit note; the screen says so on its face. */
+  kind: z.enum(["PAYMENT", "REVERSAL"]),
+  issuedAt: z.string(),
+  paidAt: z.string(),
+
+  amountMinor: moneyMinor,
+  /** Stated twice on purpose: figures take a pen, words do not. */
+  amountInWords: z.string(),
+  paymentMode: paymentModeSchema,
+  /** The UPI reference or bank transaction id, as typed. */
+  externalTransactionId: z.string().nullable(),
+  bankOrHandle: z.string().nullable(),
+  /** The operator's own reference — a physical receipt book number. */
+  externalReference: z.string().nullable(),
+  notes: z.string().nullable(),
+
+  payer: receiptPayerSchema,
+  issuer: receiptIssuerSchema,
+
+  /** What it was for. */
+  courseName: z.string().nullable(),
+  batchCode: z.string().nullable(),
+  installmentId: z.string(),
+  installmentNumber: z.number().int(),
+  installmentOfTotal: z.number().int(),
+  installmentAmountMinor: moneyMinor,
+  installmentDueDate: z.string(),
+
+  /** Where the account stands NOW — not where it stood when this was taken. */
+  installmentPaidMinor: moneyMinor,
+  installmentOutstandingMinor: moneyMinor,
+  accountTotalMinor: moneyMinor,
+  accountPaidMinor: moneyMinor,
+  accountOutstandingMinor: moneyMinor,
+
+  recordedByName: z.string().nullable(),
+
+  /** Set when this receipt has since been reversed — stamped across its face. */
+  reversedAt: z.string().nullable(),
+  reversedByReceiptNumber: z.string().nullable(),
+  reversalReason: z.string().nullable(),
+  /** Set when this IS the reversal, naming the receipt it corrects. */
+  reversesReceiptNumber: z.string().nullable(),
+});
+
+export type Receipt = z.infer<typeof receiptSchema>;

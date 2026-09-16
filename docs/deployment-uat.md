@@ -459,11 +459,12 @@ written and each was a "there is no option to…" on the review:
 
 ## 9a. The verification suites are not a UAT smoke test
 
-The repository carries fourteen `verify:*` scripts, and they are genuinely
+The repository carries sixteen `verify:*` scripts, and they are genuinely
 useful — but **every one of them writes to the database it is pointed at**.
 They sign in, create records through the API, assert on what came back, and
 several delete rows directly to tear their fixtures down. `verify:inhouse`
-goes further: it allocates a trainer to a real batch and then releases them.
+goes further: it allocates a trainer to a real batch and then releases them, and
+`verify:upload` loads sessions into a real batch before removing them again.
 
 Run them against a **seeded development database only**. Never against UAT once
 testers have put real content in it, and never against production.
@@ -475,6 +476,8 @@ npm run verify:paging   --workspace @gurukulam/api   # 33 — no row lost or rep
 npm run verify:rollups  --workspace @gurukulam/api   # 18 — the cross-college views
 npm run verify:inhouse  --workspace @gurukulam/api   # 19 — in-house allocation
 npm run verify:contracts --workspace @gurukulam/api  # every response matches its schema
+npm run verify:upload   --workspace @gurukulam/api   # 10 — an upload adds, never replaces
+npm run verify:receipt  --workspace @gurukulam/api   # 9  — the receipt, and its scope
 
 # This one is read-mostly and worth running against a staging box as well: it
 # attacks the controls rather than asserting about the code. It does create

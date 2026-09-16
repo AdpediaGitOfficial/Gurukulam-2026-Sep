@@ -24,6 +24,7 @@
     "verify:rollups": "tsx scripts/verify-rollups.ts",
     "verify:inhouse": "tsx scripts/verify-inhouse.ts",
     "verify:upload": "tsx scripts/verify-upload.ts",
+    "verify:receipt": "tsx scripts/verify-receipt.ts",
     "verify:security": "tsx scripts/verify-security.ts",
     "bootstrap": "tsx scripts/bootstrap.ts"
   },

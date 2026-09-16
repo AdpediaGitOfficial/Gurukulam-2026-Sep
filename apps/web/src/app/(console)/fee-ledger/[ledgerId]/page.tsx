@@ -109,6 +109,16 @@ const COLUMNS: Column<InstallmentWithPayments>[] = [
                   {payment.externalTransactionId}
                 </span>
               )}
+              {/* The document the payer keeps. It opens on its own page rather
+                  than inside the console, because a rail and a search bar are
+                  not part of a receipt. */}
+              <Link
+                href={`/receipts/${payment.transactionId}`}
+                target="_blank"
+                className="text-caption text-gold underline-offset-4 hover:underline"
+              >
+                Receipt {payment.transactionCode}
+              </Link>
             </li>
           ))}
         </ul>

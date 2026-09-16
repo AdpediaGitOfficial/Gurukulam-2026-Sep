@@ -1,11 +1,13 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
+import { rupeesInWords } from "@gurukulam/contracts";
 import type {
   Installment, LedgerDetail, LedgerQuery, LedgerSummary, Page, Payment, Principal,
-  RecordPaymentInput, ReminderRecipient, ReversePaymentInput, SetScheduleInput,
+  Receipt, RecordPaymentInput, ReminderRecipient, ReversePaymentInput, SetScheduleInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
+import { ENV, type Env } from "../../config/env";
 import { ApiException } from "../../common/errors";
 import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
@@ -27,6 +29,7 @@ export class LedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ids: IdService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async list(principal: Principal, query: LedgerQuery): Promise<Page<LedgerSummary>> {
@@ -469,6 +472,160 @@ export class LedgerService {
     }
   }
 
+  /**
+   * Issues the receipt for one payment.
+   *
+   * **Derived at read time, never snapshotted.** A receipt stored at the
+   * moment of payment would go on saying money was received after the entry
+   * was reversed — and reversal is the only correction a financial record has
+   * here, because there is no delete anywhere in this module. So the document
+   * is assembled now, and a reversed receipt carries the reversal on its face.
+   *
+   * **Its number is the transaction code**, the TXN-… generated on save.
+   * Business IDs are generated and never typed (invariant 9), and a receipt
+   * number is the strongest case for that rule there is. The operator-typed
+   * `receiptNumber` column is a different thing entirely — the bank's
+   * reference or a physical receipt book number — and it appears on the
+   * document as such.
+   *
+   * **The payer follows the segment** (invariant 3), resolved from the
+   * installment's PARENT exactly as a reminder's recipient is (invariant 6).
+   * A college student has no ledger, so a receipt against a college cohort is
+   * addressed to the institution and can never be addressed to one of its
+   * students.
+   */
+  async issueReceipt(principal: Principal, transactionId: string): Promise<Receipt> {
+    const payment = await this.prisma.paymentTransaction.findFirst({
+      where: { transactionId, deletedAt: null },
+      include: {
+        installment: {
+          include: {
+            ledger: { include: { student: true, course: true, batch: true } },
+            contract: {
+              include: {
+                course: true,
+                batch: true,
+                college: { include: { pocs: { where: { isPrimary: true, deletedAt: null }, take: 1 } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!payment) throw ApiException.notFound("Payment");
+    const installment = payment.installment;
+    this.assertInstallmentInScope(principal, installment);
+
+    // The two corrections a receipt can be party to, both read live.
+    const [reversal, reversed, recordedBy, siblings] = await Promise.all([
+      // This receipt, reversed by a later contra entry.
+      this.prisma.paymentTransaction.findFirst({
+        where: { reversesTransactionId: transactionId, deletedAt: null },
+        select: { transactionCode: true, paidAt: true, reversalReason: true },
+      }),
+      // Or this receipt IS the contra entry, and names what it corrects.
+      payment.reversesTransactionId === null ? null : this.prisma.paymentTransaction.findFirst({
+        where: { transactionId: payment.reversesTransactionId },
+        select: { transactionCode: true },
+      }),
+      payment.recordedBy === null ? null : this.prisma.adminUser.findFirst({
+        where: { adminUserId: payment.recordedBy },
+        select: { name: true },
+      }),
+      this.prisma.feeInstallment.count({
+        where: {
+          deletedAt: null,
+          ...(installment.ledgerId
+            ? { ledgerId: installment.ledgerId }
+            : { contractId: installment.contractId }),
+        },
+      }),
+    ]);
+
+    const ledger = installment.ledger;
+    const contract = installment.contract;
+
+    const payer: Receipt["payer"] = ledger
+      ? {
+          type: "STUDENT",
+          id: ledger.student.studentId,
+          code: ledger.student.studentCode,
+          name: [ledger.student.firstName, ledger.student.lastName].filter(Boolean).join(" "),
+          // The person's real address, not their login identity — receipts go
+          // to the one they actually read.
+          email: ledger.student.email,
+          phone: ledger.student.phone,
+          address: joinAddress(ledger.student.addressLine1, ledger.student.addressLine2, ledger.student.postalCode),
+        }
+      : contract
+        ? {
+            type: "COLLEGE",
+            id: contract.college.collegeId,
+            code: contract.college.collegeCode,
+            name: contract.college.name,
+            // The institution's contact, never a student of theirs.
+            email: contract.college.pocs[0]?.email ?? "",
+            phone: contract.college.pocs[0]?.phone ?? null,
+            address: joinAddress(contract.college.addressLine1, contract.college.addressLine2, contract.college.postalCode),
+          }
+        : (() => {
+            throw ApiException.invariant(
+              "That installment has no parent, which the schema forbids. Investigate the row.",
+            );
+          })();
+
+    const accountTotal = ledger
+      ? ledger.enrolmentValueMinor
+      : (contract?.totalValueMinor ?? 0n);
+    const accountPaid = ledger ? ledger.totalPaidMinor : (contract?.totalPaidMinor ?? 0n);
+
+    return {
+      transactionId: payment.transactionId,
+      receiptNumber: payment.transactionCode,
+      kind: payment.isReversal ? "REVERSAL" : "PAYMENT",
+      issuedAt: payment.createdAt.toISOString(),
+      paidAt: payment.paidAt.toISOString(),
+
+      amountMinor: payment.amountMinor.toString(),
+      amountInWords: rupeesInWords(payment.amountMinor),
+      paymentMode: payment.paymentMode,
+      externalTransactionId: payment.externalTransactionId,
+      bankOrHandle: payment.bankOrHandle,
+      externalReference: payment.receiptNumber,
+      notes: payment.notes,
+
+      payer,
+      issuer: {
+        name: this.env.ORG_LEGAL_NAME,
+        address: this.env.ORG_ADDRESS || null,
+        gstin: this.env.ORG_GSTIN || null,
+        email: this.env.ORG_EMAIL || null,
+        phone: this.env.ORG_PHONE || null,
+      },
+
+      courseName: ledger?.course.name ?? contract?.course.name ?? null,
+      batchCode: ledger?.batch?.batchCode ?? contract?.batch?.batchCode ?? null,
+      installmentId: installment.installmentId,
+      installmentNumber: installment.installmentNumber,
+      installmentOfTotal: siblings,
+      installmentAmountMinor: installment.amountMinor.toString(),
+      installmentDueDate: installment.dueDate.toISOString().slice(0, 10),
+
+      installmentPaidMinor: installment.paidAmountMinor.toString(),
+      installmentOutstandingMinor: (installment.amountMinor - installment.paidAmountMinor).toString(),
+      accountTotalMinor: accountTotal.toString(),
+      accountPaidMinor: accountPaid.toString(),
+      accountOutstandingMinor: (accountTotal - accountPaid).toString(),
+
+      recordedByName: recordedBy?.name ?? null,
+
+      reversedAt: reversal?.paidAt.toISOString() ?? null,
+      reversedByReceiptNumber: reversal?.transactionCode ?? null,
+      reversalReason: payment.isReversal ? payment.reversalReason : (reversal?.reversalReason ?? null),
+      reversesReceiptNumber: reversed?.transactionCode ?? null,
+    };
+  }
+
   private assertInstallmentInScope(
     principal: Principal,
     installment: {
@@ -581,4 +738,10 @@ export function parseTimestamp(value: string, field: string): Date {
     throw ApiException.validation({ [field]: "Enter a date like 2026-10-05" });
   }
   return parsed;
+}
+
+/** The address lines a receipt carries, with nothing invented for a blank. */
+function joinAddress(...parts: Array<string | null>): string | null {
+  const filled = parts.filter((part): part is string => Boolean(part && part.trim()));
+  return filled.length === 0 ? null : filled.join(", ");
 }
