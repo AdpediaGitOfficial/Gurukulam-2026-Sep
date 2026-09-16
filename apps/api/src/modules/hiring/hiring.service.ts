@@ -3,6 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import {
   parseRupees,
   type CreateJobInput, type JobPosting, type JobQuery, type Page, type Principal, type UpdateJobInput,
+  type HiringSummary,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";

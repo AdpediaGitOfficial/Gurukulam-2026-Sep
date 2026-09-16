@@ -6,6 +6,7 @@ import {
   type StudentQuery, type SuspendStudentInput, type UnallocatedSummary,
   type UpdateStudentInput,
   type StudentDetail,
+  type StudentSummary,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";

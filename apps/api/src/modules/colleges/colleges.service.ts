@@ -254,10 +254,7 @@ export class CollegesService {
             })),
           },
         },
-        include: {
-          city: { select: { name: true } },
-          _count: { select: { pocs: true, students: true, batches: true } },
-        },
+        include: COLLEGE_INCLUDE,
       });
         return toCollege(college);
       });
@@ -300,10 +297,7 @@ export class CollegesService {
         ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       },
-      include: {
-        city: { select: { name: true } },
-        _count: { select: { pocs: true, students: true, batches: true } },
-      },
+      include: COLLEGE_INCLUDE,
     });
     return toCollege(college);
   }
