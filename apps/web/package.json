@@ -12,7 +12,8 @@
     "verify": "npm run typecheck && npm run verify:cn",
     "verify:render": "tsx scripts/verify-render.ts",
     "verify:actions": "tsx scripts/verify-actions.ts",
-    "verify:forms": "tsx scripts/verify-forms.ts"
+    "verify:forms": "tsx scripts/verify-forms.ts",
+    "verify:coverage": "tsx scripts/verify-coverage.ts"
   },
   "dependencies": {
     "@gurukulam/contracts": "*",
