@@ -477,10 +477,6 @@ export default async function DashboardPage() {
         </StatTileGrid>
       </PageSection>
 
-      <PageSection title="Collections over time" hideTitle>
-        <CollectionsTrend months={trend.months} />
-      </PageSection>
-
       <PageSection
         title="Needs attention"
         description="Each of these is a queue that should reach zero."
@@ -663,6 +659,17 @@ export default async function DashboardPage() {
             </div>
           </Card>
         </div>
+      </PageSection>
+
+      {/* Last, deliberately.
+
+          Everything above is triage — a queue to clear, a distribution to
+          open, a list to act on. This is the only block that answers "how are
+          we doing" rather than "what needs me", and putting it under the fold
+          costs a reader one scroll while putting it above the fold cost every
+          reader a screen of mostly-flat plot before they reached the work. */}
+      <PageSection title="Collections over time" hideTitle>
+        <CollectionsTrend months={trend.months} />
       </PageSection>
 
     </PageBody>

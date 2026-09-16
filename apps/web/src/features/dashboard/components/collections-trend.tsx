@@ -30,12 +30,32 @@ import { seriesTokens } from "@/design-system/tokens";
  * does not.
  */
 
-const WIDTH = 720;
-const HEIGHT = 200;
+/**
+ * A wide, short strip rather than a square plot.
+ *
+ * The SVG scales to its container, so the viewBox's ASPECT is what decides how
+ * much of the dashboard this takes. At 720×200 a full-width card rendered it
+ * around 360px tall — and a twelve-month series that is mostly flat spent all
+ * of that on empty plot. 1200×160 is the same chart in roughly half the
+ * height, and the extra horizontal room is where twelve grouped pairs wanted
+ * to be anyway.
+ */
+const WIDTH = 1200;
+const HEIGHT = 160;
 const PAD_LEFT = 8;
 const PAD_RIGHT = 8;
-const PAD_TOP = 16;
-const PAD_BOTTOM = 34;
+const PAD_TOP = 14;
+const PAD_BOTTOM = 28;
+
+/**
+ * The widest a single bar gets.
+ *
+ * Without it, widening the viewBox widens the BARS — twelve pairs across
+ * 1200px would each be 43px, which reads as a row of blocks rather than a
+ * series. Capped, the pair keeps its shape and the spare width becomes the
+ * gutter between months.
+ */
+const MAX_BAR = 16;
 
 /** A column with its far end rounded and its baseline end square. */
 function columnPath(x: number, y: number, w: number, h: number, up: boolean): string {
@@ -95,23 +115,49 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
     );
   }
 
-  const anyNegative = points.some((p) => p.retail < 0n || p.college < 0n);
+  // How far the data actually reaches in each direction, rather than how far
+  // it is allowed to.
+  let up = 0n;
+  let down = 0n;
+  for (const p of points) {
+    for (const v of [p.retail, p.college]) {
+      if (v > up) up = v;
+      if (-v > down) down = -v;
+    }
+  }
+
   const plotHeight = HEIGHT - PAD_TOP - PAD_BOTTOM;
-  // With no negative month the baseline sits on the floor and the whole plot is
-  // above it; with one, it sits in the middle and the plot uses both halves.
-  const baseline = anyNegative ? PAD_TOP + plotHeight / 2 : PAD_TOP + plotHeight;
-  const reach = anyNegative ? plotHeight / 2 : plotHeight;
+  const span = up + down;
+
+  /**
+   * The zero line sits where the data puts it, not at the halfway mark.
+   *
+   * Pinning it to the middle the moment ANY month went negative meant a series
+   * that is mostly small positives and one large reversal drew its zero line
+   * across the centre and left the whole upper half empty — half the chart's
+   * height spent on nothing, which is most of why this card was too big.
+   *
+   * Splitting `plotHeight` by the up/down ratio uses all of it. One scale for
+   * both directions, so a bar twice as tall is still twice the money — which a
+   * per-direction scale would quietly stop being true.
+   */
+  const upHeight = span === 0n ? 0 : (Number((up * 10_000n) / span) / 10_000) * plotHeight;
+  const baseline = PAD_TOP + upHeight;
 
   /** Paise to pixels, through Number only at the last step. */
   const scale = (value: bigint): number => {
-    const ratio = Number((value * 10_000n) / peak) / 10_000;
-    return ratio * reach;
+    if (span === 0n) return 0;
+    return (Number((value * 10_000n) / span) / 10_000) * plotHeight;
   };
 
   const slot = (WIDTH - PAD_LEFT - PAD_RIGHT) / points.length;
   // 2px of surface between the two bars in a pair, and a clear gutter between
   // pairs, so a month reads as one group rather than twenty-four bars.
-  const barWidth = Math.max(3, (slot - 10) / 2 - 1);
+  const barWidth = Math.min(MAX_BAR, Math.max(3, (slot - 10) / 2 - 1));
+  // The pair is centred in its slot rather than left-aligned, so the month
+  // label underneath sits under the bars it names once the bars are capped.
+  const pairWidth = barWidth * 2 + 2;
+  const pairLeft = (slot - pairWidth) / 2;
 
   // One direct label, on the biggest month — a number on every column is noise,
   // and the tooltip carries the rest.
@@ -126,16 +172,19 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
 
   return (
     <Card>
+      {/* The legend rides in the header rather than claiming a row of its own.
+          Two words and two dots do not need 30px of the dashboard. */}
       <CardHeader
         as="h2"
         title="Collections over time"
         description="What was actually received each month. A reversal subtracts from the month it was recorded in."
+        action={
+          <div className="flex flex-wrap items-center gap-4">
+            <Legend color={seriesTokens.retail} label="Retail" />
+            <Legend color={seriesTokens.college} label="College" />
+          </div>
+        }
       />
-
-      <div className="mb-3 flex flex-wrap items-center gap-4">
-        <Legend color={seriesTokens.retail} label="Retail" />
-        <Legend color={seriesTokens.college} label="College" />
-      </div>
 
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -155,7 +204,7 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
         />
 
         {points.map((point, index) => {
-          const x = PAD_LEFT + index * slot + 5;
+          const x = PAD_LEFT + index * slot + pairLeft;
           const retailH = scale(point.retail < 0n ? -point.retail : point.retail);
           const collegeH = scale(point.college < 0n ? -point.college : point.college);
           const retailUp = point.retail >= 0n;
@@ -204,7 +253,7 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
                   y={
                     total >= 0n
                       ? Math.max(PAD_TOP - 4, baseline - Math.max(retailH, collegeH) - 6)
-                      : baseline - 7
+                      : Math.max(PAD_TOP - 2, baseline - 7)
                   }
                   textAnchor="middle"
                   className="fill-ink text-[11px] font-semibold"
