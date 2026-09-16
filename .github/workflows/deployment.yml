@@ -98,7 +98,23 @@ jobs:
           # "No pending migrations", and migrate deploy never ran. Every schema
           # change since this workflow was added was silently skipped.
           npx prisma migrate status --schema="${SCHEMA_PATH}" || true
-          npx prisma migrate deploy --schema="${SCHEMA_PATH}"
+          if ! npx prisma migrate deploy --schema="${SCHEMA_PATH}"; then
+            echo ""
+            echo "Migration failed. Two causes are worth recognising on sight:"
+            echo ""
+            echo "  P3005 'database schema is not empty' — this database has tables but no"
+            echo "  migration history, so Prisma will not run init over live data. It needs"
+            echo "  baselining BY A PERSON, and only after checking whether the hand-written"
+            echo "  constraints actually exist. Run:"
+            echo "    sudo -u postgres psql gurukulam -f packages/db/scripts/diagnose-schema.sql"
+            echo "  then follow docs/deploy-runbook.md section 0."
+            echo ""
+            echo "  A rejected unique index — existing rows violate a constraint being added."
+            echo "  docs/deploy-runbook.md section 1 has the query."
+            echo ""
+            echo "Nothing was rebuilt or restarted; the box is still serving the previous build."
+            exit 1
+          fi
           echo "::endgroup::"
 
           echo "::group::6. Build"

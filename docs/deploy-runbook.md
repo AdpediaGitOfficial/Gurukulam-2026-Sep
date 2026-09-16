@@ -20,6 +20,71 @@ flight* is the main way to get a broken box — see "If you must do it by hand".
 
 ---
 
+## 0. STOP — the live database has no migration history
+
+The deploy on 16 September got as far as migrating and was refused:
+
+```
+10 migrations found in prisma/migrations
+Following migrations have not yet been applied:
+20260903075419_init
+... all ten ...
+Error: P3005
+The database schema is not empty.
+```
+
+Prisma sees a database full of tables and a `_prisma_migrations` table that
+knows about **none** of them, so it refuses to run `init` over live data. This
+is right, and it has to be resolved by a person before any deploy can migrate.
+
+It went unnoticed because the workflow's migration check never matched (§7), so
+every deploy printed "No pending migrations" and skipped straight to the build.
+**The schema has been drifting from `prisma/migrations` for the life of this
+deployment.**
+
+There are two ways to arrive here and they need opposite fixes, so **diagnose
+before you touch anything**:
+
+```bash
+cd /var/www/html/gurukulam/gurukulam-claude/Gurukulam-2026-Sep
+sudo -u postgres psql gurukulam -f packages/db/scripts/diagnose-schema.sql
+```
+
+**If everything in section 2 reads `present`** — the schema was migrated
+properly and the history table was lost. Baseline it: tell Prisma what is
+already there, then deploy normally.
+
+```bash
+for m in 20260903075419_init 20260903075500_constraints 20260903091133_id_sequences \
+         20260903091817_trainer_city_relation 20260903113810_portal_login_identity \
+         20260904111720_college_user_revoke_reason 20260904121708_trainer_suspension_reason \
+         20260908120000_in_house_trainers 20260908130000_assignment_release_reason; do
+  npx prisma migrate resolve --applied "$m" --schema=./packages/db/prisma/schema.prisma
+done
+```
+
+Note what is **not** in that list: `20260916090000_session_day_uniqueness`, this
+release's migration. It genuinely has not been applied, so it is left for
+`migrate deploy` to apply for real.
+
+**If anything reads `MISSING`** — the schema came from `prisma db push` or a
+dump of one. `db push` applies the schema and skips hand-written SQL entirely,
+which means the CHECK constraints, the GENERATED columns and the live-row
+unique indexes **do not exist on production and the invariants they enforce are
+not being enforced**. Do not baseline past them. Apply that migration's SQL
+first, confirm the diagnostic turns `present`, and only then resolve it:
+
+```bash
+sudo -u postgres psql gurukulam \
+  -f packages/db/prisma/migrations/20260903075500_constraints/migration.sql
+```
+
+That file is idempotent in the parts that matter, but read it first — it drops
+and recreates three generated columns, and on a busy database that is a moment
+of downtime rather than a no-op.
+
+---
+
 ## 1. Before you push: the one thing that can fail this release
 
 Release `20260916090000_session_day_uniqueness` adds a **partial unique index**
