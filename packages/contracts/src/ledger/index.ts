@@ -110,6 +110,29 @@ export const ledgerDetailSchema = ledgerSummarySchema.extend({
 
 export type LedgerDetail = z.infer<typeof ledgerDetailSchema>;
 
+/**
+ * The register's headline figures.
+ *
+ * RETAIL ONLY by construction, like the register itself — billing follows
+ * segment, so a college student has no individual ledger to total (invariant
+ * 3). Institutional money is the contracts list and is counted there.
+ *
+ * Summed in the database in minor units: these reach lakh and crore scale,
+ * and a float loses paise on the way to the screen.
+ */
+export const ledgerRegisterSummarySchema = z.object({
+  courseValueMinor: moneyMinor,
+  discountMinor: moneyMinor,
+  enrolmentValueMinor: moneyMinor,
+  collectedMinor: moneyMinor,
+  outstandingMinor: moneyMinor,
+  /** Ledgers with at least one installment past its due date. */
+  overdueAccounts: z.number().int(),
+  ledgers: z.number().int(),
+});
+
+export type LedgerRegisterSummary = z.infer<typeof ledgerRegisterSummarySchema>;
+
 export const ledgerQuerySchema = pageQuerySchema.extend({
   studentId: z.string().optional(),
   courseId: z.string().optional(),

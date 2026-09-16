@@ -4,6 +4,8 @@ import { formatRupees, fromWire, type JobPosting } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
+import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -11,7 +13,7 @@ import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusPill } from "@/components/ui/status-pill";
-import { listJobs } from "@/features/hiring/server/hiring-service";
+import { getHiringSummary, listJobs } from "@/features/hiring/server/hiring-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -135,7 +137,7 @@ export default async function HiringPage({
 }) {
   await requireModule("hiring");
   const params = await searchParams;
-  const page = await listJobs(params);
+  const [page, summary] = await Promise.all([listJobs(params), getHiringSummary()]);
 
   return (
     <ListPage
@@ -148,11 +150,43 @@ export default async function HiringPage({
         </Link>
       }
       summary={
-        params["created"] === "1" ? (
-          <Alert intent="success" title="Saved as a draft">
-            Nobody sees it until it is published.
-          </Alert>
-        ) : null
+        <>
+          <StatTileGrid>
+            <StatTile
+              label="Published roles"
+              value={formatCount(summary.published)}
+              caption="Visible to students now"
+              icon="brief"
+              color={brandTokens.brand}
+            />
+            <StatTile
+              label="Students reached"
+              value={formatCount(summary.studentsReached)}
+              caption="Across all live postings, counted once each"
+              icon="users"
+              color={domainTokens.students}
+            />
+            <StatTile
+              label="Drafts"
+              value={formatCount(summary.drafts)}
+              caption={summary.drafts === 0 ? "Nothing waiting" : "Not visible to anyone yet"}
+              icon="task"
+              color={brandTokens.inkMuted}
+            />
+            <StatTile
+              label="Closing soon"
+              value={formatCount(summary.closingSoon)}
+              caption="Within 7 days"
+              icon="clock"
+              color={summary.closingSoon === 0 ? brandTokens.inkMuted : feedbackTokens.warning}
+            />
+          </StatTileGrid>
+          {params["created"] === "1" ? (
+            <Alert intent="success" title="Saved as a draft">
+              Nobody sees it until it is published.
+            </Alert>
+          ) : null}
+        </>
       }
       toolbar={
         <ListFilters

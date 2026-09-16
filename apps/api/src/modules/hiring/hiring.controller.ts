@@ -31,6 +31,13 @@ const previewSchema = z.object({
 export class HiringController {
   constructor(private readonly hiring: HiringService) {}
 
+  /** Headline figures for the board's tiles. Static, so before ":id". */
+  @Get("summary")
+  @RequirePermission("hiring", "read")
+  summary() {
+    return this.hiring.summary();
+  }
+
   @Get()
   @RequirePermission("hiring", "read")
   list(@CurrentPrincipal() p: Principal, @Query(zodBody(jobQuerySchema)) query: JobQuery) {

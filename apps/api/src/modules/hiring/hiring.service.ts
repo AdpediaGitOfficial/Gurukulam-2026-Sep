@@ -202,6 +202,36 @@ export class HiringService {
   }
 
   /** How many students a posting currently reaches. Computed, never stored. */
+  /**
+   * The board's headline figures.
+   *
+   * `studentsReached` is the size of the UNION of every published posting's
+   * audience, not the sum of their reaches. A student matching three postings
+   * is one student, and adding the three would report more students reached
+   * than the school has. `audienceWhere` already OR-s its rules, so pooling
+   * every published posting's rules into one call gives the union for free.
+   */
+  async summary(): Promise<HiringSummary> {
+    const live = { deletedAt: null } as const;
+    const soon = new Date(Date.now() + 7 * 86_400_000);
+
+    const [published, drafts, closingSoon, rules] = await this.prisma.$transaction([
+      this.prisma.jobPosting.count({ where: { ...live, status: "PUBLISHED" } }),
+      this.prisma.jobPosting.count({ where: { ...live, status: "DRAFT" } }),
+      this.prisma.jobPosting.count({
+        where: { ...live, status: "PUBLISHED", closingDate: { not: null, lte: soon, gte: new Date() } },
+      }),
+      this.prisma.jobAudienceRule.findMany({
+        where: { ...live, jobPosting: { ...live, status: "PUBLISHED" } },
+      }),
+    ]);
+
+    const studentsReached =
+      rules.length === 0 ? 0 : await this.prisma.student.count({ where: this.audienceWhere(rules) });
+
+    return { published, drafts, studentsReached, closingSoon };
+  }
+
   async reachOf(jobPostingId: string): Promise<number> {
     const rules = await this.prisma.jobAudienceRule.findMany({
       where: { jobPostingId, deletedAt: null },

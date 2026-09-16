@@ -51,6 +51,23 @@ export const jobPostingSchema = z.object({
 export type JobPosting = z.infer<typeof jobPostingSchema>;
 export type JobAudienceRule = z.infer<typeof jobAudienceRuleSchema>;
 
+/**
+ * The board's headline figures.
+ *
+ * `studentsReached` is the size of the UNION of every published posting's
+ * audience, not the sum of their reaches — a student who matches three
+ * postings is one student, and adding the three would report a number larger
+ * than the school.
+ */
+export const hiringSummarySchema = z.object({
+  published: z.number().int(),
+  drafts: z.number().int(),
+  studentsReached: z.number().int(),
+  closingSoon: z.number().int(),
+});
+
+export type HiringSummary = z.infer<typeof hiringSummarySchema>;
+
 export const jobQuerySchema = pageQuerySchema.extend({
   status: z.enum(["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"]).optional(),
   courseId: z.string().optional(),

@@ -2,7 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import { rupeesInWords } from "@gurukulam/contracts";
 import type {
-  Installment, LedgerDetail, LedgerQuery, LedgerSummary, Page, Payment, Principal,
+  Installment,
+  LedgerRegisterSummary, LedgerDetail, LedgerQuery, LedgerSummary, Page, Payment, Principal,
   Receipt, RecordPaymentInput, ReminderRecipient, ReversePaymentInput, SetScheduleInput,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
@@ -70,6 +71,53 @@ export class LedgerService {
   }
 
   /** The schedule lives here rather than in the register — counts reach 100. */
+  /**
+   * The register's headline figures.
+   *
+   * Scoped exactly as `list` is, and retail-only for the same reason the
+   * register is: a college student has no ledger to count (invariant 3).
+   *
+   * Summed by Postgres rather than in JavaScript — lakh-scale money, and
+   * `discount_amount_minor` is a GENERATED column, so asking the database for
+   * it is also asking the one definition of it.
+   */
+  async registerSummary(principal: Principal): Promise<LedgerRegisterSummary> {
+    const where: Prisma.StudentFeeLedgerWhereInput = {
+      ...liveOnly(),
+      student: { ...cityScope(principal), ...collegeScope(principal), deletedAt: null },
+    };
+
+    const [totals, ledgers, overdue] = await this.prisma.$transaction([
+      this.prisma.studentFeeLedger.aggregate({
+        where,
+        _sum: {
+          courseValueMinor: true,
+          discountAmountMinor: true,
+          enrolmentValueMinor: true,
+          totalPaidMinor: true,
+          balancePendingMinor: true,
+        },
+      }),
+      this.prisma.studentFeeLedger.count({ where }),
+      // An account is overdue if ANY of its installments is — counting rows
+      // would count the installments, which is a different and larger number.
+      this.prisma.studentFeeLedger.count({
+        where: { ...where, installments: { some: { deletedAt: null, status: "OVERDUE" } } },
+      }),
+    ]);
+
+    const sum = (v: bigint | null | undefined) => (v ?? 0n).toString();
+    return {
+      courseValueMinor: sum(totals._sum.courseValueMinor),
+      discountMinor: sum(totals._sum.discountAmountMinor),
+      enrolmentValueMinor: sum(totals._sum.enrolmentValueMinor),
+      collectedMinor: sum(totals._sum.totalPaidMinor),
+      outstandingMinor: sum(totals._sum.balancePendingMinor),
+      overdueAccounts: overdue,
+      ledgers,
+    };
+  }
+
   async get(principal: Principal, ledgerId: string): Promise<LedgerDetail> {
     const ledger = await this.prisma.studentFeeLedger.findFirst({
       where: { ledgerId, deletedAt: null },

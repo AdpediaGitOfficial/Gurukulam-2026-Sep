@@ -4,10 +4,12 @@ import {
   contractSchema,
   ledgerDetailSchema,
   ledgerSummarySchema,
+  ledgerRegisterSummarySchema,
   receiptSchema,
   type Contract,
   type LedgerDetail,
   type LedgerSummary,
+  type LedgerRegisterSummary,
   type Page,
   type Receipt,
 } from "@gurukulam/contracts";
@@ -60,4 +62,9 @@ export async function getLedger(ledgerId: string): Promise<LedgerDetail> {
  */
 export async function getReceipt(transactionId: string): Promise<Receipt> {
   return receiptSchema.parse(await apiFetch(`/fee-ledger/payments/${transactionId}/receipt`));
+}
+
+/** The register's headline figures, scoped exactly as the list is. */
+export async function getLedgerSummary(): Promise<LedgerRegisterSummary> {
+  return ledgerRegisterSummarySchema.parse(await apiFetch("/fee-ledger/summary"));
 }

@@ -4,12 +4,15 @@ import { formatRupees, fromWire, type LedgerSummary } from "@gurukulam/contracts
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
+import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
+import { brandTokens, feedbackTokens } from "@/design-system/tokens";
+import { formatCount } from "@/lib/format";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatusPill } from "@/components/ui/status-pill";
-import { listLedgers } from "@/features/ledger/server/ledger-service";
+import { getLedgerSummary, listLedgers } from "@/features/ledger/server/ledger-service";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { pageSummary, withParam } from "@/lib/href";
@@ -24,6 +27,17 @@ const STATUS = {
 } as const;
 
 /** Money is `bigint` paise from the wire to the formatter — never a float, never a number. */
+/** Tile values drop the paise — a lakh-scale total does not need them. */
+const rupees = (minor: string) => formatRupees(fromWire(minor), { paise: false });
+
+/** "65.1% of enrolment", or an honest dash when there is nothing to divide by. */
+function percentOf(part: string, whole: string): string {
+  const total = fromWire(whole);
+  if (total === 0n) return "Nothing enrolled yet";
+  // Integer arithmetic: money never touches a float, including its percentage.
+  return `${Number((fromWire(part) * 1000n) / total) / 10}% of enrolment`;
+}
+
 const money = (minor: string) => formatRupees(fromWire(minor), { paise: false });
 
 const COLUMNS: Column<LedgerSummary>[] = [
@@ -50,21 +64,33 @@ const COLUMNS: Column<LedgerSummary>[] = [
     ),
   },
   {
+    id: "courseValue",
+    header: "Course value",
+    align: "end",
+    // The list price before anything was negotiated.
+    cell: (row) => <span className="font-mono tabular-nums text-ink-muted">{money(row.courseValueMinor)}</span>,
+  },
+  {
+    id: "discount",
+    header: "Discount",
+    align: "end",
+    // Generated in the database as course value minus enrolment value, so it
+    // can never disagree with the two numbers either side of it.
+    cell: (row) =>
+      row.discountAmountMinor === null || fromWire(row.discountAmountMinor) === 0n ? (
+        <span className="text-ink-subtle">—</span>
+      ) : (
+        <span className="font-mono tabular-nums text-warning-strong">
+          −{money(row.discountAmountMinor)}
+        </span>
+      ),
+  },
+  {
     id: "value",
     header: "Enrolment value",
     align: "end",
     cell: (row) => (
-      <div className="flex flex-col items-end">
-        <span className="font-mono font-semibold tabular-nums">
-          {money(row.enrolmentValueMinor)}
-        </span>
-        {row.discountAmountMinor === null ||
-        fromWire(row.discountAmountMinor) === 0n ? null : (
-          <span className="font-mono text-caption text-warning-strong tabular-nums">
-            −{money(row.discountAmountMinor)}
-          </span>
-        )}
-      </div>
+      <span className="font-mono font-semibold tabular-nums">{money(row.enrolmentValueMinor)}</span>
     ),
   },
   {
@@ -137,13 +163,60 @@ export default async function FeeLedgerPage({
 }) {
   await requireModule("feeLedger");
   const params = await searchParams;
-  const page = await listLedgers(params);
+  const [page, summary] = await Promise.all([listLedgers(params), getLedgerSummary()]);
 
   return (
     <ListPage
       eyebrow="Fee ledger"
       title="Retail fee ledger"
       description="One row per student — the summary. Billing follows segment: a college student has no individual ledger, because the institution is billed under a contract instead."
+      summary={
+        /* Retail only, like the register — institutional money is counted on
+           the contracts list, because a college student has no ledger to add
+           in. Scoped as the list is, and not narrowed by the toolbar. */
+        <StatTileGrid>
+          <StatTile
+            label="Total course value"
+            value={rupees(summary.courseValueMinor)}
+            caption="Before discounts"
+            icon="book"
+            color={brandTokens.inkMuted}
+          />
+          <StatTile
+            label="Discount given"
+            value={rupees(summary.discountMinor)}
+            caption={`Across ${formatCount(summary.ledgers)} ledger${summary.ledgers === 1 ? "" : "s"}`}
+            icon="rupee"
+            color={feedbackTokens.warning}
+          />
+          <StatTile
+            label="Enrolment value"
+            value={rupees(summary.enrolmentValueMinor)}
+            caption="What students owe"
+            icon="rupee"
+            color={brandTokens.gold}
+          />
+          <StatTile
+            label="Collected"
+            value={rupees(summary.collectedMinor)}
+            caption={percentOf(summary.collectedMinor, summary.enrolmentValueMinor)}
+            icon="check"
+            color={feedbackTokens.success}
+          />
+          <StatTile
+            label="Outstanding"
+            value={rupees(summary.outstandingMinor)}
+            caption={
+              summary.overdueAccounts === 0
+                ? "Nothing past due"
+                : `${formatCount(summary.overdueAccounts)} account${summary.overdueAccounts === 1 ? "" : "s"} overdue`
+            }
+            icon="warn"
+            color={summary.overdueAccounts === 0 ? brandTokens.inkMuted : feedbackTokens.danger}
+            href="/reports/outstanding"
+          />
+        </StatTileGrid>
+      }
       toolbar={
         <ListFilters
           params={params}

@@ -23,6 +23,12 @@ export class LedgerController {
   ) {}
 
   /** Static segments before ":id" so they are never read as an id. */
+  @Get("summary")
+  @RequirePermission("feeLedger", "read")
+  registerSummary(@CurrentPrincipal() p: Principal) {
+    return this.ledger.registerSummary(p);
+  }
+
   @Get("contracts")
   @RequirePermission("feeLedger", "read")
   listContracts(@CurrentPrincipal() p: Principal, @Query(zodBody(contractQuerySchema)) q: ContractQuery) {

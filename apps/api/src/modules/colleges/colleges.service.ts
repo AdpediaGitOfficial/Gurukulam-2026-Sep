@@ -62,13 +62,7 @@ export class CollegesService {
           where,
           orderBy: orderBy(query, SORTABLE, "name", "collegeId"),
           ...paginate(query),
-          include: {
-            city: { select: { name: true } },
-            _count: { select: { pocs: true, students: true, batches: true } },
-            // The institution's portal standing is the best any of its users
-            // reached — one granted account means the college is on the portal.
-            users: { where: { deletedAt: null }, select: { accessStatus: true } },
-          },
+          include: COLLEGE_INCLUDE,
         }),
         this.prisma.college.count({ where }),
       ]);
@@ -188,8 +182,7 @@ export class CollegesService {
     const college = await this.prisma.college.findFirst({
       where: { collegeId, deletedAt: null },
       include: {
-        city: { select: { name: true } },
-        _count: { select: { pocs: true, students: true, batches: true } },
+        ...COLLEGE_INCLUDE,
         pocs: { where: { deletedAt: null }, orderBy: [{ isPrimary: "desc" }, { name: "asc" }] },
       },
     });
@@ -430,12 +423,19 @@ export class CollegesService {
   }
 }
 
-type CollegeRow = Prisma.CollegeGetPayload<{
-  include: {
-    city: { select: { name: true } };
-    _count: { select: { pocs: true; students: true; batches: true } };
-  };
-}>;
+/**
+ * What `toCollege` reads. Exported as a value so both callers pass the SAME
+ * include rather than two that happen to agree — they did not: adding the
+ * portal-status field taught the mapper to read `users`, the list fetched
+ * them and `get` did not, and every college detail page 500-ed.
+ */
+const COLLEGE_INCLUDE = {
+  city: { select: { name: true } },
+  _count: { select: { pocs: true, students: true, batches: true } },
+  users: { where: { deletedAt: null }, select: { accessStatus: true } },
+} satisfies Prisma.CollegeInclude;
+
+type CollegeRow = Prisma.CollegeGetPayload<{ include: typeof COLLEGE_INCLUDE }>;
 
 function toCollege(row: CollegeRow): College {
   return {

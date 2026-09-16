@@ -1,6 +1,8 @@
 import "server-only";
 
-import { jobPostingSchema, type JobPosting, type Page } from "@gurukulam/contracts";
+import { jobPostingSchema,
+  hiringSummarySchema, type JobPosting,
+  type HiringSummary, type Page } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
@@ -14,4 +16,9 @@ export async function listJobs(params: SearchParams): Promise<Page<JobPosting>> 
 /** One posting, with its audience rules and the reach they currently give it. */
 export async function getJob(jobPostingId: string): Promise<JobPosting> {
   return jobPostingSchema.parse(await apiFetch(`/hiring/${jobPostingId}`));
+}
+
+/** The board's headline figures. */
+export async function getHiringSummary(): Promise<HiringSummary> {
+  return hiringSummarySchema.parse(await apiFetch("/hiring/summary"));
 }
