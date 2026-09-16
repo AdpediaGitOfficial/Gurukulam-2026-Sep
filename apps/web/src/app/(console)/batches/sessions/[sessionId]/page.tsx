@@ -5,6 +5,7 @@ import { ConfirmAction } from "@/components/patterns/confirm-with-reason";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -55,7 +56,16 @@ export default async function SessionDetailPage({
           { label: session.title },
         ]}
         action={
-          delivered ? (
+          <div className="flex items-center gap-3">
+            {delivered || session.status === "CANCELLED" ? null : (
+              <Link
+                href={`/batches/sessions/${session.sessionId}/edit`}
+                className={buttonVariants({ variant: "secondary", size: "sm" })}
+              >
+                Edit
+              </Link>
+            )}
+            {delivered ? (
             <ConfirmAction
               action={reopenSession.bind(null, session.sessionId)}
               label="Reopen"
@@ -71,11 +81,16 @@ export default async function SessionDetailPage({
               variant="primary"
               size="md"
             />
-          )
+          )}
+          </div>
         }
       />
 
-      {query["completed"] === "1" ? (
+      {query["saved"] === "1" ? (
+        <Alert intent="success" title="Session saved">
+          The correction is recorded. Moving it to another day is a reschedule, which tells the roster.
+        </Alert>
+      ) : query["completed"] === "1" ? (
         <Alert intent="success" title="Marked delivered">
           Assignments can now be set against it, and its recording can be attached.
         </Alert>

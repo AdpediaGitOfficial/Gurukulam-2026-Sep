@@ -12,6 +12,7 @@ import {
   createBatchSchema,
   createSessionSchema,
   linkRecordingSchema,
+  updateSessionSchema,
   releaseTrainerSchema,
   respondToProposalSchema,
 } from "@gurukulam/contracts";
@@ -349,4 +350,45 @@ export async function uploadSessions(
     const state = apiFormError(error);
     return { status: "error", message: state.message ?? "That upload could not be read.", csv: source };
   }
+}
+
+/**
+ * Correcting a scheduled session.
+ *
+ * Deliberately NOT the date or the time. Moving a session is a reschedule: it
+ * updates in place so attendance and the recording stay attached, and it tells
+ * the roster why it moved — so it needs a reason, and it has its own action.
+ * An edit form that quietly moved a session would notify nobody.
+ *
+ * A delivered session is refused by the API ("reopen it before editing"),
+ * which is why the screen shows the fields closed rather than letting somebody
+ * fill them in and lose the typing.
+ */
+export async function updateSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = updateSessionSchema.safeParse({
+    title: text(formData, "title"),
+    topicId: clearable(formData, "topicId") ?? "",
+    trainerId: clearable(formData, "trainerId") ?? "",
+    mode: text(formData, "mode"),
+    venue: clearable(formData, "venue") ?? "",
+    meetingLink: text(formData, "meetingLink") ?? "",
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/batches/sessions/${sessionId}`, {
+      method: "PATCH",
+      body: parsed.data,
+    });
+    checkShape(batchSessionSchema, saved, "PATCH /batches/sessions/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?saved=1`);
 }

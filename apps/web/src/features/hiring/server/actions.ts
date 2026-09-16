@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createJobSchema, jobPostingSchema } from "@gurukulam/contracts";
+import { createJobSchema, jobPostingSchema, updateJobSchema } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
 import { apiFormError, fieldErrors, number, text } from "@/lib/action";
@@ -118,4 +118,72 @@ export async function closeJob(
 
   revalidatePath("/hiring");
   redirect(`/hiring/${jobPostingId}?closed=1`);
+}
+
+/**
+ * Editing a posting.
+ *
+ * The audience rules are re-sent whole rather than patched row by row: the set
+ * IS the targeting decision, and a partial update would leave a rule nobody
+ * chose. The API replaces them in one transaction for the same reason.
+ *
+ * Audience is still evaluated when the posting is READ, never written out per
+ * student — so a rule edited today re-decides who sees it, including students
+ * who enrolled since it was posted.
+ */
+export async function updateJob(
+  jobPostingId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const courseIds = formData.getAll("ruleCourseId").map(String);
+  const segments = formData.getAll("ruleSegment").map(String);
+  const years = formData.getAll("rulePassoutYear").map(String);
+  const completed = formData.getAll("ruleCompletedOnly").map(String);
+
+  const audienceRules = courseIds
+    .map((courseId, index) => ({
+      courseId: courseId.trim(),
+      ...(segments[index] === undefined || segments[index] === ""
+        ? {}
+        : { segment: segments[index] }),
+      ...(years[index] === undefined || years[index]?.trim() === ""
+        ? {}
+        : { passoutYear: Number(years[index]) }),
+      completedOnly: completed[index] === "on",
+    }))
+    .filter((rule) => rule.courseId !== "");
+
+  const parsed = updateJobSchema.safeParse({
+    roleTitle: text(formData, "roleTitle"),
+    companyName: text(formData, "companyName"),
+    location: text(formData, "location"),
+    workMode: text(formData, "workMode") ?? "ONSITE",
+    experienceMinYears: number(formData, "experienceMinYears"),
+    experienceMaxYears: number(formData, "experienceMaxYears"),
+    compensationMin: text(formData, "compensationMin"),
+    compensationMax: text(formData, "compensationMax"),
+    compensationPeriod: text(formData, "compensationPeriod"),
+    skills:
+      text(formData, "skills")
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [],
+    description: text(formData, "description"),
+    applyUrl: text(formData, "applyUrl") ?? "",
+    applyEmail: text(formData, "applyEmail") ?? "",
+    closingDate: text(formData, "closingDate"),
+    audienceRules,
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/hiring/${jobPostingId}`, { method: "PATCH", body: parsed.data });
+    checkShape(jobPostingSchema, saved, "PATCH /hiring/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/hiring/${jobPostingId}`);
+  redirect(`/hiring/${jobPostingId}?saved=1`);
 }

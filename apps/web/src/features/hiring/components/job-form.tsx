@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Course } from "@gurukulam/contracts";
+import { formatRupees, fromWire, type Course, type JobPosting } from "@gurukulam/contracts";
 
 import {
   FormSection,
@@ -16,7 +16,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SelectField } from "@/components/ui/select";
 import { TextField } from "@/components/ui/input";
-import { createJob } from "@/features/hiring/server/actions";
+import { createJob, updateJob } from "@/features/hiring/server/actions";
 
 interface RuleRow {
   id: number;
@@ -38,20 +38,38 @@ interface RuleRow {
  * and moving a student between batches cannot leave them holding a posting
  * they should no longer see.
  */
-export function JobForm({ courses }: { courses: readonly Course[] }) {
-  const [rules, setRules] = useState<RuleRow[]>([
-    { id: 0, courseId: "", segment: "", passoutYear: "", completedOnly: false },
-  ]);
-  const [nextId, setNextId] = useState(1);
+/**
+ * One form, two verbs. Editing a posting is the same decision as creating one
+ * — what the role is, and who should see it — so a second component would be
+ * two places to keep a targeting rule correct, and they would drift.
+ */
+export function JobForm({ courses, job }: { courses: readonly Course[]; job?: JobPosting }) {
+  const editing = job !== undefined;
+  /** Paise on the record, rupees in the field — and never through a float. */
+  const rupees = (minor: string | null | undefined): string =>
+    minor === null || minor === undefined ? "" : formatRupees(fromWire(minor), { symbol: false, paise: false });
+  const existing: RuleRow[] = (job?.audienceRules ?? []).map((rule, index) => ({
+    id: index,
+    courseId: rule.courseId,
+    segment: rule.segment ?? "",
+    passoutYear: rule.passoutYear === null ? "" : String(rule.passoutYear),
+    completedOnly: rule.completedOnly,
+  }));
+  const [rules, setRules] = useState<RuleRow[]>(
+    existing.length > 0
+      ? existing
+      : [{ id: 0, courseId: "", segment: "", passoutYear: "", completedOnly: false }],
+  );
+  const [nextId, setNextId] = useState(existing.length > 0 ? existing.length : 1);
 
   const set = (id: number, patch: Partial<RuleRow>) =>
     setRules((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   return (
     <FormShell
-      action={createJob}
-      errorTitle="Could not create that posting"
-      submitLabel="Save as draft"
+      action={editing ? updateJob.bind(null, job.jobPostingId) : createJob}
+      errorTitle={editing ? "Could not save that posting" : "Could not create that posting"}
+      submitLabel={editing ? "Save changes" : "Save as draft"}
       secondary={
         <Link href="/hiring" className={buttonVariants({ variant: "secondary" })}>
           Cancel
@@ -61,16 +79,19 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
       <FormSection title="The role">
         <FormText
           name="roleTitle"
+          defaultValue={job?.roleTitle}
           label="Role title"
           required
           placeholder="Junior Data Analyst"
         />
-        <FormText name="companyName" label="Company" required placeholder="Kochi Analytics Ltd" />
-        <FormText name="location" label="Location" placeholder="Kochi" />
+        <FormText name="companyName"
+          defaultValue={job?.companyName} label="Company" required placeholder="Kochi Analytics Ltd" />
+        <FormText name="location"
+          defaultValue={job?.location ?? ""} label="Location" placeholder="Kochi" />
         <FormSelect
           name="workMode"
           label="Work mode"
-          defaultValue="ONSITE"
+          defaultValue={job?.workMode ?? "ONSITE"}
           options={[
             { value: "ONSITE", label: "On site" },
             { value: "REMOTE", label: "Remote" },
@@ -79,6 +100,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         />
         <FormText
           name="experienceMinYears"
+          defaultValue={job?.experienceMinYears === null || job?.experienceMinYears === undefined ? "" : String(job.experienceMinYears)}
           label="Experience from (years)"
           type="number"
           min={0}
@@ -87,6 +109,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         />
         <FormText
           name="experienceMaxYears"
+          defaultValue={job?.experienceMaxYears === null || job?.experienceMaxYears === undefined ? "" : String(job.experienceMaxYears)}
           label="Experience to (years)"
           type="number"
           min={0}
@@ -96,6 +119,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         <FullWidth>
           <FormText
             name="skills"
+          defaultValue={(job?.skills ?? []).join(", ")}
             label="Skills"
             placeholder="SQL, Python, Power BI"
             hint="Comma separated. Shown on the posting; targeting is by course, not by these."
@@ -104,6 +128,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         <FullWidth>
           <FormTextarea
             name="description"
+          defaultValue={job?.description ?? ""}
             label="Description"
             rows={4}
             placeholder="What the role involves, and what they are looking for…"
@@ -117,6 +142,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
       >
         <FormText
           name="compensationMin"
+          defaultValue={rupees(job?.compensationMinMinor)}
           label="Compensation from (₹)"
           inputMode="decimal"
           placeholder="600000"
@@ -124,6 +150,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         />
         <FormText
           name="compensationMax"
+          defaultValue={rupees(job?.compensationMaxMinor)}
           label="Compensation to (₹)"
           inputMode="decimal"
           placeholder="900000"
@@ -131,6 +158,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         />
         <FormSelect
           name="compensationPeriod"
+          defaultValue={job?.compensationPeriod === "MONTHLY" ? "MONTHLY" : "ANNUAL"}
           label="Per"
           placeholder="Not stated"
           options={[
@@ -138,9 +166,11 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
             { value: "MONTHLY", label: "Month" },
           ]}
         />
-        <FormText name="closingDate" label="Closes on" type="date" />
+        <FormText name="closingDate"
+          defaultValue={job?.closingDate?.slice(0, 10) ?? ""} label="Closes on" type="date" />
         <FormText
           name="applyUrl"
+          defaultValue={job?.applyUrl ?? ""}
           label="Apply at"
           type="url"
           placeholder="https://…"
@@ -148,6 +178,7 @@ export function JobForm({ courses }: { courses: readonly Course[] }) {
         />
         <FormText
           name="applyEmail"
+          defaultValue={job?.applyEmail ?? ""}
           label="Or apply by email"
           type="email"
           placeholder="careers@example.com"

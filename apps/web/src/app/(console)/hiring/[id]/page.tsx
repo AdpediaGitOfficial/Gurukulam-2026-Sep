@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -53,7 +54,18 @@ export default async function JobDetailPage({
           .join(" · ")}
         breadcrumbs={[{ label: "Hiring", href: "/hiring" }, { label: job.roleTitle }]}
         action={
-          job.status === "DRAFT" ? (
+          <div className="flex items-center gap-3">
+            {/* Editable while it can still reach anybody. A closed or archived
+                posting is a record of what was advertised, not a draft. */}
+            {job.status === "DRAFT" || job.status === "PUBLISHED" ? (
+              <Link
+                href={`/hiring/${job.jobPostingId}/edit`}
+                className={buttonVariants({ variant: "secondary", size: "sm" })}
+              >
+                Edit
+              </Link>
+            ) : null}
+            {job.status === "DRAFT" ? (
             <ConfirmAction
               action={publishJob.bind(null, job.jobPostingId)}
               label={reach === 0 ? "Publish anyway" : `Publish to ${formatCount(reach)}`}
@@ -69,11 +81,16 @@ export default async function JobDetailPage({
               pending="Closing…"
               subject={job.roleTitle}
             />
-          ) : undefined
+          ) : null}
+          </div>
         }
       />
 
-      {query["created"] === "1" ? (
+      {query["saved"] === "1" ? (
+        <Alert intent="success" title="Posting saved">
+          Audience is decided when the posting is read, so a changed rule re-decides who sees it.
+        </Alert>
+      ) : query["created"] === "1" ? (
         <Alert intent="success" title="Saved as a draft">
           Nobody can see it yet. Check the reach below, then publish.
         </Alert>
