@@ -44,6 +44,21 @@ export const studentSchema = z.object({
   suspendedAt: z.string().nullable(),
   suspendedReason: z.string().nullable(),
   credentialsIssuedAt: z.string().nullable(),
+  /** The live batch they sit on. Null while unallocated. */
+  batchId: z.string().nullable().optional(),
+  batchCode: z.string().nullable().optional(),
+  /**
+   * How far their batch has got: sessions marked delivered over sessions
+   * scheduled. A batch property, not a personal one — attendance is what
+   * would make it personal, and nothing writes attendance yet.
+   */
+  progressPct: z.number().int().nullable().optional(),
+  /**
+   * Who created this record. Every record carries its author, and a
+   * college-created student shows the COLLEGE user — that is what makes
+   * institutional intake auditable rather than merely recorded.
+   */
+  createdByName: z.string().nullable().optional(),
   lastLoginAt: z.string().nullable(),
   /** Who onboarded them — a college user for institutional intake. */
   createdBy: z.string().nullable(),

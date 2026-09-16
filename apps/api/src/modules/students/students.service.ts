@@ -72,8 +72,59 @@ export class StudentsService {
         }),
         this.prisma.student.count({ where }),
       ]);
-      return [rows.map(toStudent), total];
+      return [await this.decorate(rows.map(toStudent)), total];
     });
+  }
+
+  /**
+   * Fills in the two columns a student row cannot answer by itself.
+   *
+   * Both are resolved ONCE PER PAGE rather than once per row: progress is a
+   * property of the batch, so twenty-five students on one batch is one query,
+   * and authors are looked up in two batched reads rather than fifty.
+   */
+  private async decorate(students: Student[]): Promise<Student[]> {
+    const batchIds = [...new Set(students.map((s) => s.batchId).filter((b): b is string => Boolean(b)))];
+    const adminIds = [...new Set(students.filter((s) => s.createdByType === "ADMIN_USER").map((s) => s.createdBy).filter((v): v is string => Boolean(v)))];
+    const collegeUserIds = [...new Set(students.filter((s) => s.createdByType === "COLLEGE_USER").map((s) => s.createdBy).filter((v): v is string => Boolean(v)))];
+
+    const [sessions, admins, collegeUsers] = await Promise.all([
+      batchIds.length === 0 ? [] : this.prisma.batchSession.groupBy({
+        by: ["batchId", "status"],
+        where: { batchId: { in: batchIds }, deletedAt: null },
+        _count: { _all: true },
+      }),
+      adminIds.length === 0 ? [] : this.prisma.adminUser.findMany({
+        where: { adminUserId: { in: adminIds } }, select: { adminUserId: true, name: true },
+      }),
+      collegeUserIds.length === 0 ? [] : this.prisma.collegeUser.findMany({
+        where: { collegeUserId: { in: collegeUserIds } },
+        select: { collegeUserId: true, poc: { select: { name: true } } },
+      }),
+    ]);
+
+    const progress = new Map<string, number>();
+    for (const batchId of batchIds) {
+      const mine = sessions.filter((g) => g.batchId === batchId);
+      const total = mine.reduce((n, g) => n + g._count._all, 0);
+      const done = mine.filter((g) => g.status === "COMPLETED").reduce((n, g) => n + g._count._all, 0);
+      // A batch with nothing scheduled has no progress to report — 0% would
+      // read as "behind" when the honest answer is "not started".
+      if (total > 0) progress.set(batchId, Math.round((done / total) * 100));
+    }
+    const adminName = new Map(admins.map((a) => [a.adminUserId, a.name]));
+    const collegeName = new Map(collegeUsers.map((u) => [u.collegeUserId, u.poc?.name ?? null]));
+
+    return students.map((student) => ({
+      ...student,
+      progressPct: student.batchId === null || student.batchId === undefined
+        ? null
+        : progress.get(student.batchId) ?? null,
+      createdByName:
+        student.createdBy === null || student.createdBy === undefined
+          ? null
+          : adminName.get(student.createdBy) ?? collegeName.get(student.createdBy) ?? null,
+    }));
   }
 
   async get(principal: Principal, studentId: string): Promise<StudentDetail> {
@@ -399,6 +450,14 @@ const STUDENT_INCLUDE = {
   college: { select: { name: true } },
   city: { select: { name: true } },
   _count: { select: { batchMappings: { where: { deletedAt: null } } } },
+  // The live mapping, for the batch column. One row: a student sits on one
+  // batch at a time, and the count above is what reports otherwise.
+  batchMappings: {
+    where: { deletedAt: null },
+    take: 1,
+    orderBy: { createdAt: "desc" },
+    select: { batchId: true, batch: { select: { batchCode: true } } },
+  },
 } satisfies Prisma.StudentInclude;
 
 type StudentRow = Prisma.StudentGetPayload<{ include: typeof STUDENT_INCLUDE }>;
@@ -431,6 +490,8 @@ export function toStudent(row: StudentRow): Student {
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspendedReason: row.suspendedReason,
     credentialsIssuedAt: row.credentialsIssuedAt?.toISOString() ?? null,
+    batchId: row.batchMappings[0]?.batchId ?? null,
+    batchCode: row.batchMappings[0]?.batch?.batchCode ?? null,
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
     createdBy: row.createdBy,
     createdByType: row.createdByType,

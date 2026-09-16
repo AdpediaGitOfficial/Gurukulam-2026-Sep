@@ -11,6 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Column, DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatCount } from "@/lib/format";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -61,16 +62,61 @@ const COLUMNS: Column<Student>[] = [
     cell: (row) => row.cityName ?? <span className="text-ink-subtle">—</span>,
   },
   {
-    id: "allocation",
-    header: "Allocation",
+    id: "batch",
+    header: "Batch",
+    // The roster they are on, not a count of rosters. A student sits on one
+    // batch at a time; the count is what reports otherwise.
     cell: (row) =>
-      row.isAllocated === false ? (
+      row.batchCode === null || row.batchCode === undefined ? (
         <StatusPill intent="warning">Unallocated</StatusPill>
       ) : (
-        <span className="text-body-sm text-ink-muted tabular-nums">
-          {row.batchCount ?? 0} {row.batchCount === 1 ? "batch" : "batches"}
-        </span>
+        <Link
+          href={`/batches/${row.batchId}`}
+          className="font-mono text-caption text-ink hover:underline"
+        >
+          {row.batchCode}
+        </Link>
       ),
+  },
+  {
+    id: "progress",
+    header: "Progress",
+    // Their batch's delivery, not their own attendance — nothing writes
+    // attendance yet, and a bar that silently meant something else would be
+    // read as personal. A batch with nothing scheduled reports no progress
+    // rather than 0%, which would read as "behind".
+    cell: (row) =>
+      row.progressPct === null || row.progressPct === undefined ? (
+        <span className="text-caption text-ink-subtle">Not started</span>
+      ) : (
+        <div className="flex items-center gap-2">
+          {/* The label is required and carries the accessible name; the
+              visible figure sits beside the bar, so it is hidden here rather
+              than printed twice. */}
+          <ProgressBar
+            value={row.progressPct}
+            label={`${row.batchCode ?? "Batch"} delivery`}
+            hideLabel
+            className="w-20"
+          />
+          <span className="text-caption text-ink-muted tabular-nums">{row.progressPct}%</span>
+        </div>
+      ),
+  },
+  {
+    id: "createdBy",
+    header: "Created by",
+    // Every record carries its author, and a college-created student shows
+    // the college user — that is what makes institutional intake auditable
+    // rather than merely recorded.
+    cell: (row) => (
+      <div className="flex flex-col">
+        <span className="text-body-sm text-ink">{row.createdByName ?? "—"}</span>
+        {row.createdByType === "COLLEGE_USER" ? (
+          <span className="text-caption text-ink-subtle">College user</span>
+        ) : null}
+      </div>
+    ),
   },
   {
     id: "status",
