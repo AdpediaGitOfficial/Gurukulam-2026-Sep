@@ -6,6 +6,7 @@ import { PageBody } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
 import Link from "next/link";
 
+import { AccountPhotoForm } from "@/features/settings/components/account-photo-form";
 import { Avatar } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -68,15 +69,22 @@ export default async function AccountPage() {
             description="Managed under Settings › Administrators. Read-only here."
           />
 
-          <div className="mb-6 flex items-center gap-5 border-b border-hairline pb-6">
-            <Avatar
-              {...(account.photoUrl === null ? {} : { src: account.photoUrl })}
-              name={account.name}
-              size="lg"
-            />
-            <div className="min-w-0">
-              <p className="text-h2 text-ink">{account.name}</p>
-              <p className="text-body-sm text-ink-muted">{account.email}</p>
+          <div className="mb-6 border-b border-hairline pb-6">
+            <div className="flex items-center gap-5">
+              <Avatar
+                {...(account.photoUrl === null ? {} : { src: account.photoUrl })}
+                name={account.name}
+                size="lg"
+              />
+              <div className="min-w-0">
+                <p className="text-h2 text-ink">{account.name}</p>
+                <p className="text-body-sm text-ink-muted">{account.email}</p>
+              </div>
+            </div>
+            {/* The header above promises the photo is yours to change; this is
+                what makes that true rather than a sentence. */}
+            <div className="mt-5">
+              <AccountPhotoForm photoUrl={account.photoUrl} />
             </div>
           </div>
 

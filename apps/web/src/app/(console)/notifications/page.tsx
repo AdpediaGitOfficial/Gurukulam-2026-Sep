@@ -4,6 +4,8 @@ import type { Notification } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { PageHeader } from "@/components/patterns/page-header";
+import { buttonVariants } from "@/components/ui/button";
+import { markAllNotificationsRead } from "@/features/notifications/server/actions";
 import { PageBody } from "@/components/patterns/page-section";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Card } from "@/components/ui/card";
@@ -114,12 +116,34 @@ export default async function NotificationsPage({
   const params = await searchParams;
   const [bell, page] = await Promise.all([getBell(), listNotifications(params)]);
 
+  /* What "Mark all read" would actually touch.
+     NOT `bell.alerts + bell.fyi`: `alerts` counts open rows but `fyi` counts
+     every FYI still in view, read or not — so that test leaves the button on
+     screen forever once one FYI exists, and pressing it marks nothing. A
+     control that does nothing is the thing the audits exist to catch. */
+  const clearable = bell.items.filter(
+    (item) => item.readAt === null && (item.class === "ALERT" || item.class === "FYI"),
+  );
+
   return (
     <PageBody>
       <PageHeader
         eyebrow="Notifications"
         title="Notifications"
         description="Grouped by situation, not by record. Eighteen overdue installments are one situation, not eighteen notifications."
+        action={
+          /* A plain form with a server action — no client component, so
+             clearing the queue costs no JavaScript. Hidden when there is
+             nothing to clear rather than shown disabled: a control you cannot
+             press is a question about why. */
+          clearable.length === 0 ? undefined : (
+            <form action={markAllNotificationsRead}>
+              <button type="submit" className={buttonVariants({ variant: "secondary" })}>
+                Mark all read
+              </button>
+            </form>
+          )
+        }
       />
 
       <StatTileGrid>

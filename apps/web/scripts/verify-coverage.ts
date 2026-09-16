@@ -52,7 +52,7 @@ interface Endpoint {
  */
 const DELIBERATE: Record<string, string> = {
   "POST /auth/refresh": "The BFF refreshes on a 401 inside apiFetch, never from a screen.",
-  "POST /fee-ledger/fee-reminders": "Driven by cron against CRON_SHARED_SECRET. The console reads what it sent.",
+  "POST /cron/fee-reminders": "Driven by cron against CRON_SHARED_SECRET. The console reads what it sent.",
 };
 
 // ── What the API declares ─────────────────────────────────────────────────
@@ -76,14 +76,30 @@ const joinPath = (prefix: string, route: string): string => {
   return `${left}${right}` || "/";
 };
 
+/**
+ * Every write route, under the prefix of the controller it is actually in.
+ *
+ * One file can declare SEVERAL controllers — `access.controller.ts` carries
+ * four and `ledger.controller.ts` two — so the prefix is the nearest
+ * `@Controller` ABOVE each route, not the first one in the file. Taking the
+ * first put `PUT /account` under `/settings` and `POST /cron/fee-reminders`
+ * under `/fee-ledger`, which is a suite reporting on endpoints that do not
+ * exist while missing the ones that do.
+ */
 function apiEndpoints(): Endpoint[] {
   const found: Endpoint[] = [];
   for (const file of walk(API_SRC).filter((f) => f.endsWith(".controller.ts"))) {
     const text = readFileSync(file, "utf8");
-    const prefix = /@Controller\(\s*["'`]([^"'`]*)["'`]\s*\)/.exec(text)?.[1];
-    if (prefix === undefined) continue;
+    let prefix: string | undefined;
 
     text.split("\n").forEach((line, index) => {
+      const controller = /@Controller\(\s*["'`]([^"'`]*)["'`]\s*\)/.exec(line);
+      if (controller) {
+        prefix = controller[1];
+        return;
+      }
+      if (prefix === undefined) return;
+
       const match = /@(Post|Patch|Put|Delete)\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/.exec(line);
       if (!match) return;
       const method = (match[1] ?? "").toUpperCase();

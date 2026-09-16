@@ -8,6 +8,7 @@ import {
   issuedAdminCredentialSchema,
   MODULES,
   roleSchema,
+  updateAccountSchema,
   updateAdminUserSchema,
   updateRoleSchema,
 } from "@gurukulam/contracts";
@@ -170,4 +171,36 @@ export async function resetAdministratorPassword(
   } catch (error) {
     return apiFormError(error);
   }
+}
+
+/**
+ * The one field on your own account that is yours to set.
+ *
+ * Name, email, role and region scope decide what you can see and do, so the
+ * API accepts the photo and REFUSES everything else outright (invariant 19) —
+ * `updateAccountSchema` is `.strict()`, which is why this posts that field and
+ * nothing beside it.
+ *
+ * A URL rather than an upload, because the API stores a URL and there is no
+ * upload endpoint to pretend otherwise with. An empty box clears the photo,
+ * which is the only way to take one down.
+ */
+export async function updateAccountPhoto(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const raw = text(formData, "photoUrl");
+  const parsed = updateAccountSchema.safeParse({ photoUrl: raw ?? null });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch("/account", { method: "PUT", body: parsed.data });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  // No success message: `message` on this type is what went WRONG, and the
+  // revalidate puts the new photo on screen — which is the feedback.
+  revalidatePath("/account");
+  return { status: "idle" };
 }
