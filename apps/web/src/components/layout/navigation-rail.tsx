@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { can, type Principal } from "@gurukulam/contracts";
 
 import { Icon } from "@/components/ui/icon";
+import { Logo } from "@/components/ui/logo";
 import { primaryNavItems, secondaryNavItems, navItemFor, type NavItem } from "@/config/navigation";
 import { site } from "@/config/site";
 import { cn } from "@/lib/cn";
@@ -74,9 +75,11 @@ export function NavigationRail({ principal, expanded, onToggleExpanded }: Naviga
           aria-label={`${site.name} home`}
           className={cn("flex min-w-0 items-center gap-3", expanded && "flex-1")}
         >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-tile bg-accent text-on-accent">
-            <Icon name="mark" size={22} />
-          </span>
+          {/* The mark sits on the rail itself rather than in an amber tile: the
+              artwork is yellow and amber, and amber-on-amber was the one
+              background it could not survive. The rail's rust is the ground it
+              was drawn for. */}
+          <Logo variant="mark" decorative className="w-10 shrink-0" />
           {expanded ? (
             <span className="min-w-0">
               <span className="block truncate text-body font-bold tracking-[-0.2px] text-white">
