@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { can } from "@gurukulam/contracts";
 
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
@@ -9,6 +10,7 @@ import { Icon } from "@/components/ui/icon";
 import { StatusPill } from "@/components/ui/status-pill";
 import { ConfirmRequirementForm } from "@/features/requirements/components/confirm-requirement-form";
 import { getRequirement } from "@/features/requirements/server/requirements-service";
+import { buttonVariants } from "@/components/ui/button";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
 import { cn } from "@/lib/cn";
@@ -87,7 +89,8 @@ export default async function RequirementDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("requirements");
+  const principal = await requireModule("requirements");
+  const mayEdit = can(principal, "requirements", "edit");
   const { id } = await params;
   const query = await searchParams;
   const requirement = await getRequirement(id);
@@ -115,7 +118,26 @@ export default async function RequirementDetailPage({
           { label: "Requirements", href: "/colleges/requirements" },
           { label: requirement.requirementCode },
         ]}
+        action={
+          /* Only while it is still an ask. Once confirmed, the headcount and
+             the window are facts its dedicated batch was built from. */
+          mayEdit &&
+          (requirement.status === "NEW" || requirement.status === "UNDER_REVIEW") ? (
+            <Link
+              href={`/colleges/requirements/${requirement.requirementId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Edit
+            </Link>
+          ) : undefined
+        }
       />
+
+      {query["saved"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          The ask is updated. Confirming it still creates the batch from these numbers.
+        </Alert>
+      ) : null}
 
       {query["confirmed"] === "1" ? (
         <Alert intent="success" title="Confirmed">

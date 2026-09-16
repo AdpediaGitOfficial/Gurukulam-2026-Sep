@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { formatRupees, fromWire, type Course, type JobPosting } from "@gurukulam/contracts";
 
 import {
@@ -16,7 +16,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SelectField } from "@/components/ui/select";
 import { TextField } from "@/components/ui/input";
-import { createJob, updateJob } from "@/features/hiring/server/actions";
+import { createJob, previewReach, updateJob } from "@/features/hiring/server/actions";
 
 interface RuleRow {
   id: number;
@@ -284,7 +284,63 @@ export function JobForm({ courses, job }: { courses: readonly Course[]; job?: Jo
             </li>
           ))}
         </ul>
+
+        {/* The number, before the posting exists. A recruiter composing
+            "Data Analytics, college segment, 2025 passouts" is guessing at who
+            that comes to; this replaces the guess while the rules can still be
+            changed. It is a READ — it publishes nothing and saves nothing. */}
+        <ReachPreview rules={rules} />
       </section>
     </FormShell>
+  );
+}
+
+function ReachPreview({ rules }: { rules: readonly RuleRow[] }) {
+  const [reach, setReach] = useState<number | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const usable = rules.filter((rule) => rule.courseId !== "").length;
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-hairline pt-4">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={pending || usable === 0}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await previewReach(
+              rules.map((rule) => ({
+                courseId: rule.courseId,
+                segment: rule.segment,
+                ...(rule.passoutYear === "" ? {} : { passoutYear: Number(rule.passoutYear) }),
+                completedOnly: rule.completedOnly,
+              })),
+            );
+            setReach(result);
+            setChecked(true);
+          })
+        }
+      >
+        {pending ? "Checking…" : "Who does this reach?"}
+      </Button>
+
+      <p className="text-body-sm text-ink-muted">
+        {usable === 0 ? (
+          "Every rule starts from a course — pick one to check the reach."
+        ) : !checked ? (
+          "Counted live, so a rule set today keeps matching students who enrol next month."
+        ) : reach === null ? (
+          "That could not be checked. The rules are unchanged."
+        ) : (
+          <>
+            <span className="font-semibold tabular-nums text-ink">{reach}</span>{" "}
+            {reach === 1 ? "student matches" : "students match"} these rules right now.
+          </>
+        )}
+      </p>
+    </div>
   );
 }

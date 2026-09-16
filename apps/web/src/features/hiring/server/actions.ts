@@ -187,3 +187,47 @@ export async function updateJob(
   revalidatePath(`/hiring/${jobPostingId}`);
   redirect(`/hiring/${jobPostingId}?saved=1`);
 }
+
+/**
+ * How many students a set of audience rules would actually reach.
+ *
+ * Asked BEFORE the posting exists, which is why it takes the rules alone
+ * rather than a draft. A recruiter composing a posting is guessing at who
+ * "Data Analytics, college segment, 2025 passouts" comes to — this replaces
+ * the guess with the number, while the rules can still be changed.
+ *
+ * Returns null rather than throwing on a refusal. A preview that fails is a
+ * preview: it should say "could not check" and leave the form alone, not take
+ * the composition down with it.
+ */
+export async function previewReach(
+  rules: ReadonlyArray<{
+    courseId: string;
+    segment?: string;
+    passoutYear?: number;
+    completedOnly?: boolean;
+  }>,
+): Promise<number | null> {
+  const audienceRules = rules
+    // A rule with no course reaches nothing and the API refuses it; a
+    // half-filled row is one the operator is still typing, not an error.
+    .filter((rule) => rule.courseId !== "")
+    .map((rule) => ({
+      courseId: rule.courseId,
+      ...(rule.segment === undefined || rule.segment === "" ? {} : { segment: rule.segment }),
+      ...(rule.passoutYear === undefined ? {} : { passoutYear: rule.passoutYear }),
+      completedOnly: rule.completedOnly === true,
+    }));
+
+  if (audienceRules.length === 0) return null;
+
+  try {
+    const result = await apiFetch<{ reach: number }>("/hiring/reach-preview", {
+      method: "POST",
+      body: { audienceRules },
+    });
+    return typeof result.reach === "number" ? result.reach : null;
+  } catch {
+    return null;
+  }
+}

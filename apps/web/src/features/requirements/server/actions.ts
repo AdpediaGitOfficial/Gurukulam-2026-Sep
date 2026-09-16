@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   confirmRequirementSchema,
   createRequirementSchema,
+  updateRequirementSchema,
   rejectRequirementSchema,
   requirementSchema,
 } from "@gurukulam/contracts";
@@ -28,19 +29,15 @@ export async function confirmRequirement(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const text = (key: string): string | undefined => {
-    const value = formData.get(key);
-    return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-  };
-  const capacity = text("maxCapacity");
+  const capacity = text(formData, "maxCapacity");
 
   const parsed = confirmRequirementSchema.safeParse({
-    batchName: text("batchName"),
-    startDate: text("startDate"),
-    endDate: text("endDate"),
-    mode: text("mode"),
-    venue: text("venue"),
-    meetingLink: text("meetingLink") ?? "",
+    batchName: text(formData, "batchName"),
+    startDate: text(formData, "startDate"),
+    endDate: text(formData, "endDate"),
+    mode: text(formData, "mode"),
+    venue: text(formData, "venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
     ...(capacity === undefined ? {} : { maxCapacity: Number(capacity) }),
   });
 
@@ -142,4 +139,49 @@ export async function createRequirement(
 
   revalidatePath("/colleges/requirements");
   redirect("/colleges/requirements?created=1");
+}
+
+/**
+ * Correcting a requirement before it is answered.
+ *
+ * The COLLEGE and the COURSE are not editable, and the update contract omits
+ * them: they are the ask itself. A requirement for a different course is a
+ * different requirement, and confirming one creates a dedicated batch
+ * (invariant 14) — so changing the course after the fact would produce a batch
+ * nobody asked for.
+ *
+ * Status only moves between NEW and UNDER_REVIEW here. Confirming and
+ * rejecting are their own acts with their own consequences: confirmation
+ * creates the batch in one transaction, and rejection carries a reason the
+ * college is told.
+ */
+export async function updateRequirement(
+  requirementId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = updateRequirementSchema.safeParse({
+    expectedHeadcount: number(formData, "expectedHeadcount"),
+    preferredMode: text(formData, "preferredMode"),
+    preferredWindowStart: text(formData, "preferredWindowStart"),
+    preferredWindowEnd: text(formData, "preferredWindowEnd"),
+    discipline: text(formData, "discipline"),
+    notes: text(formData, "notes"),
+    status: text(formData, "status"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/colleges/requirements/${requirementId}`, {
+      method: "PATCH",
+      body: parsed.data,
+    });
+    checkShape(requirementSchema, saved, "PATCH /colleges/requirements/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath("/colleges/requirements");
+  revalidatePath(`/colleges/requirements/${requirementId}`);
+  redirect(`/colleges/requirements/${requirementId}?saved=1`);
 }
