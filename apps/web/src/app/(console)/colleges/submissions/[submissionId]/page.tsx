@@ -175,7 +175,11 @@ export default async function SubmissionReviewPage({
                           matched to {row.studentCode}
                         </p>
                       )}
-                      <Eligibility row={row} />
+                      {/* Only while it still informs a decision. On a row
+                          already approved or rejected the verdict is beside
+                          it, and "not checked yet" next to a rejection reads
+                          as a second, contradictory status. */}
+                      {row.status === "PENDING" ? <Eligibility row={row} /> : null}
                     </div>
 
                     <div className="min-w-0">

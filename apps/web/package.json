@@ -13,7 +13,8 @@
     "verify:render": "tsx scripts/verify-render.ts",
     "verify:actions": "tsx scripts/verify-actions.ts",
     "verify:forms": "tsx scripts/verify-forms.ts",
-    "verify:coverage": "tsx scripts/verify-coverage.ts"
+    "verify:coverage": "tsx scripts/verify-coverage.ts",
+    "shoot": "tsx scripts/shoot.ts"
   },
   "dependencies": {
     "@gurukulam/contracts": "*",
