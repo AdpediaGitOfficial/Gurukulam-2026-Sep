@@ -1,0 +1,657 @@
+<title>Course &amp; Trainer Analytics</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  /* ── Tokens ────────────────────────────────────────────────────────────
+     Lifted from apps/web/src/app/globals.css, not re-invented. The point of
+     this page is that the user can approve what the console will actually
+     look like, and a mock in its own palette cannot be approved for that. */
+  :root {
+    --canvas: #f8f9fa;
+    --surface: #ffffff;
+    --sunken: #f8f9fa;
+    --muted-fill: #ebebeb;
+    --hairline: #dfeeff;
+    --hairline-strong: #c9d6e4;
+
+    --ink: #191c1d;
+    --ink-muted: #524533;
+    --ink-subtle: #6b7280;
+
+    --brand: #0058bb;
+    --gold: #805600;
+    --retail: #0058bb;
+    --college: #b07a00;
+
+    --success: #16a34a;
+    --success-ink: #166534;
+    --warning: #ea580c;
+    --warning-ink: #9a3412;
+    --danger: #ba1a1a;
+
+    --track: #e6e8ea;
+    --shadow: 0 1px 2px rgba(25, 28, 29, .06), 0 4px 12px rgba(25, 28, 29, .05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #14171a;
+      --surface: #1c2024;
+      --sunken: #191c1f;
+      --muted-fill: #272b30;
+      --hairline: #2c333b;
+      --hairline-strong: #3d4650;
+
+      --ink: #eef1f4;
+      --ink-muted: #c3bdb2;
+      --ink-subtle: #98a1ac;
+
+      --brand: #6ba6ff;
+      --gold: #e0a93b;
+      --retail: #6ba6ff;
+      --college: #e0a93b;
+
+      --success: #4ade80;
+      --success-ink: #86efac;
+      --warning: #fb923c;
+      --warning-ink: #fdba74;
+      --danger: #ff8a80;
+
+      --track: #2e343b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --canvas: #14171a;
+    --surface: #1c2024;
+    --sunken: #191c1f;
+    --muted-fill: #272b30;
+    --hairline: #2c333b;
+    --hairline-strong: #3d4650;
+
+    --ink: #eef1f4;
+    --ink-muted: #c3bdb2;
+    --ink-subtle: #98a1ac;
+
+    --brand: #6ba6ff;
+    --gold: #e0a93b;
+    --retail: #6ba6ff;
+    --college: #e0a93b;
+
+    --success: #4ade80;
+    --success-ink: #86efac;
+    --warning: #fb923c;
+    --warning-ink: #fdba74;
+    --danger: #ff8a80;
+
+    --track: #2e343b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 40px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  /* ── Type ─────────────────────────────────────────────────────────── */
+  h1 { font-size: 28px; line-height: 34px; font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+  h2 { font-size: 18px; line-height: 24px; font-weight: 600; margin: 0; text-wrap: balance; }
+  h3 { font-size: 16px; line-height: 24px; font-weight: 600; margin: 0; }
+  p  { margin: 0; }
+
+  .overline {
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-subtle);
+  }
+  .lede { color: var(--ink-muted); max-width: 66ch; }
+  .note { font-size: 13px; color: var(--ink-subtle); }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
+  .num  { font-variant-numeric: tabular-nums; }
+
+  /* ── Sections ─────────────────────────────────────────────────────── */
+  .section { display: flex; flex-direction: column; gap: 16px; }
+  .section-head { display: flex; flex-direction: column; gap: 6px; }
+
+  .pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* ── Card ─────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .card-head .window { font-size: 13px; color: var(--ink-subtle); }
+
+  /* ── Metric pair at the top of a card ─────────────────────────────── */
+  .metrics { display: flex; gap: 28px; flex-wrap: wrap; }
+  .metric { display: flex; flex-direction: column; gap: 2px; min-width: 96px; }
+  .metric .value { font-size: 30px; line-height: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric .value.good { color: var(--success-ink); }
+  .metric .value.bad  { color: var(--danger); }
+  .metric .value.none { color: var(--ink-subtle); font-weight: 600; }
+  .metric .label { font-size: 13px; color: var(--ink-muted); }
+
+  .split { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .split > .metrics { flex: 0 0 auto; }
+  /* 280px is the width below which a course name starts truncating, so the
+     list takes its own row instead of ellipsing the thing it names. */
+  .split > .bars { flex: 1 1 280px; min-width: 200px; }
+
+  /* ── Progress bars ────────────────────────────────────────────────── */
+  /* One hue, not four. These bars all measure the SAME thing — how much of
+     a course has been delivered — so colour here would encode rank, not
+     identity, and colour that follows rank repaints when the list reorders. */
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 84px 44px;
+    align-items: center;
+    gap: 10px;
+  }
+  .bar-row .name {
+    font-size: 13px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--track);
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--brand);
+  }
+  .bar-row .pct { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+
+  /* ── Money rows ───────────────────────────────────────────────────── */
+  .rows { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
+  .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding-block: 11px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .k { font-size: 14px; color: var(--ink-muted); }
+  .row .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .row .v.good { color: var(--success-ink); }
+  .row .v.bad  { color: var(--danger); }
+
+  /* ── Table ────────────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-subtle);
+    background: var(--sunken);
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+  thead th.r, tbody td.r { text-align: right; }
+  tbody td { padding: 12px; border-bottom: 1px solid var(--hairline); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody td.num { font-variant-numeric: tabular-nums; }
+
+  /* ── Provenance chips ─────────────────────────────────────────────── */
+  /* State is carried by a word, never by colour alone. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+  .chip.live    { color: var(--success-ink); }
+  .chip.empty   { color: var(--warning-ink); }
+  .chip.blocked { color: var(--danger); }
+
+  .blocked-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px dashed var(--hairline-strong);
+    border-radius: 10px;
+    background: var(--sunken);
+  }
+  .blocked-slot .what { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .blocked-slot .why  { font-size: 12px; color: var(--ink-subtle); }
+
+  /* ── Ledger ───────────────────────────────────────────────────────── */
+  .ledger td:first-child { font-weight: 600; }
+  .ledger td .src { display: block; font-size: 12px; color: var(--ink-subtle); margin-top: 2px; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+
+  .callout {
+    border-left: 3px solid var(--gold);
+    background: var(--sunken);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  hr.rule { border: 0; border-top: 1px solid var(--hairline); margin: 0; }
+
+  @media (max-width: 520px) {
+    .split > .metrics { flex: 1 1 100%; }
+    .bar-row { grid-template-columns: minmax(0, 1fr) 60px 40px; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="section-head">
+    <span class="overline">Dashboard · proposed</span>
+    <h1>Course and trainer analytics</h1>
+    <p class="lede">
+      Two new cards for the executive dashboard, in the console's own tokens. Every figure below
+      carries where it comes from, because four of the numbers in the reference design have no
+      source in this schema and one card would otherwise promise a measurement nobody is taking.
+    </p>
+    <div class="legend" style="margin-top:6px">
+      <span class="chip live">Live today</span>
+      <span class="chip empty">Column exists, nothing writes it</span>
+      <span class="chip blocked">No source — needs a build</span>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <!-- ══ 1. As it would ship today ══════════════════════════════════ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="overline">Option A</span>
+      <h2>If we shipped it this week</h2>
+      <p class="note">
+        Real figures, read out of the development database a few minutes ago. Nothing here is
+        invented. Where a measurement does not exist, the card says so instead of showing a number.
+      </p>
+    </div>
+
+    <div class="pair">
+
+      <!-- Course analytics — today -->
+      <article class="card">
+        <div class="card-head">
+          <h3>Course analytics</h3>
+          <span class="window">All time</span>
+        </div>
+
+        <div class="split">
+          <div class="metrics">
+            <div class="metric">
+              <span class="value good num">12.5%</span>
+              <span class="label">Certified</span>
+              <span class="chip live" style="margin-top:4px">Live</span>
+            </div>
+          </div>
+
+          <div class="bars">
+            <div class="bar-row">
+              <span class="name">Data Analytics</span>
+              <span class="track"><span class="fill" style="width:13%"></span></span>
+              <span class="pct">13%</span>
+            </div>
+            <div class="bar-row">
+              <span class="name">Cloud Engineering (2026)</span>
+              <span class="track"><span class="fill" style="width:0%"></span></span>
+              <span class="pct">0%</span>
+            </div>
+            <div class="bar-row">
+              <span class="name">Cloud Engineering</span>
+              <span class="track"><span class="fill" style="width:0%"></span></span>
+              <span class="pct">0%</span>
+            </div>
+            <p class="note" style="margin-top:2px">Sessions delivered, per course <span class="chip live">Live</span></p>
+          </div>
+        </div>
+
+        <div class="blocked-slot">
+          <span class="what">Completion 88.4% · Drop-out 6.2%</span>
+          <span class="why">
+            <code class="mono">completed_at</code> and <code class="mono">exit_reason</code> exist on the
+            roster and are empty on all 152 rows — no screen writes either yet. Today both read 0%,
+            which is worse than absent.
+          </span>
+          <span><span class="chip empty">Needs a write path</span></span>
+        </div>
+
+        <div class="rows">
+          <div class="row"><span class="k">Retail enrolment value</span><span class="v num">₹54.25 L</span></div>
+          <div class="row"><span class="k">Institutional contract value</span><span class="v num">₹2.32 Cr</span></div>
+          <div class="row"><span class="k">Collected to date</span><span class="v good num">₹50.18 L</span></div>
+          <div class="row"><span class="k">Outstanding</span><span class="v bad num">₹2.36 Cr</span></div>
+        </div>
+        <p class="note">All four <span class="chip live">Live</span> — integer paise, formatted at tile scale.</p>
+      </article>
+
+      <!-- Trainer analytics — today -->
+      <article class="card">
+        <div class="card-head">
+          <h3>Trainer analytics</h3>
+          <span class="window">Rolling 30 days</span>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <span class="value good num">100%</span>
+            <span class="label">Schedule adherence</span>
+            <span class="chip live" style="margin-top:4px">Live</span>
+          </div>
+          <div class="metric">
+            <span class="value none">—</span>
+            <span class="label">Avg. feedback / 5.0</span>
+            <span class="chip blocked" style="margin-top:4px">No source</span>
+          </div>
+        </div>
+
+        <div class="blocked-slot">
+          <span class="what">Session punctuality 96.2%</span>
+          <span class="why">
+            Nothing records when a session actually started. <code class="mono">completed_at</code> is
+            when somebody pressed "complete" — the schema calls it "a deliberate act, not a date
+            passing". <strong>Schedule adherence</strong> above is the honest measure the columns
+            already support: delivered on the day planned, against moved or called off.
+          </span>
+          <span><span class="chip blocked">Needs a clock-in</span></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Trainer</th>
+                <th scope="col" class="r">Batches</th>
+                <th scope="col" class="r">Sessions</th>
+                <th scope="col" class="r">Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Kavitha Iyer</td><td class="r num">1</td><td class="r num">8</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
+              <tr><td>Rahul Deshpande</td><td class="r num">1</td><td class="r num">6</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
+              <tr><td>Nisha Pillai</td><td class="r num">1</td><td class="r num">4</td><td class="r" style="color:var(--ink-subtle)">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Trainer and batch counts <span class="chip live">Live</span> from confirmed assignments.
+          Rating <span class="chip blocked">No source</span> — there is no rating anywhere in the schema.
+        </p>
+      </article>
+
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ══ 2. Once the gaps are closed ════════════════════════════════ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="overline">Option B</span>
+      <h2>Once the four gaps are closed</h2>
+      <p class="note">
+        The same two cards with every slot filled. <strong>Figures here are illustrative</strong> —
+        they show the shape, not measurements. This is what the build in the ledger below buys.
+      </p>
+    </div>
+
+    <div class="pair">
+
+      <article class="card">
+        <div class="card-head">
+          <h3>Course analytics</h3>
+          <span class="window">This term</span>
+        </div>
+
+        <div class="split">
+          <div class="metrics">
+            <div class="metric">
+              <span class="value good num">88.4%</span>
+              <span class="label">Completion</span>
+            </div>
+            <div class="metric">
+              <span class="value bad num">6.2%</span>
+              <span class="label">Drop-out</span>
+            </div>
+          </div>
+
+          <div class="bars">
+            <div class="bar-row">
+              <span class="name">Data Analytics</span>
+              <span class="track"><span class="fill" style="width:100%"></span></span>
+              <span class="pct">100%</span>
+            </div>
+            <div class="bar-row">
+              <span class="name">Cloud Computing</span>
+              <span class="track"><span class="fill" style="width:72%"></span></span>
+              <span class="pct">72%</span>
+            </div>
+            <div class="bar-row">
+              <span class="name">Python Fullstack</span>
+              <span class="track"><span class="fill" style="width:58%"></span></span>
+              <span class="pct">58%</span>
+            </div>
+            <div class="bar-row">
+              <span class="name">AI Foundations</span>
+              <span class="track"><span class="fill" style="width:34%"></span></span>
+              <span class="pct">34%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="rows">
+          <div class="row"><span class="k">Retail enrolment value</span><span class="v num">₹48.2 L</span></div>
+          <div class="row"><span class="k">Institutional contract value</span><span class="v num">₹1.31 Cr</span></div>
+          <div class="row"><span class="k">Collected to date</span><span class="v good num">₹1.14 Cr</span></div>
+          <div class="row"><span class="k">Outstanding</span><span class="v bad num">₹65.2 L</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h3>Trainer analytics</h3>
+          <span class="window">Rolling 30 days</span>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <span class="value good num">96.2%</span>
+            <span class="label">Session punctuality</span>
+          </div>
+          <div class="metric">
+            <span class="value num">4.6</span>
+            <span class="label">Avg. feedback / 5.0</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Trainer</th>
+                <th scope="col" class="r">Batches</th>
+                <th scope="col" class="r">Sessions</th>
+                <th scope="col" class="r">Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Ravi Shankar</td><td class="r num">3</td><td class="r num">24</td><td class="r num">4.8</td></tr>
+              <tr><td>Sanjay Kumar</td><td class="r num">2</td><td class="r num">18</td><td class="r num">4.7</td></tr>
+              <tr><td>Nisha Pillai</td><td class="r num">2</td><td class="r num">16</td><td class="r num">4.6</td></tr>
+              <tr><td>Arun Prasad</td><td class="r num">2</td><td class="r num">15</td><td class="r num">4.4</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ══ 3. The ledger ══════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="section-head">
+      <span class="overline">Feasibility</span>
+      <h2>Every data point, and what it costs</h2>
+      <p class="note">Checked against the schema and the live row counts, not against memory.</p>
+    </div>
+
+    <div class="card" style="padding:0; gap:0">
+      <div class="table-wrap">
+        <table class="ledger">
+          <thead>
+            <tr>
+              <th scope="col">Data point</th>
+              <th scope="col">Verdict</th>
+              <th scope="col">What it needs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Retail enrolment value<span class="src">sum of <span class="mono">enrolment_value_minor</span></span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing — a service method.</td>
+            </tr>
+            <tr>
+              <td>Institutional contract value<span class="src">sum of <span class="mono">total_value_minor</span></span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing. Cancelled contracts excluded.</td>
+            </tr>
+            <tr>
+              <td>Collected · Outstanding<span class="src">payments, reversals subtracted</span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing — the dashboard already computes both.</td>
+            </tr>
+            <tr>
+              <td>Sessions delivered, per course<span class="src"><span class="mono">COMPLETED</span> ÷ total, grouped by course</span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing. 41 of 164 delivered today.</td>
+            </tr>
+            <tr>
+              <td>Batches per trainer<span class="src">confirmed <span class="mono">batch_trainer_assignments</span></span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing — <span class="mono">trainerLoad</span> already returns it.</td>
+            </tr>
+            <tr>
+              <td>Schedule adherence<span class="src">delivered on plan vs moved or called off</span></td>
+              <td><span class="chip live">Live</span></td>
+              <td>Nothing. Honest stand-in for punctuality.</td>
+            </tr>
+            <tr>
+              <td>Completion %<span class="src"><span class="mono">student_batch_mapping.completed_at</span></span></td>
+              <td><span class="chip empty">Empty</span></td>
+              <td>A "mark completed" verb on the batch roster. Column is already there — no migration. <strong>~half a day.</strong></td>
+            </tr>
+            <tr>
+              <td>Drop-out %<span class="src"><span class="mono">is_active</span> + <span class="mono">exit_reason</span></span></td>
+              <td><span class="chip empty">Empty</span></td>
+              <td>A "left the batch, with a reason" verb beside it. Same write, same screen. <strong>Included above.</strong></td>
+            </tr>
+            <tr>
+              <td>Session punctuality<span class="src">no started-at anywhere</span></td>
+              <td><span class="chip blocked">No source</span></td>
+              <td>A <span class="mono">started_at</span> column and a trainer clock-in. The trainer portal is deferred, so admin would key it — which makes the number about admin, not the trainer. <strong>Recommend: ship adherence instead.</strong></td>
+            </tr>
+            <tr>
+              <td>Trainer rating / feedback<span class="src">nothing in the schema</span></td>
+              <td><span class="chip blocked">No source</span></td>
+              <td>A new <span class="mono">session_feedback</span> table and somebody to fill it — that is the student portal, also deferred. <strong>Migration + a write surface.</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="callout">
+      <h3>Two design calls I made, and why</h3>
+      <p class="note">
+        <strong>The course bars are one colour, not four.</strong> Every bar measures the same thing —
+        how much of that course has been delivered. Four hues would encode position in the list, so
+        re-sorting or filtering repaints them and the colour means nothing. Magnitude gets one hue;
+        colour is reserved for retail-against-college, where it carries a real distinction.
+      </p>
+      <p class="note">
+        <strong>A missing measurement shows as "—", never as 0%.</strong> A drop-out rate of 0.0%
+        reads as "nobody drops out". "—" reads as "nobody is counting", which is true and is the
+        thing worth fixing.
+      </p>
+    </div>
+
+    <div class="callout" style="border-left-color: var(--brand)">
+      <h3>What I'd recommend</h3>
+      <p class="note">
+        Ship <strong>Option A</strong> now — six of the ten data points are live and need no schema
+        change. Add the roster's complete/exit verb in the same pass and completion and drop-out
+        light up a day later, taking it to eight. Punctuality and rating wait for the trainer and
+        student portals, which is where the people who actually know those facts will be.
+      </p>
+    </div>
+  </section>
+
+</div>
