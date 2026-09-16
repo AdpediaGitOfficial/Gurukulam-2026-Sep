@@ -117,8 +117,36 @@ export async function fetchPage<TRow extends z.ZodTypeAny>(
   allowed: readonly string[],
   contract: QueryContract,
 ): Promise<Page<z.infer<TRow>>> {
-  const response = await apiFetch(`${path}${queryString(params, allowed, contract)}`);
-  return pageOf(row).parse(response) as Page<z.infer<TRow>>;
+  const query = queryString(params, allowed, contract);
+  const response = await apiFetch(`${path}${query}`);
+
+  const parsed = pageOf(row).safeParse(response);
+  if (!parsed.success) {
+    /* Say WHAT drifted, in the server log, before the throw.
+     *
+     * Without this the whole failure reaches production as a digest and
+     * nothing else: React strips a Server Component error to { message,
+     * digest } before it leaves the server, so neither the operator nor the
+     * person reading over their shoulder can tell a contract drift from a
+     * timeout. One row out of two hundred with an unexpected shape takes down
+     * a screen that works perfectly on every other deployment, and the only
+     * clue is a number.
+     *
+     * Field PATHS and messages only — never values. A row that fails to parse
+     * is still somebody's name, phone number or fee, and a log is the last
+     * place that belongs. `rows.7.startDate` is what identifies the problem;
+     * what was in it is not needed to fix anything. */
+    const issues = parsed.error.issues
+      .slice(0, 8)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
+    console.error(
+      `[contract] GET ${path}${query} returned rows the console cannot read. ` +
+        `${parsed.error.issues.length} problem(s); first ${issues.length}: ${issues.join(" · ")}`,
+    );
+    throw parsed.error;
+  }
+
+  return parsed.data as Page<z.infer<TRow>>;
 }
 
 /** Every list endpoint accepts these on top of its own filters. */
