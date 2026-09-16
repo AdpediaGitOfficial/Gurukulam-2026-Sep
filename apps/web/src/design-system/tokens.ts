@@ -45,6 +45,31 @@ export const seriesTokens = {
   college: "var(--color-series-college)",
 } as const;
 
+/**
+ * The delivery band — one hue, four ordered steps.
+ *
+ * Ordered on purpose: these are read left to right as a single quantity, so a
+ * consumer indexes this array rather than naming a step, and re-ordering the
+ * buckets would be a change to the data, not to the palette.
+ */
+export const deliveryRamp = [
+  "var(--color-seq-1)",
+  "var(--color-seq-2)",
+  "var(--color-seq-3)",
+  "var(--color-seq-4)",
+] as const;
+
+/**
+ * The utilisation band. Not a ramp — the ends are the problem and the middle
+ * is the goal, so the colours are status at the ends and one hue between.
+ */
+export const utilisationRamp = [
+  "var(--color-util-bench)",
+  "var(--color-util-light)",
+  "var(--color-util-busy)",
+  "var(--color-util-stretched)",
+] as const;
+
 export const domainTokens = {
   students: "var(--color-domain-students)",
   trainers: "var(--color-domain-trainers)",

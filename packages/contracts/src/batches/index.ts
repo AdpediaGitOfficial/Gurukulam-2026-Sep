@@ -55,7 +55,30 @@ export const batchSchema = z.object({
 
 export type Batch = z.infer<typeof batchSchema>;
 
+/**
+ * The batch queues the dashboard counts, as a filter.
+ *
+ * One parameter with three values rather than three booleans: they are
+ * mutually exclusive questions an operator asks one at a time, and a list that
+ * accepted all three would have to decide what "stalled AND over capacity"
+ * means when nobody asked it.
+ *
+ * These exist because a distribution segment that cannot be opened is trivia.
+ * The dashboard counts them; this is how somebody sees WHICH rows.
+ */
+export const batchAttentionSchema = z.enum([
+  /** Past its start date with not one session delivered. */
+  "STALLED",
+  /** Starting within a fortnight with no trainer confirmed. */
+  "UNSTAFFED_SOON",
+  /** More students mapped than the batch says it holds. */
+  "OVER_CAPACITY",
+]);
+
+export type BatchAttention = z.infer<typeof batchAttentionSchema>;
+
 export const batchQuerySchema = pageQuerySchema.extend({
+  attention: batchAttentionSchema.optional(),
   courseId: z.string().optional(),
   collegeId: z.string().optional(),
   cityId: z.string().optional(),

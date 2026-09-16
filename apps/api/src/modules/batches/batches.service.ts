@@ -9,6 +9,7 @@ import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
 import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import type { BatchAttention } from "@gurukulam/contracts";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
@@ -42,6 +43,7 @@ export class BatchesService {
       ...(query.collegeId ? { collegeId: query.collegeId } : {}),
       ...(query.cityId ? { cityId: query.cityId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(await this.attentionWhere(query.attention)),
       ...(query.trainerId ? { primaryTrainerId: query.trainerId } : {}),
       // Segment is derived, never stored — the null-ness of collegeId IS the
       // distinction, so filtering on it cannot drift from reality.
@@ -557,6 +559,65 @@ export class BatchesService {
       }
       return a.committedSessions - b.committedSessions;
     });
+  }
+
+  /**
+   * The dashboard's batch queues, expressed as a `where` fragment.
+   *
+   * Written here, beside the list, and READ by the dashboard rather than the
+   * other way round — so the count on the card and the rows behind the link
+   * cannot drift into disagreeing about what "stalled" means. A figure
+   * somebody clicks and finds a different number behind is worse than no
+   * figure at all.
+   */
+  private async attentionWhere(
+    attention: BatchAttention | undefined,
+  ): Promise<Prisma.BatchWhereInput> {
+    if (attention === undefined) return {};
+
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+
+    if (attention === "STALLED") {
+      return {
+        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+        startDate: { lt: midnight },
+        sessions: { none: { deletedAt: null, status: "COMPLETED" } },
+      };
+    }
+
+    if (attention === "UNSTAFFED_SOON") {
+      const horizon = new Date(midnight.getTime() + 14 * 24 * 60 * 60 * 1000);
+      return {
+        status: "SCHEDULED",
+        primaryTrainerId: null,
+        startDate: { gte: midnight, lte: horizon },
+      };
+    }
+
+    // Over capacity compares a ROSTER COUNT to a column, which no `where` can
+    // express. Resolving it to a list of ids first keeps the result paginable
+    // — a filter applied after the page was cut would return short pages and a
+    // total that does not match what is on screen.
+    const [withCapacity, rosters] = await Promise.all([
+      this.prisma.batch.findMany({
+        where: { ...liveOnly(), maxCapacity: { not: null } },
+        select: { batchId: true, maxCapacity: true },
+      }),
+      this.prisma.studentBatchMapping.groupBy({
+        by: ["batchId"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+    const enrolledOf = new Map(rosters.map((r) => [r.batchId, r._count._all]));
+    const over = withCapacity
+      .filter((b) => (enrolledOf.get(b.batchId) ?? 0) > (b.maxCapacity ?? 0))
+      .map((b) => b.batchId);
+
+    // An empty `in` matches nothing, which is the right answer for "no batch
+    // is over capacity" — and is why this is not left as `{}`.
+    return { batchId: { in: over } };
   }
 
   private async mustExist(principal: Principal, batchId: string) {

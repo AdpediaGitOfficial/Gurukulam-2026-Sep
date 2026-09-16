@@ -56,6 +56,33 @@
      normal-vision ΔE 33.2, both above 3:1 on the chart surface. */
   --color-series-retail: #0058bb;
   --color-series-college: #b07a00;
+  /* ---- Distribution ramps ---------------------------------------------
+   * Two bands on the dashboard, and they encode two different things, so they
+   * are two different kinds of scale rather than one palette used twice.
+   *
+   * `seq-*` is SEQUENTIAL — how much of a course has been delivered — so one
+   * hue in four ordered steps. Validated: worst adjacent pair ΔE 16.2 under
+   * protanopia, 17.9 in normal vision. The two lightest fall under 3:1 on the
+   * card, which is why every segment carries a label AND a count beside it;
+   * the band is never read by colour alone.
+   *
+   * `util-*` is not sequential. BOTH ends of trainer utilisation are the
+   * problem — idle costs money and overloaded breaks when one session moves —
+   * so the ends take status colour and the healthy middle is one hue at two
+   * steps. Busy↔stretched is ΔE 7.2 under protanopia, inside the floor band,
+   * which is legal only with secondary encoding: hence the 2px gaps and the
+   * labelled, counted legend.
+   * -------------------------------------------------------------------- */
+  --color-seq-1: #cfe1f5;
+  --color-seq-2: #7aaede;
+  --color-seq-3: #2b74c4;
+  --color-seq-4: #0a3f7d;
+
+  --color-util-bench: #ea580c;
+  --color-util-light: #3fa45f;
+  --color-util-busy: #166534;
+  --color-util-stretched: #ba1a1a;
+
   --color-rail: #b63a13;
   --color-rail-raised: #b53a13;
 

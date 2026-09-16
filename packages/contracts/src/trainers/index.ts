@@ -78,7 +78,23 @@ export const trainerDetailSchema = trainerSchema.extend({
 
 export type TrainerDetail = z.infer<typeof trainerDetailSchema>;
 
+/** The utilisation bands the dashboard draws, as a filter. */
+export const trainerUtilisationSchema = z.enum(["BENCH", "LIGHT", "BUSY", "STRETCHED"]);
+
+export type TrainerUtilisation = z.infer<typeof trainerUtilisationSchema>;
+
+export const trainerAttentionSchema = z.enum([
+  /** Two live sessions in the same slot on the same day. */
+  "DOUBLE_BOOKED",
+  /** Active, but approved to deliver nothing — capacity that cannot be used. */
+  "NO_COURSES",
+]);
+
+export type TrainerAttention = z.infer<typeof trainerAttentionSchema>;
+
 export const trainerQuerySchema = pageQuerySchema.extend({
+  utilisation: trainerUtilisationSchema.optional(),
+  attention: trainerAttentionSchema.optional(),
   cityId: z.string().optional(),
   engagement: z.enum(["IN_HOUSE", "FREELANCE"]).optional(),
   /** Only trainers approved for this course — the batch trainer picker. */

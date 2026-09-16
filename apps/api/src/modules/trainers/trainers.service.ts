@@ -5,6 +5,7 @@ import {
   type ApproveCoursesInput, type CreateTrainerInput, type Page, type Principal,
   type SuspendTrainerInput,
   type Trainer, type TrainerDetail, type TrainerQuery, type UpdateTrainerInput,
+  type TrainerAttention, type TrainerUtilisation,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -47,6 +48,79 @@ export class TrainersService {
     private readonly ids: IdService,
   ) {}
 
+  /**
+   * Utilisation, resolved to a set of trainer ids.
+   *
+   * Counted from LIVE batches the principal can see, which is the same
+   * definition the dashboard band uses — the band and the list it links to
+   * have to agree, or the number on the card is a lie somebody discovers one
+   * click later.
+   */
+  private async utilisationWhere(
+    principal: Principal,
+    utilisation: TrainerUtilisation | undefined,
+  ): Promise<Prisma.TrainerWhereInput> {
+    if (utilisation === undefined) return {};
+
+    const loaded = await this.prisma.batch.groupBy({
+      by: ["primaryTrainerId"],
+      where: {
+        ...liveOnly(),
+        ...cityScope(principal),
+        primaryTrainerId: { not: null },
+        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+      },
+      _count: { _all: true },
+    });
+
+    const carrying = new Map<string, number>();
+    for (const row of loaded) {
+      if (row.primaryTrainerId !== null) carrying.set(row.primaryTrainerId, row._count._all);
+    }
+
+    // The bench is everyone NOT in that map, so it is the complement rather
+    // than a list — otherwise it would have to enumerate every trainer.
+    if (utilisation === "BENCH") return { trainerId: { notIn: [...carrying.keys()] } };
+
+    const within = (n: number): boolean =>
+      utilisation === "LIGHT" ? n <= 2 : utilisation === "BUSY" ? n > 2 && n < 5 : n >= 5;
+
+    return {
+      trainerId: {
+        in: [...carrying.entries()].filter(([, n]) => within(n)).map(([id]) => id),
+      },
+    };
+  }
+
+  /** The two capacity queues the dashboard counts. */
+  private async attentionWhere(
+    principal: Principal,
+    attention: TrainerAttention | undefined,
+  ): Promise<Prisma.TrainerWhereInput> {
+    if (attention === undefined) return {};
+    if (attention === "NO_COURSES") return { courses: { none: { deletedAt: null } } };
+
+    // One trainer, one day, one start time, two live sessions. `having` does
+    // the counting in the database; only the offending slots come back.
+    const clashes = await this.prisma.batchSession.groupBy({
+      by: ["trainerId", "scheduledDate", "startTime"],
+      where: {
+        ...liveOnly(),
+        trainerId: { not: null },
+        status: { in: ["SCHEDULED", "LIVE"] },
+        batch: { ...liveOnly(), ...cityScope(principal) },
+      },
+      _count: { _all: true },
+      having: { trainerId: { _count: { gt: 1 } } },
+    });
+
+    return {
+      trainerId: {
+        in: [...new Set(clashes.map((c) => c.trainerId).filter((id): id is string => id !== null))],
+      },
+    };
+  }
+
   async list(principal: Principal, query: TrainerQuery): Promise<Page<Trainer>> {
     const where: Prisma.TrainerWhereInput = {
       ...liveOnly(query.includeDeleted),
@@ -54,6 +128,8 @@ export class TrainersService {
       ...(query.cityId ? { cityId: query.cityId } : {}),
       ...(query.accountStatus ? { accountStatus: query.accountStatus } : {}),
       ...(query.engagement ? { engagement: query.engagement } : {}),
+      ...(await this.utilisationWhere(principal, query.utilisation)),
+      ...(await this.attentionWhere(principal, query.attention)),
       // Invariant 15's read side: only trainers with a live approval row.
       ...(query.approvedForCourseId
         ? { courses: { some: { courseId: query.approvedForCourseId, deletedAt: null } } }

@@ -20,6 +20,8 @@ import { fetchPage, PAGE_KEYS, queryString, type SearchParams } from "@/server/l
 
 export const TRAINER_FILTERS = [
   ...PAGE_KEYS,
+  "utilisation",
+  "attention",
   "cityId",
   "approvedForCourseId",
   "accountStatus",

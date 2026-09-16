@@ -21,6 +21,50 @@ import { cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
  * 2. **Everything is segmented retail vs college.** The two have different
  *    economics, and a blended number hides both.
  */
+/**
+ * How many rows a ranked list shows.
+ *
+ * It is the size of the CUT, applied after ranking the whole population —
+ * never a limit on what was ranked. The distinction is the entire bug this
+ * module used to have.
+ */
+const TOP_N = 10;
+
+/** A trainer at or above this many live batches is one cancellation from trouble. */
+const STRETCHED_AT = 5;
+
+/** How far ahead an unstaffed batch still counts as a staffing emergency. */
+const STAFFING_HORIZON_DAYS = 14;
+
+/** How long a trainer may sit on a proposal before it is somebody's problem. */
+const PROPOSAL_PATIENCE_DAYS = 7;
+
+/** A batch that is still expected to deliver. */
+const isLive = (status: string): boolean =>
+  status === "SCHEDULED" || status === "IN_PROGRESS";
+
+/**
+ * Everything both cards need to know about one batch, fetched once.
+ *
+ * The portfolio distribution, the exception queues and the course ranking are
+ * three questions about the same rows. Asking them separately is how two
+ * figures on one screen come to disagree — and it is three times the queries
+ * for one answer.
+ */
+interface BatchFact {
+  batchId: string;
+  courseId: string;
+  status: string;
+  startDate: Date;
+  maxCapacity: number | null;
+  /** Sessions still in the plan. CANCELLED is excluded: a called-off session
+   *  is a slot that went away, not one that is owed. */
+  sessionsPlanned: number;
+  sessionsDelivered: number;
+  retail: number;
+  college: number;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
@@ -45,15 +89,20 @@ export class DashboardService {
       ...collegeScope(principal, "collegeId"),
     };
 
-    const [headline, actions, collections, trend, delivery, topCourses, trainerLoad] =
+    // Fetched before the rest so the portfolio card and the course ranking
+    // read the same rows rather than two queries that can disagree.
+    const facts = await this.batchFacts(batchScope, studentScope);
+
+    const [headline, actions, collections, trend, delivery, portfolio, topCourses, trainers] =
       await Promise.all([
         this.headline(principal, studentScope, collegeWhere),
         this.actions(principal, studentScope, batchScope, collegeWhere),
         this.collections(principal, studentScope, collegeWhere),
         this.trend(principal, studentScope, collegeWhere),
         this.delivery(batchScope, studentScope),
-        this.topCourses(batchScope, studentScope),
-        this.trainerLoad(principal),
+        this.portfolio(facts, batchScope),
+        this.topCourses(facts, studentScope),
+        this.trainerPanel(principal),
       ]);
 
     return {
@@ -62,8 +111,10 @@ export class DashboardService {
       collections,
       trend,
       delivery,
+      portfolio,
+      capacity: trainers.capacity,
       topCourses,
-      trainerLoad,
+      trainerLoad: trainers.load,
       scope: {
         cityIds: principal.cityScope,
         collegeId: principal.collegeScope,
@@ -375,100 +426,458 @@ export class DashboardService {
     };
   }
 
-  private async topCourses(
+  /**
+   * One pass over every batch in scope, with its sessions and its roster.
+   *
+   * Four queries regardless of how many batches there are, and no query per
+   * anything. Everything downstream folds this in memory, which is bounded by
+   * BATCHES rather than courses or trainers — a few thousand rows of six
+   * fields. Past roughly 50,000 batches in a single scope this wants to become
+   * grouped SQL; until then the in-memory fold keeps the scope predicate in
+   * one place, which is worth more than the milliseconds.
+   */
+  private async batchFacts(
     batchScope: Prisma.BatchWhereInput,
     studentScope: Prisma.StudentWhereInput,
-  ): Promise<Dashboard["topCourses"]> {
-    // Only courses that actually have delivery IN SCOPE — a course with no
-    // batch in this region is not this region's course to report on.
-    const courses = await this.prisma.course.findMany({
-      where: { ...liveOnly(), batches: { some: batchScope } },
-      select: { courseId: true, courseCode: true, name: true },
-      take: 50,
-    });
-
-    const rows = await Promise.all(
-      courses.map(async (course) => {
-        const inCourse = {
+  ): Promise<BatchFact[]> {
+    const enrolmentsIn = (channel: "RETAIL" | "COLLEGE") =>
+      this.prisma.studentBatchMapping.groupBy({
+        by: ["batchId"],
+        // The relation filter rather than an id list: `batchId: { in: [...] }`
+        // would ship every batch id in scope to the server on every load.
+        where: {
           deletedAt: null,
-          batch: { AND: [batchScope, { courseId: course.courseId }] },
-        } satisfies Prisma.StudentBatchMappingWhereInput;
+          batch: batchScope,
+          student: { AND: [studentScope, { enrolmentChannel: channel }] },
+        },
+        _count: { _all: true },
+      });
 
-        const [retail, college, activeBatches, revenue] = await Promise.all([
-          this.prisma.studentBatchMapping.count({
-            where: { ...inCourse, student: { AND: [studentScope, { enrolmentChannel: "RETAIL" }] } },
-          }),
-          this.prisma.studentBatchMapping.count({
-            where: { ...inCourse, student: { AND: [studentScope, { enrolmentChannel: "COLLEGE" }] } },
-          }),
-          this.prisma.batch.count({
-            where: { AND: [batchScope, { courseId: course.courseId, status: { in: ["SCHEDULED", "IN_PROGRESS"] } }] },
-          }),
-          this.prisma.studentFeeLedger.aggregate({
-            where: { ...liveOnly(), courseId: course.courseId, student: studentScope },
-            _sum: { totalPaidMinor: true },
-          }),
-        ]);
-
-        return {
-          courseId: course.courseId,
-          courseCode: course.courseCode,
-          name: course.name,
-          enrolled: { total: retail + college, retail, college } satisfies SegmentedCount,
-          activeBatches,
-          revenueMinor: (revenue._sum.totalPaidMinor ?? 0n).toString(),
-        };
+    const [batches, sessionRows, retailRows, collegeRows] = await Promise.all([
+      this.prisma.batch.findMany({
+        where: batchScope,
+        select: {
+          batchId: true,
+          courseId: true,
+          status: true,
+          startDate: true,
+          maxCapacity: true,
+        },
       }),
-    );
+      this.prisma.batchSession.groupBy({
+        by: ["batchId", "status"],
+        where: { ...liveOnly(), batch: batchScope },
+        _count: { _all: true },
+      }),
+      enrolmentsIn("RETAIL"),
+      enrolmentsIn("COLLEGE"),
+    ]);
 
-    return rows.sort((a, b) => b.enrolled.total - a.enrolled.total).slice(0, 10);
+    const planned = new Map<string, number>();
+    const delivered = new Map<string, number>();
+    for (const row of sessionRows) {
+      // A cancelled session left the plan; counting it would make a batch that
+      // dropped half its schedule look permanently half-delivered.
+      if (row.status === "CANCELLED") continue;
+      planned.set(row.batchId, (planned.get(row.batchId) ?? 0) + row._count._all);
+      if (row.status === "COMPLETED") {
+        delivered.set(row.batchId, (delivered.get(row.batchId) ?? 0) + row._count._all);
+      }
+    }
+    const retailOf = new Map(retailRows.map((r) => [r.batchId, r._count._all]));
+    const collegeOf = new Map(collegeRows.map((r) => [r.batchId, r._count._all]));
+
+    return batches.map((batch) => ({
+      batchId: batch.batchId,
+      courseId: batch.courseId,
+      status: batch.status,
+      startDate: batch.startDate,
+      maxCapacity: batch.maxCapacity,
+      sessionsPlanned: planned.get(batch.batchId) ?? 0,
+      sessionsDelivered: delivered.get(batch.batchId) ?? 0,
+      retail: retailOf.get(batch.batchId) ?? 0,
+      college: collegeOf.get(batch.batchId) ?? 0,
+    }));
   }
 
-  private async trainerLoad(principal: Principal): Promise<Dashboard["trainerLoad"]> {
-    const now = new Date();
-    const trainers = await this.prisma.trainer.findMany({
-      where: { ...liveOnly(), ...cityScope(principal), accountStatus: "ACTIVE" },
-      select: {
-        trainerId: true, trainerCode: true, name: true,
-        _count: { select: { courses: { where: { deletedAt: null } } } },
-      },
-      take: 50,
+  /**
+   * The catalogue described, not sampled — plus the rows somebody must act on.
+   *
+   * A distribution is the only shape that survives growth. Ten courses out of
+   * 1,217 describe ten courses; these four buckets describe all of them, in
+   * one strip, and each one is a filter. The queue beneath is bounded by the
+   * WORK rather than by a cut-off, which is what makes it a queue and not
+   * another statistic.
+   *
+   * Bucketed per COURSE, from its batches in scope. A course delivered only in
+   * another region reads as "not scheduled" here, which is why the dashboard
+   * echoes the scope it was computed under.
+   */
+  private async portfolio(
+    facts: readonly BatchFact[],
+    batchScope: Prisma.BatchWhereInput,
+  ): Promise<Dashboard["portfolio"]> {
+    const [totalCourses, coursesWithoutTopics] = await Promise.all([
+      this.prisma.course.count({ where: liveOnly() }),
+      this.prisma.course.count({
+        where: { ...liveOnly(), topics: { none: { deletedAt: null } }, batches: { some: batchScope } },
+      }),
+    ]);
+
+    const byCourse = new Map<
+      string,
+      { planned: number; delivered: number; live: number; enrolled: number }
+    >();
+    let stalledBatches = 0;
+    let batchesOverCapacity = 0;
+    const today = startOfToday();
+
+    for (const fact of facts) {
+      const row = byCourse.get(fact.courseId) ?? { planned: 0, delivered: 0, live: 0, enrolled: 0 };
+      row.planned += fact.sessionsPlanned;
+      row.delivered += fact.sessionsDelivered;
+      row.enrolled += fact.retail + fact.college;
+      if (isLive(fact.status)) row.live += 1;
+      byCourse.set(fact.courseId, row);
+
+      // Started on paper, nothing delivered. The single most useful thing this
+      // card can point at: a cohort that is quietly not happening.
+      if (isLive(fact.status) && fact.startDate < today && fact.sessionsDelivered === 0) {
+        stalledBatches += 1;
+      }
+      if (fact.maxCapacity !== null && fact.retail + fact.college > fact.maxCapacity) {
+        batchesOverCapacity += 1;
+      }
+    }
+
+    let notStarted = 0;
+    let inFlight = 0;
+    let complete = 0;
+    let withLiveDelivery = 0;
+    let coursesWithoutEnrolment = 0;
+
+    for (const row of byCourse.values()) {
+      if (row.live > 0) withLiveDelivery += 1;
+      if (row.live > 0 && row.enrolled === 0) coursesWithoutEnrolment += 1;
+      if (row.planned === 0) continue; // falls into NOT_SCHEDULED below
+      if (row.delivered === 0) notStarted += 1;
+      else if (row.delivered < row.planned) inFlight += 1;
+      else complete += 1;
+    }
+
+    // Everything the three buckets above did not claim: courses with no
+    // timetable in this scope at all, INCLUDING courses with no batch. That is
+    // the honest home for them — "not scheduled" is exactly what they are —
+    // and it keeps the band's total equal to the catalogue, so a reader can
+    // check the arithmetic.
+    const notScheduled = Math.max(0, totalCourses - notStarted - inFlight - complete);
+
+    return {
+      totalCourses,
+      withLiveDelivery,
+      delivery: [
+        { bucket: "NOT_SCHEDULED", count: notScheduled },
+        { bucket: "NOT_STARTED", count: notStarted },
+        { bucket: "IN_FLIGHT", count: inFlight },
+        { bucket: "COMPLETE", count: complete },
+      ],
+      stalledBatches,
+      coursesWithoutEnrolment,
+      batchesOverCapacity,
+      coursesWithoutTopics,
+    };
+  }
+
+  /**
+   * The largest courses, ranked across the WHOLE catalogue.
+   *
+   * ── What this replaced, and why it mattered ──────────────────────────
+   *
+   * The first version read `findMany({ take: 50 })` with NO ordering, fired
+   * four more queries per course, then sorted those fifty and kept ten. Two
+   * things were wrong with that and only one of them was speed.
+   *
+   * Grown to 1,217 courses, the endpoint answered in 124ms and named
+   * "Scale Course 906" with zero enrolments among its top ten while
+   * Data Analytics, the actual leader, was absent. `take` without `orderBy`
+   * is an ARBITRARY fifty, so "the top ten courses" was really "the top ten
+   * of a random 4% sample" — and the sample gets smaller as the business
+   * grows, which is the opposite of how a report should age.
+   *
+   * ── The shape now ───────────────────────────────────────────────────
+   *
+   * Five queries, none of them per-course, every one covering the full
+   * population; the ranking happens over all of it and the cut to ten is the
+   * LAST step rather than the first. Scope stays in Prisma `where` fragments
+   * so invariant 11 is applied the same way it is everywhere else — a raw
+   * SQL rewrite would have been faster still and would have forked the scope
+   * predicate, which is the one thing worth more than the milliseconds.
+   *
+   * Folding per-batch counts in memory is bounded by BATCHES, not courses. At
+   * a few thousand that is nothing. Past roughly 50,000 batches in one scope
+   * this wants to become a grouped raw query with the scope predicate
+   * generated from the same helpers.
+   *
+   * The per-batch facts arrive from `batchFacts`, shared with the portfolio
+   * card, because both answer questions about the same rows and fetching them
+   * twice is how two figures on one screen come to disagree.
+   */
+  private async topCourses(
+    facts: readonly BatchFact[],
+    studentScope: Prisma.StudentWhereInput,
+  ): Promise<Dashboard["topCourses"]> {
+    if (facts.length === 0) return [];
+
+    const revenueRows = await this.prisma.studentFeeLedger.groupBy({
+      by: ["courseId"],
+      where: { ...liveOnly(), student: studentScope },
+      _sum: { totalPaidMinor: true },
     });
 
-    const rows = await Promise.all(
-      trainers.map(async (t) => {
-        const [confirmedBatches, sessionsUpcoming] = await Promise.all([
-          this.prisma.batch.count({
-            where: {
-              ...liveOnly(), ...cityScope(principal), ...collegeScope(principal),
-              primaryTrainerId: t.trainerId,
-              status: { in: ["SCHEDULED", "IN_PROGRESS"] },
-            },
-          }),
-          this.prisma.batchSession.count({
-            where: {
-              ...liveOnly(), trainerId: t.trainerId,
-              status: { in: ["SCHEDULED", "LIVE"] },
-              scheduledDate: { gte: now },
-              batch: { ...liveOnly(), ...cityScope(principal), ...collegeScope(principal) },
-            },
-          }),
-        ]);
+    // A course with no batch in scope is not this region's course to report
+    // on — the same rule the previous version applied, kept deliberately.
+    const byCourse = new Map<
+      string,
+      { retail: number; college: number; activeBatches: number }
+    >();
+    for (const fact of facts) {
+      const row = byCourse.get(fact.courseId) ?? { retail: 0, college: 0, activeBatches: 0 };
+      if (isLive(fact.status)) row.activeBatches += 1;
+      row.retail += fact.retail;
+      row.college += fact.college;
+      byCourse.set(fact.courseId, row);
+    }
 
-        return {
-          trainerId: t.trainerId,
-          trainerCode: t.trainerCode,
-          name: t.name,
-          confirmedBatches,
-          sessionsUpcoming,
-          approvedCourses: t._count.courses,
-        };
-      }),
+    const revenueOf = new Map(
+      revenueRows.map((r) => [r.courseId, r._sum.totalPaidMinor ?? 0n]),
     );
 
-    return rows.sort((a, b) => b.sessionsUpcoming - a.sessionsUpcoming).slice(0, 10);
+    // Ranked over every course that has delivery in scope, THEN cut to ten.
+    const ranked = [...byCourse.entries()]
+      .map(([courseId, row]) => ({ courseId, ...row, total: row.retail + row.college }))
+      .sort((a, b) => b.total - a.total || b.activeBatches - a.activeBatches)
+      .slice(0, TOP_N);
+
+    if (ranked.length === 0) return [];
+
+    // Names for the ten that survived, not for the catalogue.
+    const named = await this.prisma.course.findMany({
+      where: { courseId: { in: ranked.map((r) => r.courseId) } },
+      select: { courseId: true, courseCode: true, name: true },
+    });
+    const nameOf = new Map(named.map((c) => [c.courseId, c]));
+
+    return ranked.map((row) => {
+      const course = nameOf.get(row.courseId);
+      return {
+        courseId: row.courseId,
+        courseCode: course?.courseCode ?? "—",
+        name: course?.name ?? "—",
+        enrolled: {
+          total: row.total,
+          retail: row.retail,
+          college: row.college,
+        } satisfies SegmentedCount,
+        activeBatches: row.activeBatches,
+        revenueMinor: (revenueOf.get(row.courseId) ?? 0n).toString(),
+      };
+    });
+  }
+
+  /**
+   * The most loaded trainers, ranked across every active trainer in scope.
+   *
+   * Same defect as `topCourses` and the same fix: fifty unordered trainers
+   * with two queries each, sorted after the sample was already taken. At 291
+   * trainers the two busiest people in the business — four and three sessions
+   * ahead — did not appear on the list at all, while trainers with zero did.
+   *
+   * Four queries now, all population-wide. The trainer roster is fetched whole
+   * because it is the thing being ranked and because ACTIVE and city scope
+   * have to be applied to the trainer, not to their batches; at a few thousand
+   * rows of three columns that is cheap, and it is the row count to watch if
+   * the business ever has tens of thousands of trainers.
+   */
+  private async trainerPanel(
+    principal: Principal,
+  ): Promise<{ load: Dashboard["trainerLoad"]; capacity: Dashboard["capacity"] }> {
+    const now = new Date();
+    // `startDate` is a DATE column, so the window is anchored to midnight
+    // rather than to the current instant. Compared against `now`, a batch
+    // starting TODAY — the most urgent one there is — falls outside the
+    // window the moment the clock passes midnight, and whether it does at all
+    // depends on how the driver narrows a timestamp to a date. Neither is
+    // something a staffing queue should rest on.
+    const from = startOfToday();
+    const staffingHorizon = addDays(from, STAFFING_HORIZON_DAYS);
+    const patienceRanOut = addDays(now, -PROPOSAL_PATIENCE_DAYS);
+    const deliveryScope: Prisma.BatchWhereInput = {
+      ...liveOnly(),
+      ...cityScope(principal),
+      ...collegeScope(principal),
+    };
+
+    const [
+      trainers,
+      batchRows,
+      sessionRows,
+      courseRows,
+      clashRows,
+      unstaffedBatchesSoon,
+      staleProposals,
+      trainersWithoutCourses,
+    ] = await Promise.all([
+      this.prisma.trainer.findMany({
+        where: { ...liveOnly(), ...cityScope(principal), accountStatus: "ACTIVE" },
+        select: { trainerId: true, trainerCode: true, name: true },
+      }),
+      this.prisma.batch.groupBy({
+        by: ["primaryTrainerId"],
+        where: {
+          ...deliveryScope,
+          primaryTrainerId: { not: null },
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.batchSession.groupBy({
+        by: ["trainerId"],
+        where: {
+          ...liveOnly(),
+          trainerId: { not: null },
+          status: { in: ["SCHEDULED", "LIVE"] },
+          scheduledDate: { gte: now },
+          batch: deliveryScope,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.trainerCourse.groupBy({
+        by: ["trainerId"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      // One trainer, one day, one start time, two live sessions. The same key
+      // the uniqueness index uses for a BATCH — a person cannot be in two
+      // places at once any more than a cohort can. `having` does the work in
+      // the database; only the offending slots come back.
+      this.prisma.batchSession.groupBy({
+        by: ["trainerId", "scheduledDate", "startTime"],
+        where: {
+          ...liveOnly(),
+          trainerId: { not: null },
+          status: { in: ["SCHEDULED", "LIVE"] },
+          batch: deliveryScope,
+        },
+        _count: { _all: true },
+        having: { trainerId: { _count: { gt: 1 } } },
+      }),
+      this.prisma.batch.count({
+        where: {
+          ...deliveryScope,
+          primaryTrainerId: null,
+          status: "SCHEDULED",
+          startDate: { gte: from, lte: staffingHorizon },
+        },
+      }),
+      this.prisma.batchTrainerAssignment.count({
+        where: {
+          ...liveOnly(),
+          status: "PROPOSED",
+          proposedAt: { lt: patienceRanOut },
+          batch: deliveryScope,
+        },
+      }),
+      this.prisma.trainer.count({
+        where: {
+          ...liveOnly(),
+          ...cityScope(principal),
+          accountStatus: "ACTIVE",
+          courses: { none: { deletedAt: null } },
+        },
+      }),
+    ]);
+
+    const countBy = (
+      rows: Array<{ _count: { _all: number } }>,
+      key: (row: never) => string | null,
+    ): Map<string, number> => {
+      const out = new Map<string, number>();
+      for (const row of rows) {
+        const id = key(row as never);
+        if (id !== null) out.set(id, row._count._all);
+      }
+      return out;
+    };
+
+    const batchesOf = countBy(batchRows, (r: { primaryTrainerId: string | null }) => r.primaryTrainerId);
+    const sessionsOf = countBy(sessionRows, (r: { trainerId: string | null }) => r.trainerId);
+    const coursesOf = countBy(courseRows, (r: { trainerId: string }) => r.trainerId);
+
+    const rows = trainers.map((t) => ({
+      trainerId: t.trainerId,
+      trainerCode: t.trainerCode,
+      name: t.name,
+      confirmedBatches: batchesOf.get(t.trainerId) ?? 0,
+      sessionsUpcoming: sessionsOf.get(t.trainerId) ?? 0,
+      approvedCourses: coursesOf.get(t.trainerId) ?? 0,
+    }));
+
+    // Utilisation is bucketed from the SAME rows the ranking uses, so the band
+    // and the table can never disagree about who is active or how loaded they
+    // are. Counting from `batchRows` alone would quietly include a suspended
+    // trainer still attached to a live batch.
+    let bench = 0;
+    let light = 0;
+    let busy = 0;
+    let stretched = 0;
+    for (const row of rows) {
+      if (row.confirmedBatches === 0) bench += 1;
+      else if (row.confirmedBatches <= 2) light += 1;
+      else if (row.confirmedBatches < STRETCHED_AT) busy += 1;
+      else stretched += 1;
+    }
+
+    const doubleBookedTrainers = new Set(
+      clashRows.map((r) => r.trainerId).filter((id): id is string => id !== null),
+    ).size;
+
+    return {
+      load: rows
+        .slice()
+        .sort(
+          (a, b) =>
+            b.sessionsUpcoming - a.sessionsUpcoming ||
+            b.confirmedBatches - a.confirmedBatches ||
+            a.name.localeCompare(b.name),
+        )
+        .slice(0, TOP_N),
+      capacity: {
+        activeTrainers: rows.length,
+        carryingDelivery: rows.length - bench,
+        utilisation: [
+          { bucket: "BENCH", count: bench },
+          { bucket: "LIGHT", count: light },
+          { bucket: "BUSY", count: busy },
+          { bucket: "STRETCHED", count: stretched },
+        ],
+        unstaffedBatchesSoon,
+        doubleBookedTrainers,
+        staleProposals,
+        trainersWithoutCourses,
+      },
+    };
   }
 }
+
+/** Midnight today, so "past its start date" does not fire on the start date. */
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+const addDays = (from: Date, days: number): Date =>
+  new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 
 /** Human-readable scope, so a figure is never read as global by mistake. */
 function describeScope(principal: Principal): string {

@@ -131,12 +131,109 @@ export const trendSchema = z.object({
 
 export type Trend = z.infer<typeof trendSchema>;
 
+/**
+ * A distribution — the whole population, bucketed.
+ *
+ * This is the shape a dashboard needs once the business is large. A ranked
+ * list of ten describes ten things; at 1,217 courses it leaves 1,207
+ * undescribed and invites the question "why those ten". A distribution
+ * describes every row, in fixed space, at any size — and each bucket is a
+ * filter somebody can open.
+ *
+ * Ordered arrays rather than a map, because the buckets are ORDERED: they are
+ * drawn as one band left to right and a map has no order to draw.
+ */
+export const deliveryBucketSchema = z.enum([
+  /** Live batches exist, but no session has been timetabled. */
+  "NOT_SCHEDULED",
+  /** Timetabled, nothing delivered yet. */
+  "NOT_STARTED",
+  /** Part-delivered. */
+  "IN_FLIGHT",
+  /** Every scheduled session delivered. */
+  "COMPLETE",
+]);
+
+export type DeliveryBucket = z.infer<typeof deliveryBucketSchema>;
+
+export const utilisationBucketSchema = z.enum([
+  /** Active, carrying no live batch at all. */
+  "BENCH",
+  "LIGHT",
+  "BUSY",
+  /** At a load where one cancellation cascades. */
+  "STRETCHED",
+]);
+
+export type UtilisationBucket = z.infer<typeof utilisationBucketSchema>;
+
+export const deliverySliceSchema = z.object({
+  bucket: deliveryBucketSchema,
+  count: z.number().int(),
+});
+
+export const utilisationSliceSchema = z.object({
+  bucket: utilisationBucketSchema,
+  count: z.number().int(),
+});
+
+/**
+ * The course portfolio, described rather than sampled.
+ *
+ * The queue counts are the OTHER half of the answer. A distribution says what
+ * the shape is; a queue says which rows somebody has to do something about,
+ * and it is bounded by the work rather than by an arbitrary cut-off.
+ */
+export const coursePortfolioSchema = z.object({
+  totalCourses: z.number().int(),
+  /** Courses with at least one live batch in scope. */
+  withLiveDelivery: z.number().int(),
+  delivery: z.array(deliverySliceSchema),
+  /** Past their start date with not one session delivered. */
+  stalledBatches: z.number().int(),
+  /** A live batch and nobody on its roster. */
+  coursesWithoutEnrolment: z.number().int(),
+  /** More students mapped than the batch says it holds. */
+  batchesOverCapacity: z.number().int(),
+  /** No topics, so no schedule can be built from the course. */
+  coursesWithoutTopics: z.number().int(),
+});
+
+export type CoursePortfolio = z.infer<typeof coursePortfolioSchema>;
+
+/**
+ * Trainer capacity.
+ *
+ * Utilisation rather than a leaderboard, because at 100+ trainers the question
+ * is not who is best — nothing here measures that — it is who is idle and who
+ * is overloaded. Both ends cost money, which is why the band has two bad ends
+ * and a good middle rather than a single direction.
+ */
+export const trainerCapacitySchema = z.object({
+  activeTrainers: z.number().int(),
+  /** Carrying at least one live batch. */
+  carryingDelivery: z.number().int(),
+  utilisation: z.array(utilisationSliceSchema),
+  /** Starting inside a fortnight with nobody confirmed. */
+  unstaffedBatchesSoon: z.number().int(),
+  /** Trainers with two live sessions in the same slot on the same day. */
+  doubleBookedTrainers: z.number().int(),
+  /** Proposed and unanswered for more than a week. */
+  staleProposals: z.number().int(),
+  /** Active, but approved to deliver nothing — capacity that cannot be used. */
+  trainersWithoutCourses: z.number().int(),
+});
+
+export type TrainerCapacity = z.infer<typeof trainerCapacitySchema>;
+
 export const dashboardSchema = z.object({
   headline: headlineSchema,
   actions: actionsSchema,
   collections: collectionsSchema,
   trend: trendSchema,
   delivery: deliverySchema,
+  portfolio: coursePortfolioSchema,
+  capacity: trainerCapacitySchema,
   topCourses: z.array(coursePerformanceSchema),
   trainerLoad: z.array(trainerLoadSchema),
   /**

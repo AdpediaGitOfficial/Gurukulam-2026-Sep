@@ -2,18 +2,29 @@ import type { Metadata, Route } from "next";
 import { formatRupees, formatRupeesShort, fromWire, type Dashboard } from "@gurukulam/contracts";
 
 import { PageHeader } from "@/components/patterns/page-header";
-import { PageBody, PageSection, SplitLayout } from "@/components/patterns/page-section";
+import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Card, CardHeader } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CollectionsTrend } from "@/features/dashboard/components/collections-trend";
 import { SegmentSplit } from "@/features/dashboard/components/segment-split";
+import { AttentionQueue, type QueueRow } from "@/features/dashboard/components/attention-queue";
+import { DistributionBand, type BandSlice } from "@/features/dashboard/components/distribution-band";
 import { getDashboard } from "@/features/dashboard/server/dashboard-service";
-import { brandTokens, domainTokens, feedbackTokens } from "@/design-system/tokens";
+import {
+  brandTokens,
+  deliveryRamp,
+  domainTokens,
+  feedbackTokens,
+  utilisationRamp,
+} from "@/design-system/tokens";
 import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Dashboard" };
+
+/** Rows a dashboard card shows before it defers to the list behind it. */
+const CARD_ROWS = 5;
 
 type TopCourse = Dashboard["topCourses"][number];
 type TrainerLoad = Dashboard["trainerLoad"][number];
@@ -49,7 +60,12 @@ const ACTION_TILES = [
     caption: "Waiting on a decision",
     icon: "seal",
     color: feedbackTokens.warning,
-    href: "/students/certificates?status=pending",
+    /* The queue is certificate-list ROWS awaiting a decision, and those live
+       on the submission review screen. It used to point at the certificate
+       register with `status=pending` — not a certificate status at all, so the
+       filter was refused and the page 500-ed before the error boundary
+       existed. */
+    href: "/colleges/submissions",
   },
   {
     key: "sessionsMissingRecordings",
@@ -58,6 +74,75 @@ const ACTION_TILES = [
     icon: "play",
     color: feedbackTokens.warning,
     href: "/batches?recordings=missing",
+  },
+] as const;
+
+/**
+ * The four delivery buckets, in the order they are drawn.
+ *
+ * Label, colour and destination live together because they describe one thing;
+ * splitting them across three files is how a segment comes to be coloured for
+ * one bucket and linked to another. The order is the band's order — these are
+ * read left to right as a single quantity.
+ */
+const DELIVERY_BUCKETS = [
+  {
+    bucket: "NOT_SCHEDULED",
+    label: "Not scheduled",
+    title: "No session has been timetabled against this course",
+    href: "/courses?delivery=NOT_SCHEDULED",
+  },
+  {
+    bucket: "NOT_STARTED",
+    label: "Not started",
+    title: "Timetabled, but nothing delivered yet",
+    href: "/courses?delivery=NOT_STARTED",
+  },
+  {
+    bucket: "IN_FLIGHT",
+    label: "In flight",
+    title: "Part-delivered",
+    href: "/courses?delivery=IN_FLIGHT",
+  },
+  {
+    bucket: "COMPLETE",
+    label: "Complete",
+    title: "Every scheduled session delivered",
+    href: "/courses?delivery=COMPLETE",
+  },
+] as const;
+
+/**
+ * Utilisation. Not a ramp — BOTH ends are the problem.
+ *
+ * An idle trainer is capacity nobody is selling; a stretched one breaks the
+ * week when a single session moves. The middle is the goal, which is why the
+ * colour runs amber, green, green, red rather than in one direction.
+ */
+const UTILISATION_BUCKETS = [
+  {
+    bucket: "BENCH",
+    label: "On the bench",
+    title: "Active, carrying no live batch at all",
+    href: "/trainers?utilisation=BENCH",
+  },
+  {
+    bucket: "LIGHT",
+    label: "Light · 1–2",
+    title: "One or two live batches",
+    href: "/trainers?utilisation=LIGHT",
+  },
+  {
+    bucket: "BUSY",
+    label: "Busy · 3–4",
+    title: "Three or four live batches",
+    href: "/trainers?utilisation=BUSY",
+  },
+  {
+    bucket: "STRETCHED",
+    label: "Stretched · 5+",
+    title: "At a load where one cancellation cascades",
+    href: "/trainers?utilisation=STRETCHED",
   },
 ] as const;
 
@@ -79,7 +164,7 @@ const COURSE_COLUMNS: Column<TopCourse>[] = [
     cell: (row) => (
       <div className="flex flex-col items-end">
         <span className="text-body text-ink tabular-nums">{formatCount(row.enrolled.total)}</span>
-        <span className="text-caption text-ink-muted tabular-nums">
+        <span className="whitespace-nowrap text-caption text-ink-muted tabular-nums">
           {formatCount(row.enrolled.retail)} retail · {formatCount(row.enrolled.college)} college
         </span>
       </div>
@@ -134,7 +219,103 @@ const TRAINER_COLUMNS: Column<TrainerLoad>[] = [
 
 export default async function DashboardPage() {
   const dashboard = await getDashboard();
-  const { headline, actions, collections, trend, delivery, scope } = dashboard;
+  /* The API ranks every course and every trainer and returns ten. A card is a
+     pointer rather than a report, so it shows five and says "5 of 1,217" —
+     the denominator is what makes a short list honest. */
+  const topCourses = dashboard.topCourses.slice(0, CARD_ROWS);
+  const trainerLoad = dashboard.trainerLoad.slice(0, CARD_ROWS);
+  const { headline, actions, collections, trend, delivery, portfolio, capacity, scope } = dashboard;
+
+  // The API returns counts keyed by bucket; the vocabulary above supplies the
+  // label, the colour and the destination. Zipped here rather than in the
+  // component so the band stays a dumb renderer of whatever it is handed.
+  const countOf = <T extends string>(
+    slices: ReadonlyArray<{ bucket: T; count: number }>,
+    bucket: T,
+  ): number => slices.find((s) => s.bucket === bucket)?.count ?? 0;
+
+  const deliverySlices: BandSlice[] = DELIVERY_BUCKETS.map((b, index) => ({
+    key: b.bucket,
+    label: b.label,
+    title: b.title,
+    count: countOf(portfolio.delivery, b.bucket),
+    color: deliveryRamp[index] ?? deliveryRamp[0],
+    href: b.href as Route,
+  }));
+
+  const utilisationSlices: BandSlice[] = UTILISATION_BUCKETS.map((b, index) => ({
+    key: b.bucket,
+    label: b.label,
+    title: b.title,
+    count: countOf(capacity.utilisation, b.bucket),
+    color: utilisationRamp[index] ?? utilisationRamp[0],
+    href: b.href as Route,
+  }));
+
+  /* Ordered by how much it hurts to leave alone, not by size. A batch that is
+     quietly not happening outranks a catalogue-hygiene problem however many
+     rows the second one has. */
+  const portfolioQueue: QueueRow[] = [
+    {
+      key: "stalled",
+      count: portfolio.stalledBatches,
+      label: "Batches past their start date with no session delivered",
+      tone: "danger",
+      href: "/batches?attention=STALLED" as Route,
+    },
+    {
+      key: "noEnrolment",
+      count: portfolio.coursesWithoutEnrolment,
+      label: "Courses with live batches and nobody enrolled",
+      tone: "warning",
+      href: "/courses?attention=NO_ENROLMENT" as Route,
+    },
+    {
+      key: "overCapacity",
+      count: portfolio.batchesOverCapacity,
+      label: "Batches over their capacity",
+      tone: "warning",
+      href: "/batches?attention=OVER_CAPACITY" as Route,
+    },
+    {
+      key: "noTopics",
+      count: portfolio.coursesWithoutTopics,
+      label: "Courses with no topics defined",
+      tone: "warning",
+      href: "/courses?attention=NO_TOPICS" as Route,
+    },
+  ];
+
+  const capacityQueue: QueueRow[] = [
+    {
+      key: "unstaffed",
+      count: capacity.unstaffedBatchesSoon,
+      label: "Batches starting in 14 days with no trainer confirmed",
+      tone: "danger",
+      href: "/batches?attention=UNSTAFFED_SOON" as Route,
+    },
+    {
+      key: "doubleBooked",
+      count: capacity.doubleBookedTrainers,
+      label: "Trainers double-booked on the same morning",
+      tone: "danger",
+      href: "/trainers?attention=DOUBLE_BOOKED" as Route,
+    },
+    {
+      key: "staleProposals",
+      count: capacity.staleProposals,
+      label: "Proposals waiting on a trainer for over 7 days",
+      tone: "warning",
+      href: "/batches?status=SCHEDULED" as Route,
+    },
+    {
+      key: "noCourses",
+      count: capacity.trainersWithoutCourses,
+      label: "Trainers approved to deliver nothing",
+      tone: "warning",
+      href: "/trainers?attention=NO_COURSES" as Route,
+    },
+  ];
 
   const thisMonth = fromWire(trend.collectedThisMonth.total);
   const lastMonth = fromWire(trend.collectedLastMonth.total);
@@ -279,32 +460,108 @@ export default async function DashboardPage() {
         </StatTileGrid>
       </PageSection>
 
-      <SplitLayout
-        main={
-          <Card padding="none" className="overflow-hidden">
-            <div className="p-6 pb-0">
-              <CardHeader
-                as="h2"
-                title="Course performance"
-                description="Enrolment and revenue by course."
-              />
-            </div>
-            <DataTable
-              columns={COURSE_COLUMNS}
-              rows={dashboard.topCourses}
-              getRowId={(row) => row.courseId}
-              caption="Courses by enrolment and revenue"
-              empty={
-                <EmptyState
-                  title="No courses yet"
-                  description="Course performance appears once students are enrolled."
-                />
-              }
+      {/* Two cards, one row, equal width and equal height.
+
+          They are a matched pair on purpose: the same blocks in the same
+          order — a band, a queue, a ranked table — so an operator reads the
+          second the way they just read the first. `items-stretch` is what
+          keeps them the same height when one has fewer rows than the other;
+          without it the shorter card floats and the row stops reading as a
+          pair. */}
+      <PageSection
+        title="Portfolio and capacity"
+        description="The whole catalogue and the whole bench, described rather than sampled."
+      >
+        <div className="grid items-stretch gap-8 xl:grid-cols-2">
+          <Card className="flex h-full flex-col gap-7">
+            <CardHeader
+              className="pb-0"
+              as="h2"
+              title="Course portfolio"
+              description={`${formatCount(portfolio.totalCourses)} courses · ${formatCount(portfolio.withLiveDelivery)} with live delivery`}
             />
+
+            <DistributionBand
+              caption={`Delivery progress, all ${formatCount(portfolio.totalCourses)}`}
+              total={portfolio.totalCourses}
+              slices={deliverySlices}
+            />
+
+            <AttentionQueue caption="Needs a decision" rows={portfolioQueue} />
+
+            <section className="mt-auto flex flex-col gap-3">
+              <p className="text-caption font-semibold uppercase tracking-wide text-ink-subtle">
+                Largest by enrolment —{" "}
+                <span className="normal-case tracking-normal">
+                  {formatCount(topCourses.length)} of{" "}
+                  {formatCount(portfolio.totalCourses)}
+                </span>
+              </p>
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-card">
+                <DataTable
+                  columns={COURSE_COLUMNS}
+                  rows={topCourses}
+                  getRowId={(row) => row.courseId}
+                  caption="Courses by enrolment and revenue, ranked across the catalogue"
+                  empty={
+                    <EmptyState
+                      title="No courses yet"
+                      description="Course performance appears once students are enrolled."
+                    />
+                  }
+                />
+              </div>
+            </section>
           </Card>
-        }
-        aside={
-          <Card>
+
+          <Card className="flex h-full flex-col gap-7">
+            <CardHeader
+              className="pb-0"
+              as="h2"
+              title="Trainer capacity"
+              description={`${formatCount(capacity.activeTrainers)} active · ${formatCount(capacity.carryingDelivery)} carrying delivery`}
+            />
+
+            <DistributionBand
+              caption={`Utilisation, all ${formatCount(capacity.activeTrainers)}`}
+              total={capacity.activeTrainers}
+              slices={utilisationSlices}
+            />
+
+            <AttentionQueue caption="Needs a decision" rows={capacityQueue} />
+
+            <section className="mt-auto flex flex-col gap-3">
+              <p className="text-caption font-semibold uppercase tracking-wide text-ink-subtle">
+                Most loaded —{" "}
+                <span className="normal-case tracking-normal">
+                  {formatCount(trainerLoad.length)} of{" "}
+                  {formatCount(capacity.activeTrainers)}, by sessions ahead
+                </span>
+              </p>
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-card">
+                <DataTable
+                  columns={TRAINER_COLUMNS}
+                  rows={trainerLoad}
+                  getRowId={(row) => row.trainerId}
+                  caption="Trainers by upcoming sessions, ranked across the bench"
+                  empty={
+                    <EmptyState
+                      title="No trainers assigned"
+                      description="Load appears once trainers confirm a batch."
+                    />
+                  }
+                />
+              </div>
+            </section>
+          </Card>
+        </div>
+      </PageSection>
+
+      {/* The money and delivery pair, given the same treatment rather than
+          left as a 2:1 split beside a table that is no longer there. */}
+      <PageSection title="Money and delivery" hideTitle>
+        <div className="grid items-stretch gap-8 xl:grid-cols-2">
+          <Card className="h-full">
             <CardHeader as="h2" title="Collections" description="Billed against collected." />
             <div className="flex flex-col gap-6">
               <SegmentSplit
@@ -329,31 +586,8 @@ export default async function DashboardPage() {
               />
             </div>
           </Card>
-        }
-      />
 
-      <SplitLayout
-        main={
-          <Card padding="none" className="overflow-hidden">
-            <div className="p-6 pb-0">
-              <CardHeader as="h2" title="Trainer load" description="Who is carrying what." />
-            </div>
-            <DataTable
-              columns={TRAINER_COLUMNS}
-              rows={dashboard.trainerLoad}
-              getRowId={(row) => row.trainerId}
-              caption="Trainers by confirmed batches and upcoming sessions"
-              empty={
-                <EmptyState
-                  title="No trainers assigned"
-                  description="Load appears once trainers confirm a batch."
-                />
-              }
-            />
-          </Card>
-        }
-        aside={
-          <Card>
+          <Card className="h-full">
             <CardHeader as="h2" title="Delivery" description="What is running right now." />
             <div className="flex flex-col gap-6">
               <SegmentSplit
@@ -382,8 +616,9 @@ export default async function DashboardPage() {
               </dl>
             </div>
           </Card>
-        }
-      />
+        </div>
+      </PageSection>
+
     </PageBody>
   );
 }

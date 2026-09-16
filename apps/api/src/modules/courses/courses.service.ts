@@ -10,6 +10,8 @@ import {
   type ReplaceTopicsInput,
   type UpdateCourseInput,
   type CourseDetail,
+  type CourseAttention,
+  type CourseDelivery,
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
@@ -19,6 +21,35 @@ import { liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 
 const SORTABLE = ["name", "courseCode", "createdAt", "standardMarketValueMinor"] as const;
+
+/**
+ * The catalogue's data-hygiene queues, as a `where` fragment.
+ *
+ * Both are things the dashboard counts, so they live beside the list that has
+ * to show the rows behind the count.
+ */
+function attentionWhere(attention: CourseAttention | undefined): Prisma.CourseWhereInput {
+  if (attention === undefined) return {};
+  if (attention === "NO_TOPICS") return { topics: { none: { deletedAt: null } } };
+  return {
+    // A live batch, and nobody enrolled on the COURSE — not merely a live
+    // batch that happens to be empty.
+    //
+    // The difference is not academic. Written the other way this returned 60
+    // courses against the dashboard's 58, because a course running two live
+    // batches, one full and one not yet filled, matched "has an empty live
+    // batch" while the card counted it as enrolled. The card is right: a
+    // course with students on it is not a course nobody signed up for. Caught
+    // by opening the link and reading the total against the number that
+    // linked to it.
+    batches: {
+      some: { deletedAt: null, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+    },
+    NOT: {
+      batches: { some: { deletedAt: null, studentMappings: { some: { deletedAt: null } } } },
+    },
+  };
+}
 
 /**
  * The catalogue.
@@ -34,11 +65,75 @@ export class CoursesService {
     private readonly ids: IdService,
   ) {}
 
+  /**
+   * Delivery progress, resolved to a set of course ids.
+   *
+   * The same four buckets the dashboard band draws, computed the same way, so
+   * a segment opens exactly the rows it counted. Done as an id set rather than
+   * a post-filter because the result has to paginate: a filter applied after
+   * the page was cut returns short pages and a total that disagrees with what
+   * is on screen.
+   *
+   * Bounded by BATCHES, which is the row count to watch. Past roughly 50,000
+   * in one catalogue this wants to be a grouped raw query.
+   */
+  private async deliveryWhere(
+    delivery: CourseDelivery | undefined,
+  ): Promise<Prisma.CourseWhereInput> {
+    if (delivery === undefined) return {};
+
+    const [batches, sessionRows] = await Promise.all([
+      this.prisma.batch.findMany({
+        where: liveOnly(),
+        select: { batchId: true, courseId: true },
+      }),
+      this.prisma.batchSession.groupBy({
+        by: ["batchId", "status"],
+        where: liveOnly(),
+        _count: { _all: true },
+      }),
+    ]);
+
+    const courseOfBatch = new Map(batches.map((b) => [b.batchId, b.courseId]));
+    const planned = new Map<string, number>();
+    const delivered = new Map<string, number>();
+    for (const row of sessionRows) {
+      // A cancelled session left the plan, exactly as on the dashboard.
+      if (row.status === "CANCELLED") continue;
+      const courseId = courseOfBatch.get(row.batchId);
+      if (courseId === undefined) continue;
+      planned.set(courseId, (planned.get(courseId) ?? 0) + row._count._all);
+      if (row.status === "COMPLETED") {
+        delivered.set(courseId, (delivered.get(courseId) ?? 0) + row._count._all);
+      }
+    }
+
+    const matches = (courseId: string): boolean => {
+      const total = planned.get(courseId) ?? 0;
+      const done = delivered.get(courseId) ?? 0;
+      if (total === 0) return delivery === "NOT_SCHEDULED";
+      if (done === 0) return delivery === "NOT_STARTED";
+      if (done < total) return delivery === "IN_FLIGHT";
+      return delivery === "COMPLETE";
+    };
+
+    // NOT_SCHEDULED is the complement — including courses with no batch at all
+    // — so it is expressed as "not one of the others" rather than as a list
+    // that would have to enumerate the whole catalogue.
+    const timetabled = [...planned.keys()];
+    if (delivery === "NOT_SCHEDULED") {
+      return { courseId: { notIn: timetabled.filter((id) => !matches(id)) } };
+    }
+    return { courseId: { in: timetabled.filter(matches) } };
+  }
+
   async list(_principal: Principal, query: CourseQuery): Promise<Page<Course>> {
     const where: Prisma.CourseWhereInput = {
       ...liveOnly(query.includeDeleted),
       ...(query.category ? { category: query.category } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+      ...(await this.deliveryWhere(query.delivery)),
+      ...attentionWhere(query.attention),
       ...(query.q
         ? {
             OR: [

@@ -52,7 +52,33 @@ export const courseDetailSchema = courseSchema.extend({
 
 export type CourseDetail = z.infer<typeof courseDetailSchema>;
 
+/**
+ * Delivery progress, as a filter — the same four buckets the dashboard band
+ * draws, so a segment opens exactly the rows it counted. Defined here rather
+ * than imported from the dashboard contract because the LIST is the thing
+ * these describe; the dashboard is one reader of them.
+ */
+export const courseDeliverySchema = z.enum([
+  "NOT_SCHEDULED",
+  "NOT_STARTED",
+  "IN_FLIGHT",
+  "COMPLETE",
+]);
+
+export type CourseDelivery = z.infer<typeof courseDeliverySchema>;
+
+export const courseAttentionSchema = z.enum([
+  /** A live batch and nobody on its roster. */
+  "NO_ENROLMENT",
+  /** No topics, so no schedule can be built from it. */
+  "NO_TOPICS",
+]);
+
+export type CourseAttention = z.infer<typeof courseAttentionSchema>;
+
 export const courseQuerySchema = pageQuerySchema.extend({
+  delivery: courseDeliverySchema.optional(),
+  attention: courseAttentionSchema.optional(),
   category: z.string().optional(),
   isActive: queryBoolean.optional(),
 });

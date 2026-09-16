@@ -22,6 +22,7 @@ import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
 export const BATCH_FILTERS = [
   ...PAGE_KEYS,
+  "attention",
   "courseId",
   "collegeId",
   "cityId",
