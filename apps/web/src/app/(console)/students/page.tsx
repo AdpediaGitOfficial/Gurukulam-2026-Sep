@@ -157,7 +157,7 @@ export default async function StudentsPage({
       title="Student directory"
       description="Retail and college students in one register. A retail student has no college — and never will."
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <a
             href={exportHref("/students", params)}
             className={buttonVariants({ variant: "secondary" })}

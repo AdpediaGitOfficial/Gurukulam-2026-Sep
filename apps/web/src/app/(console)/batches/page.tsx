@@ -140,7 +140,7 @@ export default async function BatchesPage({
       title="Batch management"
       description="A batch with a college is dedicated to it. A batch without one is retail. The two rosters never mix."
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <a
             href={exportHref("/batches", params)}
             className={buttonVariants({ variant: "secondary" })}

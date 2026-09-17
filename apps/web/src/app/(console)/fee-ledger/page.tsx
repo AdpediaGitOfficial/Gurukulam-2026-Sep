@@ -225,7 +225,7 @@ export default async function FeeLedgerPage({
         </StatTileGrid>
       }
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <a
             href={exportHref("/fee-ledger", params)}
             className={buttonVariants({ variant: "secondary" })}

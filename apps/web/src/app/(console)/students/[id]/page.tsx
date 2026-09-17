@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { can, formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts";
 
+import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -29,15 +30,6 @@ const fullName = (s: StudentDetail) =>
   s.lastName === null ? s.firstName : `${s.firstName} ${s.lastName}`;
 
 const money = (minor: string) => formatRupees(fromWire(minor), { paise: false });
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 export default async function StudentDetailPage({
   params,
@@ -72,7 +64,7 @@ export default async function StudentDetailPage({
           { label: fullName(student) },
         ]}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <Link
               href={`/students/${student.studentId}/edit`}
               className={buttonVariants({ variant: "secondary" })}
@@ -202,18 +194,18 @@ export default async function StudentDetailPage({
         <Card className="xl:col-span-2">
           <CardHeader as="h2" title="Profile" />
           <dl>
-            <Row label="Student code" value={<span className="font-mono">{student.studentCode}</span>} />
-            <Row label="Email" value={student.email} />
-            <Row label="Phone" value={student.phone ?? "—"} />
-            <Row label="Segment" value={retail ? "Retail — walk-in" : "College — institutional"} />
+            <DetailRow label="Student code" value={<span className="font-mono">{student.studentCode}</span>} />
+            <DetailRow label="Email" value={student.email} />
+            <DetailRow label="Phone" value={student.phone ?? "—"} />
+            <DetailRow label="Segment" value={retail ? "Retail — walk-in" : "College — institutional"} />
             {/* A retail student has no college and never will (invariant 1). */}
-            <Row
+            <DetailRow
               label="College"
               value={student.collegeName ?? <span className="text-ink-subtle">None</span>}
             />
-            <Row label="City" value={student.cityName ?? "—"} />
-            <Row label="Discipline" value={student.discipline ?? "—"} />
-            <Row label="Passout year" value={student.passoutYear === null ? "—" : String(student.passoutYear)} />
+            <DetailRow label="City" value={student.cityName ?? "—"} />
+            <DetailRow label="Discipline" value={student.discipline ?? "—"} />
+            <DetailRow label="Passout year" value={student.passoutYear === null ? "—" : String(student.passoutYear)} />
           </dl>
         </Card>
 
@@ -229,12 +221,12 @@ export default async function StudentDetailPage({
               the college user, which is what makes institutional intake
               auditable rather than merely recorded.
             */}
-            <Row
+            <DetailRow
               label="Created by"
               value={student.createdByType.replace(/_/g, " ").toLowerCase()}
             />
-            <Row label="Created" value={new Date(student.createdAt).toLocaleString("en-IN")} />
-            <Row
+            <DetailRow label="Created" value={new Date(student.createdAt).toLocaleString("en-IN")} />
+            <DetailRow
               label="Credentials"
               value={
                 student.credentialsIssuedAt === null
@@ -242,7 +234,7 @@ export default async function StudentDetailPage({
                   : new Date(student.credentialsIssuedAt).toLocaleDateString("en-IN")
               }
             />
-            <Row
+            <DetailRow
               label="Last signed in"
               value={
                 student.lastLoginAt === null

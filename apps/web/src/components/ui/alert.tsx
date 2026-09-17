@@ -27,7 +27,7 @@ export function Alert({ intent = "info", title, children, action, className }: A
         <p className="text-h3">{title}</p>
         {children ? <div className="mt-1 text-body-sm text-ink-muted">{children}</div> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </div>
   );
 }

@@ -361,7 +361,7 @@ export default async function BatchSessionsPage({
         title="Session schedule"
         description="A session must be marked complete before assignments can be set against it — completion is a deliberate act, not a date passing."
         action={
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-4">
             <Link
               href={`/batches/sessions?batchId=${batch.batchId}`}
               className="text-body-sm text-gold underline-offset-4 hover:underline"
@@ -395,7 +395,7 @@ export default async function BatchSessionsPage({
                 title="No sessions scheduled"
                 description="A batch with no sessions has nothing to deliver. Sessions are scheduled under the course's topics."
                 action={
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-3">
                     <Link
                       href={`/batches/${batch.batchId}/sessions/new`}
                       className={buttonVariants({ variant: "primary" })}

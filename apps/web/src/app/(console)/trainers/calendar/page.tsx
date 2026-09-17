@@ -5,6 +5,7 @@ import { CALENDAR_GRID_DAYS, type CalendarEntry } from "@gurukulam/contracts";
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
+import { TableScroll } from "@/components/ui/table-scroll";
 import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -73,7 +74,7 @@ function Cell({ sessions, away }: { sessions: number; away: boolean }) {
 /** The grid an admin assigns from: trainers down, days across. */
 function Grid({ entries, days }: { entries: readonly CalendarEntry[]; days: readonly string[] }) {
   return (
-    <div className="w-full overflow-x-auto">
+    <TableScroll>
       <table
         className="w-full border-collapse text-left"
         style={{ minWidth: `${240 + days.length * 92}px` }}
@@ -137,14 +138,14 @@ function Grid({ entries, days }: { entries: readonly CalendarEntry[]; days: read
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
 /** The window totals, for a span too long to draw a day at a time. */
 function Totals({ entries }: { entries: readonly CalendarEntry[] }) {
   return (
-    <div className="w-full overflow-x-auto">
+    <TableScroll>
       <table className="w-full border-collapse text-left" style={{ minWidth: "900px" }}>
         <caption className="sr-only">Trainer commitments across the window</caption>
         <thead className="bg-surface-sunken">
@@ -203,7 +204,7 @@ function Totals({ entries }: { entries: readonly CalendarEntry[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

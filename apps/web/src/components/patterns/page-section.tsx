@@ -9,7 +9,7 @@ export interface PageBodyProps {
 
 /** Vertical rhythm for a page's top-level blocks. Every page body uses this. */
 export function PageBody({ children, className }: PageBodyProps) {
-  return <div className={cn("flex flex-col gap-8", className)}>{children}</div>;
+  return <div className={cn("flex min-w-0 flex-col gap-8", className)}>{children}</div>;
 }
 
 export interface PageSectionProps {
@@ -32,14 +32,26 @@ export function PageSection({
   className,
 }: PageSectionProps) {
   return (
-    <section aria-label={hideTitle ? title : undefined} className={cn("flex flex-col", className)}>
+    /* `min-w-0` for the same reason `Card` carries it: a section is a grid or
+       flex item, and without it a wide table inside makes the section wider
+       than its track, which takes the page sideways rather than scrolling the
+       table. See `TableScroll`. */
+    <section
+      aria-label={hideTitle ? title : undefined}
+      className={cn("flex min-w-0 flex-col", className)}
+    >
       {hideTitle ? null : (
         <div className="flex items-end justify-between gap-4 pb-4">
           <div className="min-w-0">
             <h2 className="text-h2 text-ink">{title}</h2>
             {description ? <p className="text-body-sm text-ink-muted">{description}</p> : null}
           </div>
-          {action ? <div className="shrink-0">{action}</div> : null}
+          {/* `max-w-full` for the reason `PageHeader`'s slot carries it: the
+              slot is `shrink-0`, so it sizes to max-content, and a row of
+              three verbs then measures wider than the column and takes the
+              page sideways with it. The cap gives a `flex-wrap` inside
+              something to wrap against. */}
+          {action ? <div className="max-w-full shrink-0">{action}</div> : null}
         </div>
       )}
       {children}

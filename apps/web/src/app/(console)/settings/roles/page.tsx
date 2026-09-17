@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ModuleTabs } from "@/components/patterns/module-tabs";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
+import { TableScroll } from "@/components/ui/table-scroll";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -112,7 +113,7 @@ export default async function RolesPage({
       ) : null}
 
       <Card padding="none" className="overflow-hidden">
-        <div className="w-full overflow-x-auto">
+        <TableScroll>
           <table className="w-full border-collapse text-left" style={{ minWidth: "1400px" }}>
             <caption className="sr-only">
               Roles against modules. R is read, E is edit, D is delete.
@@ -180,7 +181,7 @@ export default async function RolesPage({
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </Card>
 
       <Card>

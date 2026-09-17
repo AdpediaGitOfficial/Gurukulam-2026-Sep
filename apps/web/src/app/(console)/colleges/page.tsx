@@ -130,7 +130,7 @@ export default async function CollegesPage({
       title="College database"
       description="The CRM for institutional relationships. A college is an actor, not a directory row — it carries its own contacts, requirements, students and contracts."
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <a
             href={exportHref("/colleges", params)}
             className={buttonVariants({ variant: "secondary" })}

@@ -9,6 +9,7 @@ import {
   type UploadOutcome,
 } from "@gurukulam/contracts";
 
+import { TableScroll } from "@/components/ui/table-scroll";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -139,7 +140,7 @@ export function SessionUploadPanel({
               </Alert>
             ) : null}
 
-            <div className="overflow-x-auto">
+            <TableScroll>
               <table className="w-full min-w-[46rem] border-collapse text-body-sm">
                 <caption className="sr-only">Every row in the file, and what the upload does with it</caption>
                 <thead>
@@ -157,7 +158,7 @@ export function SessionUploadPanel({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
             {committed || plan.rejected > 0 ? null : (
               <div className="flex items-center justify-end gap-3 border-t border-hairline pt-5">

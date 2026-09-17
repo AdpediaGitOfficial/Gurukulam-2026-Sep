@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { TableScroll } from "@/components/ui/table-scroll";
 import { cn } from "@/lib/cn";
 
 export interface Column<TRow> {
@@ -47,7 +48,7 @@ export function DataTable<TRow>({
   }
 
   return (
-    <div className={cn("w-full overflow-x-auto", className)}>
+    <TableScroll className={className}>
       <table className="w-full border-collapse text-left" style={{ minWidth }}>
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-surface-sunken">
@@ -91,6 +92,6 @@ export function DataTable<TRow>({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

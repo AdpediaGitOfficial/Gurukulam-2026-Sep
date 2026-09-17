@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { can } from "@gurukulam/contracts";
 
+import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
@@ -29,15 +30,6 @@ const STATUS: Record<string, { intent: "success" | "info" | "warning" | "danger"
 };
 
 const MODE = { ONLINE: "Online", OFFLINE: "Offline", HYBRID: "Hybrid" } as const;
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 /**
  * Where this ask currently sits.
@@ -125,7 +117,7 @@ export default async function RequirementDetailPage({
           { label: requirement.requirementCode },
         ]}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {/* Only while it is still an ask. Once confirmed, the headcount and
                 the window are facts its dedicated batch was built from. */}
             {mayEdit && open ? (
@@ -192,16 +184,16 @@ export default async function RequirementDetailPage({
         <Card className="xl:col-span-1">
           <CardHeader as="h2" title="What was asked for" />
           <dl>
-            <Row label="College" value={requirement.collegeName ?? "—"} />
-            <Row label="Course" value={requirement.courseName ?? "—"} />
-            <Row
+            <DetailRow label="College" value={requirement.collegeName ?? "—"} />
+            <DetailRow label="Course" value={requirement.courseName ?? "—"} />
+            <DetailRow
               label="Headcount"
               value={<span className="tabular-nums">{formatCount(requirement.expectedHeadcount)}</span>}
             />
-            <Row label="Preferred mode" value={MODE[requirement.preferredMode]} />
-            <Row label="Window" value={dateRange} />
-            <Row label="Discipline" value={requirement.discipline ?? "—"} />
-            {requirement.notes === null ? null : <Row label="Notes" value={requirement.notes} />}
+            <DetailRow label="Preferred mode" value={MODE[requirement.preferredMode]} />
+            <DetailRow label="Window" value={dateRange} />
+            <DetailRow label="Discipline" value={requirement.discipline ?? "—"} />
+            {requirement.notes === null ? null : <DetailRow label="Notes" value={requirement.notes} />}
           </dl>
         </Card>
 
@@ -216,17 +208,17 @@ export default async function RequirementDetailPage({
                 description="A requirement is answered once. What came of it is below."
               />
               <dl>
-                <Row label="Status" value={status.label} />
+                <DetailRow label="Status" value={status.label} />
                 {requirement.confirmedAt === null ? null : (
-                  <Row
+                  <DetailRow
                     label="Confirmed"
                     value={new Date(requirement.confirmedAt).toLocaleString("en-IN")}
                   />
                 )}
                 {requirement.rejectionReason === null ? null : (
-                  <Row label="Reason" value={requirement.rejectionReason} />
+                  <DetailRow label="Reason" value={requirement.rejectionReason} />
                 )}
-                <Row
+                <DetailRow
                   label="Batch produced"
                   value={
                     requirement.batchId === null ? (

@@ -3,6 +3,7 @@ import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 
 import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
+import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
@@ -26,15 +27,6 @@ import type { SearchParams } from "@/server/list";
 import { formatCount } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Session" };
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 export default async function SessionDetailPage({
   params,
@@ -199,9 +191,9 @@ export default async function SessionDetailPage({
       <div className="grid gap-8 xl:grid-cols-3">
         <Card className="xl:col-span-1">
           <dl>
-            <Row label="Session code" value={<span className="font-mono">{session.sessionCode}</span>} />
-            <Row label="Date" value={session.scheduledDate} />
-            <Row
+            <DetailRow label="Session code" value={<span className="font-mono">{session.sessionCode}</span>} />
+            <DetailRow label="Date" value={session.scheduledDate} />
+            <DetailRow
               label="Time"
               value={
                 <span className="font-mono tabular-nums">
@@ -209,7 +201,7 @@ export default async function SessionDetailPage({
                 </span>
               }
             />
-            <Row
+            <DetailRow
               label="Where"
               value={
                 session.meetingLink !== null ? (
@@ -224,7 +216,7 @@ export default async function SessionDetailPage({
                 )
               }
             />
-            <Row
+            <DetailRow
               label="Delivered"
               value={session.completedAt === null ? "Not yet" : session.completedAt.slice(0, 10)}
             />

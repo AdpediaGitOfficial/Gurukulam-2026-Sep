@@ -280,7 +280,7 @@ export default async function TrainerDetailPage({
           .join(" · ")}
         breadcrumbs={[{ label: "Trainers", href: "/trainers" }, { label: trainer.name }]}
         action={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
             <Link
               href={`/trainers/${trainer.trainerId}/edit`}
               className={buttonVariants({ variant: "secondary" })}

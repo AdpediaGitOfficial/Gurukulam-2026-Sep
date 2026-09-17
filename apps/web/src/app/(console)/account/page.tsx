@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ModuleTabs } from "@/components/patterns/module-tabs";
+import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
@@ -14,15 +15,6 @@ import { getAccount } from "@/features/settings/server/settings-service";
 import { requirePrincipal } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Account" };
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-hairline py-3 last:border-b-0">
-      <dt className="shrink-0 text-body-sm text-ink-subtle">{label}</dt>
-      <dd className="min-w-0 break-words text-right text-body-sm font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 export default async function AccountPage() {
   // Not gated on a module: everyone signed in has an account page.
@@ -89,10 +81,10 @@ export default async function AccountPage() {
           </div>
 
           <dl>
-            <Detail label="Role" value={account.roleName ?? "—"} />
-            <Detail label="Region scope" value={scope} />
-            <Detail label="Account type" value={account.actor.replace(/_/g, " ").toLowerCase()} />
-            <Detail
+            <DetailRow label="Role" value={account.roleName ?? "—"} />
+            <DetailRow label="Region scope" value={scope} />
+            <DetailRow label="Account type" value={account.actor.replace(/_/g, " ").toLowerCase()} />
+            <DetailRow
               label="Last signed in"
               value={
                 account.lastLoginAt === null

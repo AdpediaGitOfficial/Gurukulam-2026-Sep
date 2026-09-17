@@ -121,7 +121,14 @@ features/<module>/
 
 **Do not:** reach into another feature's service · put business logic in a route or component · add a
 client component to make a filter work · add a raw hex, px size or one-off shadow · add a token to
-`globals.css` without also registering it in `lib/cn.ts` (it will silently vanish from the DOM).
+`globals.css` without also registering it in `lib/cn.ts` (it will silently vanish from the DOM) · put a
+wide table in a bare `overflow-x-auto` div — use `TableScroll`, which also contains paint, because
+`overflow-x` alone clips what a table *paints* and still lets its width reach the root scroller.
+
+**No screen may drag the page sideways.** `npm run verify:widths` walks every route at 400px, scrolls
+it, and fails on any that moves — naming the element responsible. The two causes it catches are a row
+of header verbs with no `flex-wrap`, and a flex or grid item without `min-w-0` around something wide.
+`Card`, `PageSection` and `PageBody` set `min-w-0` for you; a new container has to.
 
 ---
 

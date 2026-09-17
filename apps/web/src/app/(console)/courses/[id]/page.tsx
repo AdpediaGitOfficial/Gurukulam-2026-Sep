@@ -208,7 +208,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           .join(" · ")}
         breadcrumbs={[{ label: "Courses", href: "/courses" }, { label: course.name }]}
         action={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
             <Link
               href={`/courses/${course.courseId}/edit`}
               className={buttonVariants({ variant: "secondary" })}

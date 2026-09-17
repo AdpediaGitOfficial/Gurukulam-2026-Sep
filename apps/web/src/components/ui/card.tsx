@@ -3,7 +3,16 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
-const cardVariants = cva("rounded-card", {
+/*
+ * `min-w-0` is not decoration. A card is almost always a flex or grid item, and
+ * such an item defaults to `min-width: auto` — it refuses to shrink below its
+ * widest content. A card holding a 900px table therefore became 902px wide
+ * inside a 288px grid track, and the scroller inside it sized itself to the
+ * card, so nothing scrolled and the page moved instead. Half the call sites had
+ * learnt to pass `min-w-0` by hand; the other half had not, which is the
+ * definition of a default in the wrong place.
+ */
+const cardVariants = cva("min-w-0 rounded-card", {
   variants: {
     tone: {
       /** Default white panel used across the console. */
@@ -53,7 +62,7 @@ export function CardHeader({
         <Heading className="text-h3 text-ink">{title}</Heading>
         {description ? <p className="mt-1 text-body-sm text-ink-muted">{description}</p> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </div>
   );
 }

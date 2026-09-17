@@ -54,7 +54,7 @@ export default async function JobDetailPage({
           .join(" · ")}
         breadcrumbs={[{ label: "Hiring", href: "/hiring" }, { label: job.roleTitle }]}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {/* Editable while it can still reach anybody. A closed or archived
                 posting is a record of what was advertised, not a draft. */}
             {job.status === "DRAFT" || job.status === "PUBLISHED" ? (

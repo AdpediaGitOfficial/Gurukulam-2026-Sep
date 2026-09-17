@@ -10,6 +10,7 @@ import {
   FormTextarea,
   FullWidth,
 } from "@/components/patterns/form-shell";
+import { TableScroll } from "@/components/ui/table-scroll";
 import { buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { saveRole } from "@/features/settings/server/actions";
@@ -87,7 +88,7 @@ export function RoleForm({ role }: { role?: Role }) {
           </p>
         </div>
 
-        <div className="w-full overflow-x-auto">
+        <TableScroll>
           <table className="w-full border-collapse text-left" style={{ minWidth: "560px" }}>
             <thead className="bg-surface-sunken">
               <tr>
@@ -130,7 +131,7 @@ export function RoleForm({ role }: { role?: Role }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </section>
     </FormShell>
   );

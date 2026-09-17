@@ -190,7 +190,7 @@ export default async function CollegeDetailPage({
         description={`${college.collegeCode}${college.cityName === null || college.cityName === undefined ? "" : ` · ${college.cityName}`}`}
         breadcrumbs={[{ label: "Colleges", href: "/colleges" }, { label: college.name }]}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {/* Invariant 7 — for a college cohort the INSTITUTION downloads its
                 students' certificates, so its own record is where they belong. */}
             <Link
