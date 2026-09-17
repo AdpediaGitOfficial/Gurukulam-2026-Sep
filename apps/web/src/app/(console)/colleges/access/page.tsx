@@ -59,7 +59,7 @@ const COLUMNS: Column<CollegeUser>[] = [
       row.loginEmail === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="font-mono text-body-sm text-ink-muted">{row.loginEmail}</span>
+        <span className="font-mono text-body text-ink-muted">{row.loginEmail}</span>
       ),
   },
   {
@@ -91,11 +91,11 @@ const COLUMNS: Column<CollegeUser>[] = [
     header: "Last seen",
     cell: (row) =>
       row.accessStatus === "REVOKED" && row.revokedAt !== null ? (
-        <span className="text-body-sm text-ink-muted">revoked {row.revokedAt.slice(0, 10)}</span>
+        <span className="text-body text-ink-muted">revoked {row.revokedAt.slice(0, 10)}</span>
       ) : row.lastLoginAt === null ? (
         <span className="text-ink-subtle">never signed in</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">{row.lastLoginAt.slice(0, 10)}</span>
+        <span className="text-body text-ink-muted">{row.lastLoginAt.slice(0, 10)}</span>
       ),
   },
   {
@@ -105,7 +105,7 @@ const COLUMNS: Column<CollegeUser>[] = [
     cell: (row) => (
       <Link
         href={`/colleges/${row.collegeId}/access`}
-        className="text-body-sm text-gold underline-offset-4 hover:underline"
+        className="text-body text-gold underline-offset-4 hover:underline"
       >
         Manage
       </Link>

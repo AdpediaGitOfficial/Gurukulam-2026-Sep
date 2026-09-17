@@ -130,6 +130,13 @@ it, and fails on any that moves — naming the element responsible. The two caus
 of header verbs with no `flex-wrap`, and a flex or grid item without `min-w-0` around something wide.
 `Card`, `PageSection` and `PageBody` set `min-w-0` for you; a new container has to.
 
+**One type scale, one role table.** Pick the token by what the text IS, not by how big it should
+look: a record's name is `text-body font-semibold`, a value is `text-body`, prose is `text-body-sm`,
+a code or timestamp is `text-caption`. The full table is in `docs/design-system.md` §3. **A table
+cell is 16px or 12px, never 14px** — 14 is the prose size and prose does not belong in a cell.
+`npm run verify:type` reads computed styles on every screen and fails on a size that is off the
+scale or wrong for a cell.
+
 ---
 
 ## Conventions

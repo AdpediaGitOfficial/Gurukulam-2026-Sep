@@ -63,7 +63,7 @@ const COLUMNS: Column<LedgerSummary>[] = [
     header: "Course",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm">{row.courseName ?? "—"}</span>
+        <span className="text-body">{row.courseName ?? "—"}</span>
         {row.batchCode === null ? null : (
           <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
         )}

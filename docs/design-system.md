@@ -117,10 +117,41 @@ dark label.
 
 ### Type scale
 
-`text-display` · `text-metric` · `text-h1` · `text-h2` · `text-h3` · `text-body` · `text-body-sm` ·
-`text-caption` · `text-overline`
+Nine sizes, declared once in the `@theme` block: `text-display` 36 · `text-metric` 30 ·
+`text-metric-sm` 25 · `text-h1` 20 · `text-h2` 18 · `text-h3` 16 · `text-body` 16 ·
+`text-body-sm` 14 · `text-caption` 12 · `text-overline` 10.
+
+**Having a scale is not the same as applying it consistently.** Every size below is a legal token,
+and a screen can still be a mess: the colleges list once rendered the partnership at 14px, the city
+at 16px, the code at 12px and the portal status at 12px, in four peer cells of one row. Read down a
+column it looks deliberate; read across the row it is noise. So the scale comes with a **role
+table**, and each role has exactly one answer.
+
+| Role | Token | What it is |
+| --- | --- | --- |
+| Page title | `text-h1` | One per page, rendered by `PageHeader` |
+| Section title | `text-h2` | A `PageSection` heading |
+| Card heading | `text-h3` | `CardHeader`, `Alert`, `EmptyState` |
+| **Record name** | `text-body font-semibold` | The primary line of a row or list item — the thing you came to find |
+| **Value** | `text-body` | A table cell, a `DetailRow` value, a form field's content. A date, a count, a status, a name |
+| **Prose** | `text-body-sm` | Descriptions, hints, explanatory copy — the sentence under a heading |
+| **Field label** | `text-body-sm font-medium` | The label above an input |
+| **Meta** | `text-caption` | A business code, a timestamp, the supporting line under a value |
+| Badge | `text-caption font-bold` | `Chip`, `SegmentTag` — one badge size for the product |
+| Column header | `text-caption font-bold uppercase` | `DataTable` `<th>` |
+| Eyebrow | `text-overline` | The module name above a page title |
+| Metric | `text-metric` · `text-metric-sm` · `text-display` | A figure that is the point of its tile |
 
 One `text-h1` per page — it is the page title, rendered by `PageHeader`.
+
+**A table cell holds a value or its supporting line — 16px or 12px, never 14px.** 14px is the size
+for prose, and prose does not belong in a cell. The exceptions are components that carry their own
+type: a `sm` button's label is 14px because it is a control, and a badge is 12px because it is a
+badge. Both are the same everywhere they appear, which is what makes the exception safe.
+
+`npm run verify:type` enforces both halves against the running app: every rendered size is on the
+scale, and no table cell renders at a size that is not a cell size. It reads computed styles rather
+than source, so a size inherited from somewhere unexpected is caught too.
 
 ### Radius & elevation
 

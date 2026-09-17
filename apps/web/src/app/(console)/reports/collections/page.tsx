@@ -28,7 +28,7 @@ const COLUMNS: Column<CollectionRow>[] = [
     header: "Transaction",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="font-mono text-body-sm text-ink">{row.transactionCode}</span>
+        <span className="font-mono text-body text-ink">{row.transactionCode}</span>
         <span className="text-caption text-ink-subtle">
           {new Date(row.paidAt).toLocaleString("en-IN")}
         </span>

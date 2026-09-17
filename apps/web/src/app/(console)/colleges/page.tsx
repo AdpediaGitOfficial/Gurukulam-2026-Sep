@@ -45,7 +45,7 @@ const columns = (mayDelete: boolean): Column<College>[] => [
     // admin-portal-plan.md M3 and carried on the record since.
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm text-ink">{PARTNERSHIP_LABELS[row.partnershipType]}</span>
+        <span className="text-body text-ink">{PARTNERSHIP_LABELS[row.partnershipType]}</span>
         {row.disciplines.length === 0 ? null : (
           <span className="text-caption text-ink-subtle">
             {row.disciplines.slice(0, 2).join(", ")}

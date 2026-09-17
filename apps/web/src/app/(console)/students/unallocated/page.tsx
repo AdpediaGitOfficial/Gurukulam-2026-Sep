@@ -83,7 +83,7 @@ const COLUMNS: Column<Student>[] = [
     id: "created",
     header: "Onboarded",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {new Date(row.createdAt).toLocaleDateString("en-IN")}
       </span>
     ),

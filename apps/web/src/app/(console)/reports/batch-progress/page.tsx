@@ -32,7 +32,7 @@ const COLUMNS: Column<BatchProgressRow>[] = [
     header: "Course",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm">{row.courseName ?? "—"}</span>
+        <span className="text-body">{row.courseName ?? "—"}</span>
         <span className="text-caption text-ink-subtle">
           {row.collegeName ?? "Retail cohort"}
         </span>
@@ -98,7 +98,7 @@ const COLUMNS: Column<BatchProgressRow>[] = [
     id: "status",
     header: "Status",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {row.status.replace(/_/g, " ").toLowerCase()}
       </span>
     ),

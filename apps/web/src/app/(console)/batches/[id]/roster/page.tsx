@@ -48,7 +48,7 @@ const COLUMNS: Column<Student>[] = [
       row.phone === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="font-mono text-body-sm">{row.phone}</span>
+        <span className="font-mono text-body">{row.phone}</span>
       ),
   },
   {

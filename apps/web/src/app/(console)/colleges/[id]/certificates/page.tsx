@@ -34,7 +34,7 @@ const COLUMNS: Column<Certificate>[] = [
     header: "Certificate number",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="font-mono text-body-sm text-ink">{row.certificateNumber}</span>
+        <span className="font-mono text-body text-ink">{row.certificateNumber}</span>
         <span className="font-mono text-caption text-ink-subtle">
           verify: {row.verificationCode}
         </span>
@@ -58,7 +58,7 @@ const COLUMNS: Column<Certificate>[] = [
     header: "Course",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm">{row.courseName ?? "—"}</span>
+        <span className="text-body">{row.courseName ?? "—"}</span>
         {row.batchCode === null || row.batchCode === undefined ? null : (
           <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
         )}
@@ -72,7 +72,7 @@ const COLUMNS: Column<Certificate>[] = [
       row.issuedDate === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">
+        <span className="text-body text-ink-muted">
           {new Date(row.issuedDate).toLocaleDateString("en-IN")}
         </span>
       ),

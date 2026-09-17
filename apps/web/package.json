@@ -15,6 +15,7 @@
     "verify:forms": "tsx scripts/verify-forms.ts",
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "verify:widths": "tsx scripts/verify-widths.ts",
+    "verify:type": "tsx scripts/verify-type.ts",
     "shoot": "tsx scripts/shoot.ts"
   },
   "dependencies": {

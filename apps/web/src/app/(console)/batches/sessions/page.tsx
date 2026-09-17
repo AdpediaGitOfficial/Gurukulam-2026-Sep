@@ -45,7 +45,7 @@ const COLUMNS: Column<BatchSession>[] = [
     id: "batch",
     header: "Batch",
     cell: (row) => (
-      <span className="font-mono text-body-sm text-ink-muted">{row.batchCode ?? "—"}</span>
+      <span className="font-mono text-body text-ink-muted">{row.batchCode ?? "—"}</span>
     ),
   },
   {
@@ -53,7 +53,7 @@ const COLUMNS: Column<BatchSession>[] = [
     header: "Date & time",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm">
+        <span className="text-body">
           {new Date(row.scheduledDate).toLocaleDateString("en-IN", {
             day: "2-digit",
             month: "short",
@@ -75,7 +75,7 @@ const COLUMNS: Column<BatchSession>[] = [
     id: "where",
     header: "Where",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {[MODE[row.mode], row.venue].filter(Boolean).join(" · ")}
       </span>
     ),
@@ -98,12 +98,12 @@ const COLUMNS: Column<BatchSession>[] = [
     header: "Recording",
     cell: (row) =>
       row.hasRecording === true ? (
-        <span className="inline-flex items-center gap-1.5 text-body-sm text-success-strong">
+        <span className="inline-flex items-center gap-1.5 text-body text-success-strong">
           <Icon name="yt" size={15} />
           Linked
         </span>
       ) : row.status === "COMPLETED" ? (
-        <span className="text-body-sm text-warning-strong">Missing</span>
+        <span className="text-body text-warning-strong">Missing</span>
       ) : (
         <span className="text-ink-subtle">—</span>
       ),

@@ -35,7 +35,7 @@ const columns = (mayDelete: boolean): Column<Contract>[] => [
     header: "Contract",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="font-mono text-body-sm text-ink">{row.contractCode}</span>
+        <span className="font-mono text-body text-ink">{row.contractCode}</span>
         {row.batchCode === null || row.batchCode === undefined ? null : (
           <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
         )}
@@ -61,14 +61,14 @@ const columns = (mayDelete: boolean): Column<Contract>[] => [
     cell: (row) =>
       row.commercialBasis === "PER_STUDENT" ? (
         <div className="flex flex-col">
-          <span className="text-body-sm">Per student</span>
+          <span className="text-body">Per student</span>
           <span className="font-mono text-caption text-ink-subtle tabular-nums">
             {money(row.perStudentRateMinor)} × {formatCount(row.billableHeadcount)}
           </span>
         </div>
       ) : (
         <div className="flex flex-col">
-          <span className="text-body-sm">Flat cohort</span>
+          <span className="text-body">Flat cohort</span>
           <span className="font-mono text-caption text-ink-subtle tabular-nums">
             {money(row.flatCohortPriceMinor)}
           </span>

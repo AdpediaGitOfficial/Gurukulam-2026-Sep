@@ -43,7 +43,7 @@ const columns = (mayDelete: boolean): Column<City>[] => [
       row.timezone === null ? (
         <span className="text-ink-subtle">Country default</span>
       ) : (
-        <span className="font-mono text-body-sm text-ink-muted">{row.timezone}</span>
+        <span className="font-mono text-body text-ink-muted">{row.timezone}</span>
       ),
   },
   {

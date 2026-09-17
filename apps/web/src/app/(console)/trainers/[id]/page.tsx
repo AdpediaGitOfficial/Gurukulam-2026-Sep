@@ -93,7 +93,7 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
     cell: (row) => (
       <Link
         href={`/batches/${row.batchId}`}
-        className="font-mono text-body-sm text-gold underline-offset-4 hover:underline"
+        className="font-mono text-body text-gold underline-offset-4 hover:underline"
       >
         {row.batchCode ?? "—"}
       </Link>
@@ -104,7 +104,7 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
     id: "time",
     header: "Time",
     cell: (row) => (
-      <span className="font-mono text-body-sm tabular-nums">
+      <span className="font-mono text-body tabular-nums">
         {row.startTime}–{row.endTime}
       </span>
     ),
@@ -113,7 +113,7 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
     id: "where",
     header: "Room / link",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {row.meetingLink !== null ? "Online" : (row.venue ?? "—")}
       </span>
     ),

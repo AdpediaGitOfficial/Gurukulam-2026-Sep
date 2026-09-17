@@ -49,9 +49,9 @@ const columns = (mayDelete: boolean): Column<AdminUser>[] => [
     // it gets words rather than an empty cell.
     cell: (row) =>
       row.cityScope.length === 0 ? (
-        <span className="text-body-sm text-ink-muted">All regions</span>
+        <span className="text-body text-ink-muted">All regions</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">
+        <span className="text-body text-ink-muted">
           {(row.cityNames ?? row.cityScope).join(" · ")}
         </span>
       ),
@@ -63,7 +63,7 @@ const columns = (mayDelete: boolean): Column<AdminUser>[] => [
       row.lastLoginAt === null ? (
         <span className="text-ink-subtle">Never</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">
+        <span className="text-body text-ink-muted">
           {new Date(row.lastLoginAt).toLocaleDateString("en-IN")}
         </span>
       ),

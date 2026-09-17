@@ -42,7 +42,7 @@ const COLUMNS: Column<LedgerSummary>[] = [
     header: "Course",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm">{row.courseName ?? "—"}</span>
+        <span className="text-body">{row.courseName ?? "—"}</span>
         {row.batchCode === null ? null : (
           <span className="font-mono text-caption text-ink-subtle">{row.batchCode}</span>
         )}
@@ -64,7 +64,7 @@ const COLUMNS: Column<LedgerSummary>[] = [
     header: "Next due",
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm tabular-nums text-ink">{due(row)}</span>
+        <span className="text-body tabular-nums text-ink">{due(row)}</span>
         <span className="text-caption text-ink-subtle tabular-nums">
           {row.installmentsPaid} of {row.installmentsTotal} paid
         </span>

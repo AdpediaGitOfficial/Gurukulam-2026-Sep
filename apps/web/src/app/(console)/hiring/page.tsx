@@ -61,7 +61,7 @@ const columns = (mayDelete: boolean): Column<JobPosting>[] => [
     cell: (row) => (
       <Link href={`/hiring/${row.jobPostingId}`} className="flex flex-col hover:underline">
         <span className="text-body font-semibold text-ink">{row.roleTitle}</span>
-        <span className="text-body-sm text-ink-muted">{row.companyName}</span>
+        <span className="text-body text-ink-muted">{row.companyName}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.jobCode}</span>
       </Link>
     ),
@@ -70,7 +70,7 @@ const columns = (mayDelete: boolean): Column<JobPosting>[] => [
     id: "where",
     header: "Location",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {[row.location, WORK_MODE[row.workMode]].filter(Boolean).join(" · ")}
       </span>
     ),
@@ -89,7 +89,7 @@ const columns = (mayDelete: boolean): Column<JobPosting>[] => [
       return pay === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="font-mono text-body-sm tabular-nums">{pay}</span>
+        <span className="font-mono text-body tabular-nums">{pay}</span>
       );
     },
   },

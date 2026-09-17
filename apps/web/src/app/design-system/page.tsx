@@ -101,17 +101,37 @@ const ELEVATIONS = [
 ];
 
 const TYPE_SCALE = [
-  { name: "text-display", usage: "Hero metric on a coloured panel" },
-  { name: "text-metric", usage: "Figure at the centre of a chart" },
-  { name: "text-metric-sm", usage: "Figure inside a compact ring" },
-  { name: "text-h1", usage: "Page title — one per page" },
-  { name: "text-h2", usage: "Section heading" },
-  { name: "text-h3", usage: "Card heading" },
-  { name: "text-body", usage: "Default copy and table cells" },
-  { name: "text-body-sm", usage: "Secondary copy, labels, controls" },
-  { name: "text-caption", usage: "Captions, IDs, metadata" },
-  { name: "text-overline", usage: "Uppercase eyebrow above a name" },
+  { name: "text-display", usage: "36 — hero metric on a coloured panel" },
+  { name: "text-metric", usage: "30 — figure at the centre of a chart" },
+  { name: "text-metric-sm", usage: "25 — figure inside a compact ring" },
+  { name: "text-h1", usage: "20 — page title, one per page" },
+  { name: "text-h2", usage: "18 — section heading" },
+  { name: "text-h3", usage: "16 — card heading" },
+  { name: "text-body", usage: "16 — a value: a cell, a detail, a field" },
+  { name: "text-body-sm", usage: "14 — prose: descriptions, hints, labels" },
+  { name: "text-caption", usage: "12 — a code, a timestamp, a badge" },
+  { name: "text-overline", usage: "10 — uppercase eyebrow above a name" },
 ];
+
+/**
+ * The half of the system a scale cannot express.
+ *
+ * Every size above is a legal token, and a screen can still be a mess: the
+ * colleges list once rendered the partnership at 14px, the city at 16px, the
+ * code at 12px and the portal status at 12px, in four peer cells of one row.
+ * Read down a column it looks deliberate; read across the row it is noise.
+ *
+ * So the question a new screen asks is never "how big should this be" — it is
+ * "what IS this", and the answer is here. `npm run verify:type` checks the
+ * result against the running console.
+ */
+const TYPE_ROLES = [
+  { role: "Record name", token: "text-body font-semibold text-ink", what: "The primary line of a row — the thing you came to find" },
+  { role: "Value", token: "text-body text-ink", what: "A table cell, a detail value, a field's content" },
+  { role: "Prose", token: "text-body-sm text-ink-muted", what: "The sentence under a heading; a hint" },
+  { role: "Field label", token: "text-body-sm font-medium text-ink", what: "The label above an input" },
+  { role: "Meta", token: "text-caption text-ink-subtle", what: "A business code, a timestamp, the line under a value" },
+] as const;
 
 interface DemoRow {
   id: string;
@@ -175,15 +195,36 @@ function DesignSystem() {
         title="Typography"
         description="Semantic, not sized. Use text-h1, never text-[20px] — the scale can then change in one place."
       >
-        <Card className="flex flex-col gap-4">
-          {TYPE_SCALE.map((item) => (
-            <div key={item.name} className="flex flex-wrap items-baseline gap-4">
-              <code className="w-40 shrink-0 font-mono text-caption text-ink-subtle">{item.name}</code>
-              <span className={item.name}>Gurukulam TMS</span>
-              <span className="text-caption text-ink-muted">{item.usage}</span>
-            </div>
-          ))}
-        </Card>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card className="flex flex-col gap-4">
+            <CardHeader as="h3" title="The scale" description="Ten sizes, declared once in globals.css." />
+            {TYPE_SCALE.map((item) => (
+              <div key={item.name} className="flex flex-wrap items-baseline gap-4">
+                <code className="w-40 shrink-0 font-mono text-caption text-ink-subtle">{item.name}</code>
+                <span className={item.name}>Gurukulam TMS</span>
+                <span className="text-caption text-ink-muted">{item.usage}</span>
+              </div>
+            ))}
+          </Card>
+
+          {/* The half a scale cannot express: which token a thing gets. */}
+          <Card className="flex flex-col gap-4">
+            <CardHeader
+              as="h3"
+              title="The roles"
+              description="Pick by what the text IS, not by how big it should look. A table cell is 16px or 12px — never 14px, which is the prose size."
+            />
+            {TYPE_ROLES.map((item) => (
+              <div key={item.role} className="flex flex-col gap-1 border-b border-hairline pb-4 last:border-b-0 last:pb-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <span className={item.token}>{item.role}</span>
+                  <code className="font-mono text-caption text-ink-subtle">{item.token}</code>
+                </div>
+                <span className="text-caption text-ink-muted">{item.what}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
       </ShowcaseSection>
 
       <ShowcaseSection

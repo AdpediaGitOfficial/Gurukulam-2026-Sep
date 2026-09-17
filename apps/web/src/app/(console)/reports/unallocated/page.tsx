@@ -72,7 +72,7 @@ const COLUMNS: Column<UnallocatedRow>[] = [
     // Every record carries its author. A college-created student shows the
     // college user, which is what makes institutional intake auditable.
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {row.createdByType.replace(/_/g, " ").toLowerCase()}
       </span>
     ),
@@ -81,7 +81,7 @@ const COLUMNS: Column<UnallocatedRow>[] = [
     id: "created",
     header: "Onboarded",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {new Date(row.createdAt).toLocaleDateString("en-IN")}
       </span>
     ),

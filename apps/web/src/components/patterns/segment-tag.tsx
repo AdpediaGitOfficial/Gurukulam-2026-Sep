@@ -21,7 +21,11 @@ export function SegmentTag({ segment, className }: SegmentTagProps) {
       className={cn(
         // `w-fit` because a flex column stretches its children: without it the
         // tag fills the whole table cell and reads as a coloured band.
-        "inline-flex h-[22px] w-fit items-center rounded-full px-2.5 text-overline font-bold",
+        // `text-caption` because this is a BADGE, and the console has one badge
+        // size: `Chip` tinted is 12px bold and these two sit in peer cells of
+        // the same table. It was 10px, which made the same kind of thing read
+        // as two kinds.
+        "inline-flex h-[22px] w-fit items-center rounded-full px-2.5 text-caption font-bold",
         retail ? "bg-danger/10 text-danger" : "bg-brand/10 text-brand",
         className,
       )}

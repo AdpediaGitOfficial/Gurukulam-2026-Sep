@@ -59,7 +59,7 @@ const COLUMNS: Column<Submission>[] = [
     id: "submitted",
     header: "Submitted",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {new Date(row.submittedAt).toLocaleDateString("en-IN")}
       </span>
     ),
@@ -88,7 +88,7 @@ const COLUMNS: Column<Submission>[] = [
     cell: (row) => (
       <Link
         href={`/colleges/submissions/${row.submissionId}`}
-        className="text-body-sm text-gold underline-offset-4 hover:underline"
+        className="text-body text-gold underline-offset-4 hover:underline"
       >
         {(row.pendingCount ?? 0) > 0 ? "Review" : "Open"}
       </Link>

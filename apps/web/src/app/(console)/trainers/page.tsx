@@ -47,7 +47,7 @@ const columns = (mayDelete: boolean): Column<Trainer>[] => [
     id: "qualification",
     header: "Qualification",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {row.qualification ?? <span className="text-ink-subtle">—</span>}
       </span>
     ),
@@ -87,7 +87,7 @@ const columns = (mayDelete: boolean): Column<Trainer>[] => [
       row.engagement === "IN_HOUSE" ? (
         <StatusPill intent="info">in-house</StatusPill>
       ) : (
-        <span className="text-body-sm text-ink-muted">freelance</span>
+        <span className="text-body text-ink-muted">freelance</span>
       ),
   },
   {

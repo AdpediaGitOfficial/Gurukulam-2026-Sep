@@ -35,17 +35,17 @@ const columns = (mayDelete: boolean): Column<Country>[] => [
     header: "ISO",
     // Monospace because these are read character by character and copied.
     cell: (row) => (
-      <span className="font-mono text-body-sm">
+      <span className="font-mono text-body">
         {row.iso2} · {row.iso3}
       </span>
     ),
   },
-  { id: "dial", header: "Dial", cell: (row) => <span className="font-mono text-body-sm">{row.dialCode}</span> },
-  { id: "currency", header: "Currency", cell: (row) => <span className="font-mono text-body-sm">{row.currency}</span> },
+  { id: "dial", header: "Dial", cell: (row) => <span className="font-mono text-body">{row.dialCode}</span> },
+  { id: "currency", header: "Currency", cell: (row) => <span className="font-mono text-body">{row.currency}</span> },
   {
     id: "timezone",
     header: "Timezone",
-    cell: (row) => <span className="font-mono text-body-sm text-ink-muted">{row.timezone}</span>,
+    cell: (row) => <span className="font-mono text-body text-ink-muted">{row.timezone}</span>,
   },
   {
     id: "cities",

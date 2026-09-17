@@ -50,7 +50,7 @@ const COLUMNS: Column<InstallmentWithPayments>[] = [
     id: "due",
     header: "Due",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {new Date(row.dueDate).toLocaleDateString("en-IN")}
       </span>
     ),

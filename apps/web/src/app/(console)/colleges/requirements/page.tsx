@@ -40,7 +40,7 @@ const COLUMNS: Column<Requirement>[] = [
         href={`/colleges/requirements/${row.requirementId}`}
         className="flex flex-col hover:underline"
       >
-        <span className="font-mono text-body-sm text-ink">{row.requirementCode}</span>
+        <span className="font-mono text-body text-ink">{row.requirementCode}</span>
         <span className="text-caption text-ink-subtle">
           raised {new Date(row.createdAt).toLocaleDateString("en-IN")}
         </span>
@@ -69,7 +69,7 @@ const COLUMNS: Column<Requirement>[] = [
       row.preferredWindowStart === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">
+        <span className="text-body text-ink-muted">
           {dateOnly(row.preferredWindowStart)}
           {row.preferredWindowEnd === null ? "" : ` – ${dateOnly(row.preferredWindowEnd)}`}
         </span>
@@ -99,7 +99,7 @@ const COLUMNS: Column<Requirement>[] = [
       row.batchCode === null || row.batchCode === undefined ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="font-mono text-body-sm text-brand">{row.batchCode}</span>
+        <span className="font-mono text-body text-brand">{row.batchCode}</span>
       ),
   },
 ];

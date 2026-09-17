@@ -52,7 +52,8 @@ export interface DetailRowProps {
   href?: string;
   /**
    * The line the card is really about — a contract's computed total, not its
-   * per-student rate. One per card, or the emphasis means nothing.
+   * per-student rate. One per card, or the emphasis means nothing. It changes
+   * the weight only: a total is not a bigger KIND of number.
    */
   strong?: boolean;
 }
@@ -64,9 +65,11 @@ export function DetailRow({ label, value, variant = "text", href, strong = false
         "min-w-0 break-words text-ink sm:text-right",
         variant === "code" && "font-mono",
         variant === "figure" && "tabular-nums",
-        // A total earns the larger size as well as the weight; an ordinary row
-        // stays at the console's summary-card scale.
-        strong ? "text-body font-semibold" : "text-body-sm font-medium",
+        // A record's value is a VALUE — the same size as the same fact in a
+        // table cell or a form field. Only the weight changes for the line the
+        // card is really about.
+        "text-body",
+        strong ? "font-semibold" : "font-medium",
       )}
     >
       {href === undefined ? (

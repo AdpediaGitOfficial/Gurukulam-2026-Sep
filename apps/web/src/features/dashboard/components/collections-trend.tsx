@@ -256,7 +256,7 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
                       : Math.max(PAD_TOP - 2, baseline - 7)
                   }
                   textAnchor="middle"
-                  className="fill-ink text-[11px] font-semibold"
+                  className="fill-ink text-caption font-semibold"
                 >
                   {formatRupeesShort(biggest.total)}
                 </text>
@@ -266,7 +266,7 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
                 x={x + barWidth + 1}
                 y={HEIGHT - 8}
                 textAnchor="middle"
-                className="fill-ink-subtle text-[10px]"
+                className="fill-ink-subtle text-caption"
               >
                 {monthLabel(point.month)}
               </text>
@@ -287,7 +287,10 @@ export function CollectionsTrend({ months }: { months: readonly MonthlyPoint[] }
             sideways — which is how a dashboard that is fine on a laptop
             becomes unusable on the device an operator actually carries. */}
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-96 border-collapse text-body-sm">
+          {/* `text-body`, not `text-body-sm`: these are table cells, and a cell
+            holds a value at the value size wherever it appears. The figures
+            here are the same figures the collections report shows. */}
+        <table className="w-full min-w-96 border-collapse text-body">
             <caption className="sr-only">Collections by month, retail and college</caption>
             <thead>
               <tr className="border-b border-hairline text-left text-caption uppercase tracking-wide text-ink-muted">

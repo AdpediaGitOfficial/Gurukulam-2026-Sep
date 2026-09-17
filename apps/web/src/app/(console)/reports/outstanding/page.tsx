@@ -100,7 +100,7 @@ const COLUMNS: Column<OutstandingRow>[] = [
       row.nextDueDate === null ? (
         <span className="text-ink-subtle">—</span>
       ) : (
-        <span className="text-body-sm text-ink-muted">
+        <span className="text-body text-ink-muted">
           {new Date(row.nextDueDate).toLocaleDateString("en-IN")}
         </span>
       ),

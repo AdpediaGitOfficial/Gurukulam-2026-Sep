@@ -54,7 +54,7 @@ const COLUMNS: Column<CollegeContact>[] = [
     header: "How to reach them",
     cell: (row) => (
       <span className="flex flex-col">
-        <span className="text-body-sm text-ink">{row.email}</span>
+        <span className="text-body text-ink">{row.email}</span>
         <span className="font-mono text-caption text-ink-subtle">{row.phone ?? "—"}</span>
       </span>
     ),
@@ -100,7 +100,7 @@ const COLUMNS: Column<CollegeContact>[] = [
     cell: (row) => (
       <Link
         href={`/colleges/${row.collegeId}/contacts`}
-        className="text-body-sm text-gold underline-offset-4 hover:underline"
+        className="text-body text-gold underline-offset-4 hover:underline"
       >
         Edit
       </Link>

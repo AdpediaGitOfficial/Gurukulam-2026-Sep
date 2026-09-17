@@ -41,7 +41,7 @@ const STUDENT_COLUMNS: Column<Student>[] = [
       </Link>
     ),
   },
-  { id: "email", header: "Email", cell: (row) => <span className="text-body-sm text-ink-muted">{row.email}</span> },
+  { id: "email", header: "Email", cell: (row) => <span className="text-body text-ink-muted">{row.email}</span> },
   {
     id: "discipline",
     header: "Discipline",
@@ -60,7 +60,7 @@ const STUDENT_COLUMNS: Column<Student>[] = [
       row.isAllocated === false ? (
         <StatusPill intent="warning">Unallocated</StatusPill>
       ) : (
-        <span className="text-body-sm text-ink-muted tabular-nums">
+        <span className="text-body text-ink-muted tabular-nums">
           {row.batchCount ?? 0} {row.batchCount === 1 ? "batch" : "batches"}
         </span>
       ),
@@ -90,7 +90,7 @@ const BATCH_COLUMNS: Column<Batch>[] = [
     id: "starts",
     header: "Starts",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {new Date(row.startDate).toLocaleDateString("en-IN")}
       </span>
     ),

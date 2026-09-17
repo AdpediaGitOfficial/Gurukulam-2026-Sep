@@ -68,7 +68,7 @@ const columns = (mayDelete: boolean): Column<Batch>[] => [
     id: "where",
     header: "Where",
     cell: (row) => (
-      <span className="text-body-sm text-ink-muted">
+      <span className="text-body text-ink-muted">
         {[row.cityName, row.mode.charAt(0) + row.mode.slice(1).toLowerCase()]
           .filter(Boolean)
           .join(" · ")}

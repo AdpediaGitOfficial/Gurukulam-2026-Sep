@@ -48,7 +48,7 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
     id: "time",
     header: "Time",
     cell: (row) => (
-      <span className="font-mono text-body-sm tabular-nums">
+      <span className="font-mono text-body tabular-nums">
         {row.startTime}–{row.endTime}
       </span>
     ),
@@ -65,12 +65,12 @@ const SESSION_COLUMNS: Column<BatchSession>[] = [
       row.meetingLink !== null ? (
         <a
           href={row.meetingLink}
-          className="text-body-sm text-gold underline-offset-4 hover:underline"
+          className="text-body text-gold underline-offset-4 hover:underline"
         >
           Meeting link
         </a>
       ) : (
-        <span className="text-body-sm text-ink-muted">{row.venue ?? "—"}</span>
+        <span className="text-body text-ink-muted">{row.venue ?? "—"}</span>
       ),
   },
   {

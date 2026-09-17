@@ -111,7 +111,7 @@ const columns = (mayDelete: boolean): Column<Student>[] => [
     // rather than merely recorded.
     cell: (row) => (
       <div className="flex flex-col">
-        <span className="text-body-sm text-ink">{row.createdByName ?? "—"}</span>
+        <span className="text-body text-ink">{row.createdByName ?? "—"}</span>
         {row.createdByType === "COLLEGE_USER" ? (
           <span className="text-caption text-ink-subtle">College user</span>
         ) : null}
