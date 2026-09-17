@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { BatchDetail } from "@gurukulam/contracts";
 
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { PageHeader } from "@/components/patterns/page-header";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { buttonVariants } from "@/components/ui/button";
@@ -17,9 +18,18 @@ import { Tabs } from "@/components/ui/tabs";
 export function BatchHeader({
   batch,
   counts,
+  mayDelete = false,
 }: {
   batch: BatchDetail;
   counts: { sessions: number; students: number; recordings: number };
+  /**
+   * Off by default, and passed only by the batch's own page.
+   *
+   * This header is shared by three views. Removing the batch from the roster
+   * tab — where the operator is looking at students, not at the batch — is a
+   * verb in the wrong place, and the one that is hardest to undo.
+   */
+  mayDelete?: boolean;
 }) {
   const base = `/batches/${batch.batchId}`;
 
@@ -38,9 +48,17 @@ export function BatchHeader({
           .join(" · ")}
         breadcrumbs={[{ label: "Batches", href: "/batches" }, { label: batch.name }]}
         action={
-          <Link href={`${base}/edit`} className={buttonVariants({ variant: "secondary" })}>
-            Edit batch
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href={`${base}/edit`} className={buttonVariants({ variant: "secondary" })}>
+              Edit batch
+            </Link>
+            {/* The API refuses a batch with anybody on its roster — "move them
+                first, or cancel the batch instead" — because removing it would
+                strand real enrolments. That sentence is shown verbatim. */}
+            {mayDelete ? (
+              <DeleteRecord target="batch" id={batch.batchId} label={batch.name} />
+            ) : null}
+          </div>
         }
       />
 

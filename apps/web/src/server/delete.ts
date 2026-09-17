@@ -94,6 +94,21 @@ const TARGETS = {
     revalidate: ["/trainers"],
   },
   /**
+   * A batch, and the sessions timetabled under it.
+   *
+   * Missing from this registry until now, which is why `/batches` was the one
+   * list with no delete on the row while the endpoint had existed all along.
+   *
+   * The API refuses a batch with anybody on its roster — "move them first, or
+   * cancel the batch instead" — because removing it would strand real
+   * enrolments. The dashboard counts batches and sessions, so both revalidate.
+   */
+  batch: {
+    noun: "batch",
+    path: (id: string) => `/batches/${id}`,
+    revalidate: ["/batches", "/batches/sessions", "/dashboard"],
+  },
+  /**
    * A scheduled session. The API refuses a COMPLETED one — delivery history is
    * not a thing to tidy away — and says to cancel a future session instead,
    * which notifies the roster. That refusal appears on the row.

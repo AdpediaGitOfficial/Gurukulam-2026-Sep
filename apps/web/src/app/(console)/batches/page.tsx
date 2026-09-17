@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Batch } from "@gurukulam/contracts";
+import { can, type Batch } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";
@@ -28,7 +28,7 @@ const STATUS = {
   CANCELLED: { intent: "danger", label: "Cancelled" },
 } as const;
 
-const COLUMNS: Column<Batch>[] = [
+const columns = (mayDelete: boolean): Column<Batch>[] => [
   {
     id: "batch",
     header: "Batch",
@@ -110,10 +110,15 @@ const COLUMNS: Column<Batch>[] = [
       return <StatusPill intent={status.intent}>{status.label}</StatusPill>;
     },
   },
-  rowActions((row) => [
-    { label: "Open", href: `/batches/${row.batchId}` },
-    { label: "Edit", href: `/batches/${row.batchId}/edit` },
-  ]),
+  rowActions(
+    (row) => [
+      { label: "Open", href: `/batches/${row.batchId}` },
+      { label: "Edit", href: `/batches/${row.batchId}/edit` },
+    ],
+    mayDelete
+      ? (row) => ({ target: "batch" as const, id: row.batchId, label: row.name })
+      : undefined,
+  ),
 ];
 
 export default async function BatchesPage({
@@ -121,7 +126,11 @@ export default async function BatchesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("batches");
+  const principal = await requireModule("batches");
+  /* Not rendered at all without the permission — a button that answers 403
+     teaches people the console is broken rather than that they lack the
+     right. */
+  const mayDelete = can(principal, "batches", "delete");
   const params = await searchParams;
   const page = await listBatches(params);
 
@@ -202,7 +211,7 @@ export default async function BatchesPage({
       }
     >
       <DataTable
-        columns={COLUMNS}
+        columns={columns(mayDelete)}
         rows={page.rows}
         getRowId={(row) => row.batchId}
         caption="Batches by course, trainer, segment and progress"

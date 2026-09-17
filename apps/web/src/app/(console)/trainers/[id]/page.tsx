@@ -278,12 +278,21 @@ export default async function TrainerDetailPage({
           .join(" · ")}
         breadcrumbs={[{ label: "Trainers", href: "/trainers" }, { label: trainer.name }]}
         action={
-          <Link
-            href={`/trainers/${trainer.trainerId}/edit`}
-            className={buttonVariants({ variant: "secondary" })}
-          >
-            Edit trainer
-          </Link>
+            <div className="flex items-center gap-3">
+            <Link
+              href={`/trainers/${trainer.trainerId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Edit trainer
+            </Link>
+              {/* Removing the record lives beside editing it, so somebody who has
+                  just read the whole page does not have to go back to the list and
+                  find the row again. The API owns the refusal and states it in its
+                  own words — a trainer committed to delivery is refused by name. */}
+              {mayDelete ? (
+                <DeleteRecord target="trainer" id={trainer.trainerId} label={trainer.name} />
+              ) : null}
+            </div>
         }
       />
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
+import { can,
   formatRupees,
   fromWire,
   type Batch,
@@ -8,6 +8,7 @@ import {
   type Trainer,
 } from "@gurukulam/contracts";
 
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -172,7 +173,11 @@ function Topics({ topics }: { topics: readonly CourseTopic[] }) {
 }
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireModule("courses");
+  const principal = await requireModule("courses");
+  /* Not rendered without the permission — a button that answers 403
+     teaches people the console is broken rather than that they lack the
+     right. */
+  const mayDelete = can(principal, "courses", "delete");
   const { id } = await params;
   const course = await getCourse(id);
 
@@ -203,12 +208,21 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           .join(" · ")}
         breadcrumbs={[{ label: "Courses", href: "/courses" }, { label: course.name }]}
         action={
-          <Link
-            href={`/courses/${course.courseId}/edit`}
-            className={buttonVariants({ variant: "secondary" })}
-          >
-            Edit course
-          </Link>
+            <div className="flex items-center gap-3">
+            <Link
+              href={`/courses/${course.courseId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Edit course
+            </Link>
+              {/* Removing the record lives beside editing it, so somebody who has
+                  just read the whole page does not have to go back to the list and
+                  find the row again. The API owns the refusal and states it in its
+                  own words — a course with a batch still running is refused by name. */}
+              {mayDelete ? (
+                <DeleteRecord target="course" id={course.courseId} label={course.name} />
+              ) : null}
+            </div>
         }
       />
 

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Batch, CollegeDetail, Student } from "@gurukulam/contracts";
+import { can, type Batch, type CollegeDetail, type Student } from "@gurukulam/contracts";
 
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -168,7 +169,10 @@ export default async function CollegeDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("colleges");
+  const principal = await requireModule("colleges");
+  /* Not rendered without the permission — a button that answers 403 teaches
+     people the console is broken rather than that they lack the right. */
+  const mayDelete = can(principal, "colleges", "delete");
   const { id } = await params;
   const query = await searchParams;
 
@@ -207,6 +211,10 @@ export default async function CollegeDetailPage({
             >
               Edit college
             </Link>
+""" + NOTE % "a college with live students is refused by name." + """
+            {mayDelete ? (
+              <DeleteRecord target="college" id={college.collegeId} label={college.name} />
+            ) : null}
           </div>
         }
       />

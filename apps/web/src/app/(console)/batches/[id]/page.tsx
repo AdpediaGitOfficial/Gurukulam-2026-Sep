@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { BatchSession, TrainerAssignment } from "@gurukulam/contracts";
+import { can, type BatchSession, type TrainerAssignment } from "@gurukulam/contracts";
 
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { rowActions } from "@/components/patterns/row-actions";
@@ -265,7 +265,10 @@ export default async function BatchSessionsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireModule("batches");
+  const principal = await requireModule("batches");
+  /* Not rendered without the permission — a button that answers 403 teaches
+     people the console is broken rather than that they lack the right. */
+  const mayDelete = can(principal, "batches", "delete");
   const { id } = await params;
   const query = await searchParams;
   const batch = await getBatch(id);
@@ -282,6 +285,7 @@ export default async function BatchSessionsPage({
   return (
     <PageBody>
       <BatchHeader
+        mayDelete={mayDelete}
         batch={batch}
         counts={{ sessions: sessions.total, students: students.total, recordings: recorded }}
       />
