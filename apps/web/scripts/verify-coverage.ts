@@ -121,23 +121,77 @@ function apiEndpoints(): Endpoint[] {
 /**
  * Every `apiFetch` the console makes, as a shape.
  *
- * Read from a WINDOW around each call rather than from its first argument,
- * because the first argument is often an expression:
+ * Read from the call's OWN ARGUMENT LIST — the text between `apiFetch(` and
+ * its balanced closing paren — rather than from a fixed window of characters
+ * after it. The window was 420 characters, which reached past the call and
+ * into whatever came next:
  *
- *     apiFetch(editing ? `/students/${id}` : "/students", {
- *       method: editing ? "PATCH" : "POST",
+ *     await apiFetch(path, { method: "PUT", body });
+ *     revalidatePath("/fee-ledger");        // ← swept in as a called path
  *
- * Matching only a literal first argument misses that call entirely, and it is
- * the edit path for a whole module. So every path literal and every method
- * literal in the window are paired — deliberately generous, because the cost
- * of a missed pairing is a false gap, and a suite that cries wolf is a suite
- * people stop reading.
+ * Those `revalidatePath` arguments are CONSOLE routes, not API paths. Reading
+ * them as calls did two bad things at once: it hid that the real path was
+ * built in a variable the scanner could not see, and it put `/fee-ledger` into
+ * the called set, where it was available to cover an endpoint nothing calls.
  *
- * A template hole ends its literal, so `/students/${id}/suspend` is recorded
- * as `/students/`. That is handled at the comparison, not by parsing
- * TypeScript here.
+ * The first argument is often an expression rather than a literal —
+ * `editing ? \`/students/${id}\` : "/students"` — so every literal in the
+ * argument list is paired with every method literal in it. Deliberately
+ * generous WITHIN the call, and blind outside it.
  */
-const WINDOW = 420;
+/**
+ * The text of a call's argument list, parens balanced.
+ *
+ * Returns "" when the parens never close, which cannot happen in source that
+ * compiles but would otherwise read to the end of the file.
+ */
+function callArguments(text: string, openIndex: number): string {
+  let depth = 0;
+  for (let i = openIndex; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return text.slice(openIndex + 1, i);
+    }
+  }
+  return "";
+}
+
+/**
+ * Every path literal in a chunk of source, as a SHAPE.
+ *
+ * The whole literal is read and its template holes become `:x`, so
+ * `` `/batches/${id}/trainer/propose` `` is recorded as
+ * `/batches/:x/trainer/propose` — the same shape the controller declares.
+ *
+ * The previous version stopped at the first `${`, which threw away every
+ * segment after it. That is not a rounding error: it collapsed
+ * `/batches/:id/trainer/propose` down to `/batches/`, which then matched
+ * `DELETE /batches/:id` — an endpoint with no console control at all — and
+ * the suite reported zero gaps while the batch list had no delete on the row.
+ * A deeper endpoint masking a shallower one is the exact shape of that bug.
+ *
+ * A path that is entirely dynamic (`` `${base}${query}` ``) normalises to
+ * something that matches nothing, which is correct: it tells us nothing about
+ * which endpoint was called. Those are all GETs, and only writes are compared.
+ */
+function pathLiterals(source: string): string[] {
+  const out: string[] = [];
+  for (const m of source.matchAll(/`(\/[^`]*)`|["'](\/[^"']*)["']/g)) {
+    const raw = m[1] ?? m[2];
+    if (raw === undefined) continue;
+    const path = raw
+      // A template hole is a path parameter wherever it appears.
+      .replace(/\$\{[^}]*\}/g, ":x")
+      // A query string is not part of the route it is asking for.
+      .replace(/\?.*$/, "")
+      .replace(/\/+/g, "/")
+      .replace(/(.)\/$/, "$1");
+    if (path !== "/" && path !== "") out.push(path);
+  }
+  return out;
+}
 
 function consoleCalls(): Set<string> {
   const shapes = new Set<string>();
@@ -146,11 +200,9 @@ function consoleCalls(): Set<string> {
     const pattern = /apiFetch(?:<[^>]*>)?\(/g;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
-      const window = text.slice(match.index, match.index + WINDOW);
+      const window = callArguments(text, match.index + match[0].length - 1);
 
-      let paths = [...window.matchAll(/[`"'](\/[A-Za-z0-9\-_/]*)/g)]
-        .map((m) => (m[1] ?? "").replace(/\/+/g, "/"))
-        .filter((path) => path !== "/");
+      let paths = pathLiterals(window);
 
       /* A DISPATCHER builds its path rather than writing one: the shared
          delete action does `apiFetch(config.path(id), { method: "DELETE" })`,
@@ -167,10 +219,34 @@ function consoleCalls(): Set<string> {
          entry, purely because "/trainers" survived in a neighbour's
          revalidate list. A false gap wastes an afternoon; a false pass hides
          a missing control forever. */
+      /* A path built into a VARIABLE above the call is invisible to a window
+         that only looks forward:
+
+             const path = parent === "ledger"
+               ? `/fee-ledger/${id}/schedule`
+               : `/fee-ledger/contracts/${id}/schedule`;
+             await apiFetch(path, { method: "PUT", body });
+
+         Both endpoints are called; neither was seen. Rather than widening the
+         window — which would sweep in literals from whatever function happens
+         to sit nearby, and a false PASS is the one outcome worth avoiding —
+         the identifier is resolved: take the name passed to apiFetch and read
+         the literals out of its own `const` declaration. */
       if (paths.length === 0) {
-        paths = [...text.matchAll(/\bpath:\s*\([^)]*\)\s*=>\s*[`"'](\/[A-Za-z0-9\-_/]*)/g)]
-          .map((m) => (m[1] ?? "").replace(/\/+/g, "/"))
-          .filter((path) => path !== "/");
+        // The first argument, when it is a bare name. `config.path(id)` is
+        // not one — it stops at the dot and falls through to the registry
+        // reader below, which is where a dispatcher's real paths live.
+        const ident = /^\s*([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(window);
+        const name = ident?.[1];
+        if (name !== undefined) {
+          const decl = new RegExp(`\\bconst\\s+${name}\\s*(?::[^=]+)?=([\\s\\S]*?);`).exec(text);
+          if (decl?.[1] !== undefined) paths = pathLiterals(decl[1]);
+        }
+      }
+
+      if (paths.length === 0) {
+        paths = [...text.matchAll(/\bpath:\s*\([^)]*\)\s*=>\s*(`[^`]*`|"[^"]*"|'[^']*')/g)]
+          .flatMap((m) => pathLiterals(m[1] ?? ""));
       }
       if (paths.length === 0) continue;
 
@@ -197,35 +273,38 @@ const endpoints = apiEndpoints();
 const called = consoleCalls();
 
 /**
- * Covered when some console call of the same method reaches the same place.
+ * Covered when the console calls THIS endpoint — the same method and the same
+ * shape, whole.
  *
- * The comparison is on the LITERAL PREFIX — everything before the first path
- * parameter — and it must match exactly. A template hole truncates the
- * recorded path (`/students/${id}/suspend` is read as `/students/`), so the
- * endpoint's own prefix is trimmed the same way and the two are compared whole.
+ * ── Why there is no longer a prefix rule ────────────────────────────────
  *
- * This was a prefix test in both directions and that was wrong. A call to
- * `/trainers/availability/:id` startsWith `/trainers/`, so it silently covered
- * `DELETE /trainers/:id` — I proved it by deleting the trainer entry from the
- * delete registry and watching the suite still report zero gaps. A false gap
- * wastes an afternoon; a FALSE PASS hides a missing control forever, which is
- * the one failure this whole file exists to prevent.
+ * There were two, and both let something through.
  *
- * What remains imprecise is honest to state: once the hole truncates, two
- * endpoints sharing a prefix — `/students/:id/suspend` and
- * `/students/:id/allocate` — look identical here. Telling those apart needs a
- * TypeScript parse rather than a regex, and both are covered in practice.
+ * The first compared prefixes in BOTH directions, so a call to
+ * `/trainers/availability/:id` covered `DELETE /trainers/:id`. Proved by
+ * deleting the trainer entry from the delete registry and watching the suite
+ * still report zero gaps.
+ *
+ * Tightening that to an exact prefix match fixed the direction and left the
+ * truncation, which is what actually bit: a console path was recorded only up
+ * to its first `${`, so `` `/batches/${id}/trainer/propose` `` was stored as
+ * `/batches/` and covered `DELETE /batches/:id`. That endpoint had NO console
+ * control — the batch list had no delete on the row, and the registry had no
+ * `batch` target — and the suite called it covered for months. A deeper
+ * endpoint masking a shallower one, entirely inside the comparison.
+ *
+ * `pathLiterals` now keeps the whole path, so the shapes are directly
+ * comparable and this is a set membership test. Nothing is inferred from a
+ * shared prefix, because every inference this file has tried has eventually
+ * hidden a missing control — and a FALSE PASS is the one failure it exists to
+ * prevent. A false gap costs somebody an afternoon; a false pass costs an
+ * operations team a screen nobody knows is absent.
+ *
+ * What remains: two endpoints whose paths differ only in a parameter NAME are
+ * one shape here, which is deliberate — `:id` and `:studentId` are the same
+ * hole in the same URL.
  */
-const covered = (endpoint: Endpoint): boolean => {
-  if (called.has(endpoint.shape)) return true;
-  const literal = endpoint.path.split("/:")[0] ?? endpoint.path;
-  for (const shape of called) {
-    const [method, path] = shape.split(" ");
-    if (method !== endpoint.method || path === undefined) continue;
-    if (path.replace(/\/$/, "") === literal) return true;
-  }
-  return false;
-};
+const covered = (endpoint: Endpoint): boolean => called.has(endpoint.shape);
 
 const gaps = endpoints.filter((e) => !covered(e) && DELIBERATE[e.shape] === undefined);
 const declared = endpoints.filter((e) => DELIBERATE[e.shape] !== undefined);
