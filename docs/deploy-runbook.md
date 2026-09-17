@@ -105,6 +105,49 @@ Read the last three rows of section 2 and the whole of section 3.
 | Section 3 returns **rows** | Two live sessions claim one cohort at one moment | **Stop.** Fix them in the console (cancel or reschedule one of each pair), then re-run. The new unique index will be rejected otherwise |
 | Section 3 returns **0 rows** | Nothing blocks the index | Continue to A3 |
 
+### A2b. Check every column, not just the constraints — this one bit
+
+```bash
+sudo -u postgres psql gurukulam -f packages/db/scripts/check-columns.sql
+```
+
+**Do not skip this, and do not baseline before it reads zero.**
+
+A2 asks whether `20260903075500_constraints` ran, because that is the migration
+whose absence breaks the invariants. It did not ask about the ordinary additive
+migrations after it — and the live database turned out to be missing
+`trainers.engagement` from `20260908120000_in_house_trainers`.
+
+The symptom was not "the database is broken". It was that **creating a batch
+and scheduling a session both answered 500**, while twelve other screens worked
+perfectly. Both of those pages load the trainer picker, and that query selects
+every scalar column on `trainers`; nothing else on either page reads that one.
+The API log named it exactly once:
+
+```
+The column `trainers.engagement` does not exist in the current database.
+```
+
+If any row reads **MISSING**:
+
+```bash
+sudo -u postgres pg_dump gurukulam > ~/before-repair.sql      # first, always
+sudo -u postgres psql gurukulam -f packages/db/scripts/repair-schema.sql
+sudo -u postgres psql gurukulam -f packages/db/scripts/check-columns.sql
+```
+
+The repair is additive and guarded, so it is a no-op against a database that is
+already right, and every column arrives with the default its migration gave it.
+Re-run the check and read the verdict — that is the confirmation, not the
+repair's silence.
+
+**Baselining first would have hidden this permanently.** `migrate resolve
+--applied` writes history; it does not look at the schema. Marking
+`in_house_trainers` applied while its column is absent tells Prisma the work is
+done, and nothing will ever go back for it.
+
+---
+
 ### A3. Baseline the nine migrations that are already in the schema
 
 These nine are what the live schema already contains. Marking them applied
