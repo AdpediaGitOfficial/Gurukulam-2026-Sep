@@ -17,6 +17,7 @@ import {
   respondToProposalSchema,
   assignmentSchema,
   createAssignmentSchema,
+  rescheduleSessionSchema,
   updateAssignmentSchema,
 } from "@gurukulam/contracts";
 
@@ -472,4 +473,102 @@ export async function updateAssignment(
 
   revalidatePath(`/batches/sessions/${sessionId}`);
   redirect(`/batches/sessions/${sessionId}?saved=1`);
+}
+
+/**
+ * Calling a session off.
+ *
+ * Distinct from deleting it, and the API keeps them apart: a CANCELLED session
+ * stays in the schedule carrying its reason, because "the trainer was ill on
+ * the 14th" is delivery history the batch has to be able to explain. Deleting
+ * would erase the fact that the morning was ever planned.
+ *
+ * The reason is required — a cancellation the roster is told about with no
+ * explanation is the thing that generates the phone calls.
+ */
+export async function cancelSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const reason = text(formData, "reason") ?? "";
+  if (reason.trim() === "") {
+    return formError("Check the details below.", { reason: "Say why it was cancelled" });
+  }
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/cancel`, {
+      method: "POST",
+      body: { reason },
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  revalidatePath("/batches/sessions");
+  redirect(`/batches/sessions/${sessionId}?cancelled=1`);
+}
+
+/**
+ * Moving a session, in place.
+ *
+ * The session keeps its identity rather than being cancelled and recreated, so
+ * attendance, the recording and anything already set against it stay attached
+ * — which is the whole reason the API reschedules rather than asking the
+ * console to delete and re-add.
+ *
+ * Venue and meeting link are here because a session that moves often moves
+ * somewhere else, and making the operator go back and edit them afterwards is
+ * how a roster gets told the wrong room.
+ */
+export async function rescheduleSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = rescheduleSessionSchema.safeParse({
+    scheduledDate: text(formData, "scheduledDate"),
+    startTime: text(formData, "startTime"),
+    endTime: text(formData, "endTime"),
+    venue: text(formData, "venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
+    reason: text(formData, "reason"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/reschedule`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  revalidatePath("/batches/sessions");
+  redirect(`/batches/sessions/${sessionId}?moved=1`);
+}
+
+/**
+ * Taking a published recording back out of view.
+ *
+ * Not a delete: the row stays, so the link is still there to republish once
+ * whatever was wrong with it is fixed. The student portal reads the published
+ * flag, so this is the control that answers "that video should not be up".
+ */
+export async function unpublishRecording(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/recording/unpublish`, { method: "POST" });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?unpublished=1`);
 }

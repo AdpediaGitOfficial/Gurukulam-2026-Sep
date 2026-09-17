@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 
-import { ConfirmAction } from "@/components/patterns/confirm-with-reason";
+import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { Alert } from "@/components/ui/alert";
@@ -12,7 +12,13 @@ import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { RecordingForm } from "@/features/batches/components/recording-form";
-import { completeSession, reopenSession } from "@/features/batches/server/actions";
+import { RescheduleForm } from "@/features/batches/components/reschedule-form";
+import {
+  cancelSession,
+  completeSession,
+  reopenSession,
+  unpublishRecording,
+} from "@/features/batches/server/actions";
 import { getSession } from "@/features/batches/server/batches-service";
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
@@ -60,7 +66,11 @@ export default async function SessionDetailPage({
           { label: session.title },
         ]}
         action={
-          <div className="flex items-center gap-3">
+          /* Wraps, because this row now carries four verbs. At 400px they add
+             up to 432px and an unwrapped row takes the whole page sideways
+             with it — the header's action slot is `shrink-0`, so nothing else
+             can absorb the overflow. */
+          <div className="flex flex-wrap items-center justify-end gap-3">
             {delivered || session.status === "CANCELLED" ? null : (
               <Link
                 href={`/batches/sessions/${session.sessionId}/edit`}
@@ -86,6 +96,26 @@ export default async function SessionDetailPage({
               size="md"
             />
           )}
+            {/* Calling it off, which is not deleting it: a cancelled session
+                stays in the schedule carrying its reason, because "the trainer
+                was ill on the 14th" is delivery history the batch has to be
+                able to explain. The API refuses a delivered one, so the verb
+                is absent there rather than present and refused. */}
+            {mayEdit && !delivered && session.status !== "CANCELLED" ? (
+              <ConfirmWithReason
+                id={`cancel-${session.sessionId}`}
+                subject={session.title}
+                action={cancelSession.bind(null, session.sessionId)}
+                trigger="Cancel session"
+                confirm="Cancel it"
+                pending="Cancelling…"
+                required
+                reasonLabel="Why it was cancelled"
+                reasonPlaceholder="Trainer unwell — the topic moves to the next slot"
+                reasonHint="Kept on the session and shown beside it."
+                description="The session stays in the schedule marked cancelled, so the batch can still explain the gap. Moving it to another day instead is a reschedule."
+              />
+            ) : null}
             {/* The API refuses a delivered session — that is delivery history,
                 and the answer for a future one is Cancel, which tells the
                 roster. The verb is still offered so the refusal is readable
@@ -113,6 +143,18 @@ export default async function SessionDetailPage({
       ) : query["reopened"] === "1" ? (
         <Alert intent="info" title="Reopened">
           It counts as scheduled again. Anything already set against it stays.
+        </Alert>
+      ) : query["cancelled"] === "1" ? (
+        <Alert intent="info" title="Session cancelled">
+          It stays in the schedule marked cancelled, with the reason beside it.
+        </Alert>
+      ) : query["moved"] === "1" ? (
+        <Alert intent="success" title="Session moved">
+          Attendance, assignments and the recording moved with it. The old date is kept on the record.
+        </Alert>
+      ) : query["unpublished"] === "1" ? (
+        <Alert intent="info" title="Recording held back">
+          Students can no longer see it. The link is kept, so it can go back up.
         </Alert>
       ) : query["recorded"] === "1" ? (
         <Alert intent="success" title="Recording attached">
@@ -142,6 +184,9 @@ export default async function SessionDetailPage({
         )}
         {session.trainerName === null || session.trainerName === undefined ? null : (
           <Chip>{session.trainerName}</Chip>
+        )}
+        {session.status !== "CANCELLED" || session.cancelReason === null || session.cancelReason === undefined ? null : (
+          <span className="text-body-sm text-ink-muted">Cancelled — “{session.cancelReason}”</span>
         )}
         {session.rescheduledFrom === null ? null : (
           <span className="text-body-sm text-ink-muted">
@@ -187,6 +232,20 @@ export default async function SessionDetailPage({
         </Card>
 
         <div className="flex flex-col gap-8 xl:col-span-2">
+          {/* Absent on a delivered session, which the API refuses to move, and
+              on a cancelled one, where the honest verb is to schedule a
+              replacement rather than resurrect this. */}
+          {mayEdit && !delivered && session.status !== "CANCELLED" ? (
+            <PageSection
+              title="Schedule"
+              description="Where and when the cohort is expected. Moving it tells the roster; correcting it on the edit screen does not."
+            >
+              <Card>
+                <RescheduleForm session={session} />
+              </Card>
+            </PageSection>
+          ) : null}
+
           <PageSection
             title="Recording"
             description="One per delivered session. A student who missed it catches up from here."
@@ -205,6 +264,20 @@ export default async function SessionDetailPage({
                 >
                   {session.recording.title ?? session.recording.url}
                 </a>
+                {/* Not a delete: the row and the link stay, so it can go back
+                    up once whatever was wrong with it is fixed. There is no
+                    republish verb yet — the answer is to relink it — so this
+                    says "held back" rather than pretending to a toggle. */}
+                {mayEdit && session.recording.isPublished ? (
+                  <div className="flex justify-end border-t border-hairline pt-3">
+                    <ConfirmAction
+                      action={unpublishRecording.bind(null, session.sessionId)}
+                      label="Hold it back"
+                      pending="Holding…"
+                      subject={session.title}
+                    />
+                  </div>
+                ) : null}
               </Card>
             ) : delivered ? (
               <Card>

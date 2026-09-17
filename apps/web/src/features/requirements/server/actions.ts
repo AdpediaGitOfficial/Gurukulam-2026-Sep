@@ -185,3 +185,27 @@ export async function updateRequirement(
   revalidatePath(`/colleges/requirements/${requirementId}`);
   redirect(`/colleges/requirements/${requirementId}?saved=1`);
 }
+
+/**
+ * Closing a requirement out.
+ *
+ * The college asked for a cohort, we confirmed it and ran it; this is the step
+ * that says the asking is finished. It takes no input — there is nothing to
+ * decide, only to record — so it confirms in place rather than opening a form
+ * over a single button.
+ */
+export async function fulfilRequirement(
+  requirementId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/colleges/requirements/${requirementId}/fulfil`, { method: "POST" });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/colleges/requirements/${requirementId}`);
+  revalidatePath("/colleges/requirements");
+  redirect(`/colleges/requirements/${requirementId}?fulfilled=1`);
+}

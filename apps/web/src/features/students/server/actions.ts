@@ -345,3 +345,41 @@ export async function importStudents(
     return { status: "error", message: state.message ?? "That file could not be read.", csv: source };
   }
 }
+
+/**
+ * Taking a student off a batch's roster.
+ *
+ * NOT the same as recording that they left it. `setRosterOutcome` says a real
+ * enrolment ended and keeps the row, because it belongs in the completion and
+ * drop-out rates. This soft-deletes the mapping: the student should not have
+ * been on this roster at all — allocated to the wrong cohort, usually.
+ *
+ * The reason is required and stored, because six months later "why is this
+ * student not on the batch their ledger was raised against" is a real
+ * question and the mapping is the only thing that can answer it.
+ */
+export async function deallocateStudent(
+  studentId: string,
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const reason = text(formData, "reason") ?? "";
+  if (reason.trim() === "") {
+    return formError("Check the details below.", { reason: "Say why they are leaving the roster" });
+  }
+
+  try {
+    await apiFetch(`/students/${studentId}/deallocate`, {
+      method: "POST",
+      body: { batchId, reason },
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath("/students");
+  revalidatePath("/students/unallocated");
+  redirect(`/students/${studentId}?deallocated=1`);
+}

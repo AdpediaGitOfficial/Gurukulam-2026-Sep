@@ -25,6 +25,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { listBatches, listSessions } from "@/features/batches/server/batches-service";
 import { getTrainer, listAvailability } from "@/features/trainers/server/trainers-service";
 import { reinstateTrainer, suspendTrainer } from "@/features/trainers/server/actions";
+import { DeclareAvailabilityForm } from "@/features/trainers/components/declare-availability-form";
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -252,6 +253,7 @@ export default async function TrainerDetailPage({
   searchParams: Promise<SearchParams>;
 }) {
   const principal = await requireModule("trainers");
+  const mayEdit = can(principal, "trainers", "edit");
   const mayDelete = can(principal, "trainers", "delete");
   const { id } = await params;
   const query = await searchParams;
@@ -300,6 +302,11 @@ export default async function TrainerDetailPage({
         <Alert intent="warning" title="Trainer suspended">
           They will not be offered for new batches. The batches they are already confirmed on are
           untouched — reassigning those is a deliberate act, not a side effect.
+        </Alert>
+      ) : query["declared"] === "1" ? (
+        <Alert intent="success" title="Window declared">
+          They are withdrawn from the calendar for that period. Batches they are already confirmed on
+          are untouched.
         </Alert>
       ) : query["reinstated"] === "1" ? (
         <Alert intent="success" title="Trainer reinstated">
@@ -502,7 +509,17 @@ export default async function TrainerDetailPage({
       <PageSection
         title="Declared leave and blocked time"
         description="Free/busy is computed from this plus committed sessions, never stored — which is why declaring leave over a session the trainer is already committed to is refused."
+        className="gap-4"
       >
+        {/* The other half of a verb that shipped with only its undo: the
+            section could withdraw a window since it was built and never create
+            one, so the calendar knew about committed sessions and nothing
+            else. It sits above the list rather than in the section header,
+            because open it is a six-field form and the header's action slot is
+            sized for a button. */}
+        {mayEdit ? (
+          <DeclareAvailabilityForm trainerId={trainer.trainerId} trainerName={trainer.name} />
+        ) : null}
         <Away entries={away} mayDelete={mayDelete} />
       </PageSection>
     </PageBody>

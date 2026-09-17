@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatRupees, fromWire, type Receipt } from "@gurukulam/contracts";
+import { can, formatRupees, fromWire, type Receipt } from "@gurukulam/contracts";
 
+import { ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { PrintButton } from "@/features/ledger/components/print-button";
+import { reversePayment } from "@/features/ledger/server/actions";
 import { getReceipt } from "@/features/ledger/server/ledger-service";
 import { requireModule } from "@/server/principal";
 
@@ -47,22 +49,49 @@ export default async function ReceiptPage({
 }: {
   params: Promise<{ transactionId: string }>;
 }) {
-  await requireModule("feeLedger", "read");
+  const principal = await requireModule("feeLedger", "read");
   const { transactionId } = await params;
   const receipt = await getReceipt(transactionId);
 
   const reversed = receipt.reversedAt !== null;
   const isReversal = receipt.kind === "REVERSAL";
+  /* The API refuses a reversal of a reversal and refuses one already reversed,
+     and both refusals are visible on the document itself — the stamp across
+     its face — so the verb is absent rather than offered and turned down. */
+  const mayReverse = can(principal, "feeLedger", "edit") && !reversed && !isReversal;
   const backHref = receipt.payer.type === "STUDENT" ? "/fee-ledger" : "/fee-ledger/contracts";
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 print:max-w-none print:gap-0 print:p-0">
       {/* Everything here is the console, not the document. */}
-      <div className="flex items-center justify-between gap-4 print:hidden">
-        <Link href={backHref} className="text-body-sm text-ink-muted underline-offset-4 hover:underline">
-          ← Back to the fee ledger
-        </Link>
-        <PrintButton />
+      <div className="flex flex-col gap-4 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Link href={backHref} className="text-body-sm text-ink-muted underline-offset-4 hover:underline">
+            ← Back to the fee ledger
+          </Link>
+          <PrintButton />
+        </div>
+        {/* Reversing lives on the receipt rather than in the ledger's payment
+            list, because this is the one screen that shows the whole payment —
+            who paid, against which instalment, and where the account stands —
+            and a reversal is the wrong thing to do from a one-line summary. */}
+        {mayReverse ? (
+          <div className="flex justify-end border-t border-hairline pt-3">
+            <ConfirmWithReason
+              id={`reverse-${receipt.transactionId}`}
+              subject={`receipt ${receipt.receiptNumber}`}
+              action={reversePayment.bind(null, receipt.transactionId)}
+              trigger="Reverse this receipt"
+              confirm="Reverse it"
+              pending="Reversing…"
+              required
+              reasonLabel="Why it is being reversed"
+              reasonPlaceholder="Cheque bounced — bank returned it on the 9th"
+              reasonHint="Printed on both documents, so neither can be produced without the explanation."
+              description="Writes a matching credit note and takes the money back off the instalment. This receipt is not deleted and keeps its number — it will read REVERSED from here on, which is what makes the collection register still reconcile."
+            />
+          </div>
+        ) : null}
       </div>
 
       <article className="relative overflow-hidden rounded-card border border-hairline bg-surface p-8 print:rounded-none print:border-0 print:p-0 sm:p-10">

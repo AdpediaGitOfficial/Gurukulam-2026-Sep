@@ -8,7 +8,9 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { StatusPill } from "@/components/ui/status-pill";
+import { ConfirmAction } from "@/components/patterns/confirm-with-reason";
 import { ConfirmRequirementForm } from "@/features/requirements/components/confirm-requirement-form";
+import { fulfilRequirement } from "@/features/requirements/server/actions";
 import { getRequirement } from "@/features/requirements/server/requirements-service";
 import { buttonVariants } from "@/components/ui/button";
 import { requireModule } from "@/server/principal";
@@ -97,6 +99,10 @@ export default async function RequirementDetailPage({
 
   const status = STATUS[requirement.status] ?? { intent: "neutral" as const, label: requirement.status };
   const open = requirement.status === "NEW" || requirement.status === "UNDER_REVIEW";
+  /* Closing the ask out. Confirmed only, and never by a college user — the API
+     refuses both, so the verb is absent rather than present and refused. */
+  const mayFulfil =
+    mayEdit && requirement.status === "CONFIRMED" && principal.collegeScope === null;
 
   const dateRange =
     requirement.preferredWindowStart === null
@@ -119,17 +125,34 @@ export default async function RequirementDetailPage({
           { label: requirement.requirementCode },
         ]}
         action={
-          /* Only while it is still an ask. Once confirmed, the headcount and
-             the window are facts its dedicated batch was built from. */
-          mayEdit &&
-          (requirement.status === "NEW" || requirement.status === "UNDER_REVIEW") ? (
-            <Link
-              href={`/colleges/requirements/${requirement.requirementId}/edit`}
-              className={buttonVariants({ variant: "secondary" })}
-            >
-              Edit
-            </Link>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            {/* Only while it is still an ask. Once confirmed, the headcount and
+                the window are facts its dedicated batch was built from. */}
+            {mayEdit && open ? (
+              <Link
+                href={`/colleges/requirements/${requirement.requirementId}/edit`}
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                Edit
+              </Link>
+            ) : null}
+            {/* The last step of the pipeline below, which has been drawn on
+                this page since it was built and could not be reached. The API
+                takes only a CONFIRMED requirement — a rejected ask was never
+                delivered and an open one has not been answered — and refuses a
+                college user outright, because closing the institution's own
+                request out is ours to say, not theirs. */}
+            {mayFulfil ? (
+              <ConfirmAction
+                action={fulfilRequirement.bind(null, requirement.requirementId)}
+                label="Mark delivered"
+                pending="Marking…"
+                subject={requirement.requirementCode}
+                variant="primary"
+                size="md"
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -142,6 +165,12 @@ export default async function RequirementDetailPage({
       {query["confirmed"] === "1" ? (
         <Alert intent="success" title="Confirmed">
           The dedicated batch has been created. It carries this college&rsquo;s students only.
+        </Alert>
+      ) : null}
+      {query["fulfilled"] === "1" ? (
+        <Alert intent="success" title="Marked delivered">
+          The ask is closed out. The batch, its roster and the contract are untouched — this records
+          that the conversation with the college is finished.
         </Alert>
       ) : null}
       {query["rejected"] === "1" ? (

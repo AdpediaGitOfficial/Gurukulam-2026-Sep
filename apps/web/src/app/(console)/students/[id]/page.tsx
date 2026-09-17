@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { getStudent, listStudentSubmissions } from "@/features/students/server/students-service";
 import {
+  deallocateStudent,
   reinstateStudent,
   suspendStudent,
 } from "@/features/students/server/actions";
@@ -112,6 +113,11 @@ export default async function StudentDetailPage({
       ) : query["allocated"] === "1" ? (
         <Alert intent="success" title="Allocated">
           Batch mapping, session access, ledger and credentials were written together.
+        </Alert>
+      ) : query["deallocated"] === "1" ? (
+        <Alert intent="info" title="Taken off the roster">
+          The enrolment is removed with its reason kept. Their ledger is not — a student who paid
+          still has one, and closing it is a separate, deliberate act.
         </Alert>
       ) : query["saved"] === "1" ? (
         <Alert intent="success" title="Saved">
@@ -286,6 +292,30 @@ export default async function StudentDetailPage({
                       able to tell those two apart. */}
                   {mayEdit ? (
                     <RosterOutcomeForm studentId={student.studentId} batch={batch} />
+                  ) : null}
+                  {/* NOT the same verb as the one above, and the difference
+                      matters to every rate the dashboard computes. "Record"
+                      says a real enrolment ended — finished, or left — and
+                      keeps the row, because both are facts about somebody who
+                      genuinely attended. This says they should never have been
+                      on this roster: allocated to the wrong cohort, usually.
+                      The mapping is soft-deleted, so the history survives and
+                      the completion rate stops counting a person who was not
+                      there. */}
+                  {mayEdit ? (
+                    <ConfirmWithReason
+                      id={`deallocate-${batch.batchId}`}
+                      subject={`${fullName(student)} — ${batch.name}`}
+                      action={deallocateStudent.bind(null, student.studentId, batch.batchId)}
+                      trigger="Remove"
+                      confirm="Remove from roster"
+                      pending="Removing…"
+                      required
+                      reasonLabel="Why they are coming off"
+                      reasonPlaceholder="Allocated to the wrong batch — moved to GKB-2026-014"
+                      reasonHint="Kept on the record, which is what can answer this six months from now."
+                      description="Takes the student off this batch's roster. Use this when they should not have been on it at all — if they enrolled and then left, record that above instead, so the drop-out rate still counts them."
+                    />
                   ) : null}
                 </li>
               ))}

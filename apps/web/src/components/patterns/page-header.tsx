@@ -40,7 +40,15 @@ export function PageHeader({
         <h1 className="text-balance text-h1 text-ink">{title}</h1>
         {description ? <p className="text-body text-ink-muted">{description}</p> : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {/*
+        `shrink-0` keeps the action row off the title's line at ordinary widths;
+        `max-w-full` is what stops it taking the whole page sideways at 400px.
+        Without it the slot sizes to max-content, so a row of four verbs measures
+        432px in a 320px column and a `flex-wrap` inside it never wraps — there
+        is nothing bounding it to wrap against. The cap resolves against the
+        header row, which is the page.
+      */}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </div>
   );
 }

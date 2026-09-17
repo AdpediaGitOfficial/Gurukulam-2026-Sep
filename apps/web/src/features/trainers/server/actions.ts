@@ -3,10 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createTrainerSchema, suspendTrainerSchema, trainerSchema } from "@gurukulam/contracts";
+import {
+  createTrainerSchema,
+  declareAvailabilitySchema,
+  suspendTrainerSchema,
+  trainerSchema,
+} from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { apiFormError, clearable, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, checked, clearable, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /*
@@ -138,4 +143,67 @@ export async function reinstateTrainer(
 
   revalidatePath(`/trainers/${trainerId}`);
   redirect(`/trainers/${trainerId}?reinstated=1`);
+}
+
+/**
+ * Declaring a window the trainer is not available.
+ *
+ * The console could already DELETE an availability window and never create
+ * one — you could withdraw leave you had no way to declare. This is the other
+ * half.
+ *
+ * The API refuses a window that would cover a session the trainer is already
+ * committed to, and says which one. That refusal is the point: a leave request
+ * silently swallowing a confirmed delivery is how a cohort turns up to an
+ * empty room.
+ */
+export async function declareAvailability(
+  trainerId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  /*
+   * A whole day is declared as a DATE and a part of one as a timestamp, which
+   * is why the two bounds are widened here rather than in the component.
+   *
+   * The browser submits `2026-09-20` from a date input and `2026-09-20T14:00`
+   * from a datetime-local one, and the API stores whatever it is given. Left
+   * alone, a day of leave would land as midnight-to-midnight — an instant, not
+   * a day — and the clash check, which compares against the whole of each
+   * bounding day, would then let a session be scheduled into leave that was
+   * declared over it. Widening to the day's real edges is what makes "the 20th"
+   * mean the 20th.
+   *
+   * It happens server-side because it is a rule about what the record means,
+   * not about how the form looks: a second caller composing this body by hand
+   * gets the same treatment.
+   */
+  const fullDay = checked(formData, "isFullDay");
+  const bound = (key: string, edge: "T00:00:00" | "T23:59:59") => {
+    const value = text(formData, key);
+    if (value === undefined) return value;
+    return fullDay && !value.includes("T") ? `${value}${edge}` : value;
+  };
+
+  const parsed = declareAvailabilitySchema.safeParse({
+    type: text(formData, "type") ?? "LEAVE",
+    startsAt: bound("startsAt", "T00:00:00"),
+    endsAt: bound("endsAt", "T23:59:59"),
+    isFullDay: fullDay,
+    reason: text(formData, "reason"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/trainers/${trainerId}/availability`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/trainers/${trainerId}`);
+  revalidatePath("/trainers/calendar");
+  redirect(`/trainers/${trainerId}?declared=1`);
 }

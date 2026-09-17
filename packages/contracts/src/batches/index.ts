@@ -252,6 +252,10 @@ export const batchSessionSchema = z.object({
   completedAt: z.string().nullable(),
   rescheduledFrom: z.string().nullable(),
   rescheduleReason: z.string().nullable(),
+  /* Why it was called off. Stored since the cancel endpoint existed and never
+     carried to the console, so a cancelled session read as one nobody could
+     explain — which is the thing that generates the phone calls. */
+  cancelReason: z.string().nullable().optional(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
   assignmentCount: z.number().int().optional(),

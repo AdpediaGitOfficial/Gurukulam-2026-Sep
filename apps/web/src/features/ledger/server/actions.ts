@@ -7,6 +7,7 @@ import {
   createContractSchema,
   paymentSchema,
   recordPaymentSchema,
+  reversePaymentSchema,
   setScheduleSchema,
   updateContractSchema,
   type Contract,
@@ -212,4 +213,45 @@ export async function setSchedule(
     revalidatePath("/fee-ledger/contracts");
   }
   return { status: "idle" };
+}
+
+/**
+ * Reversing a receipt.
+ *
+ * The screen has been telling operators to "record a payment or reverse one
+ * instead" for weeks without offering the second half. This is it.
+ *
+ * A reversal does not delete the payment: the original stands and a matching
+ * negative entry is written against it, so the receipt keeps its number and
+ * the collection register still reconciles. The dashboard subtracts it from
+ * the month it was recorded in, which is why the trend can go below zero.
+ *
+ * The reason is required and prints across the face of the receipt — a
+ * reversed document that does not say why is worse than none.
+ */
+export async function reversePayment(
+  transactionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = reversePaymentSchema.safeParse({ reason: text(formData, "reason") });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/fee-ledger/payments/${transactionId}/reverse`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/receipts/${transactionId}`);
+  revalidatePath("/fee-ledger");
+  revalidatePath("/dashboard");
+  // Back to the same receipt with no banner, because the document itself is
+  // the confirmation: it is derived at read time and now carries REVERSED
+  // across its face and the reason in its own panel. An alert saying the same
+  // thing above a document that already says it is one more thing to dismiss.
+  redirect(`/receipts/${transactionId}`);
 }

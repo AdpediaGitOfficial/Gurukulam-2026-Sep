@@ -816,6 +816,7 @@ function toSession(row: SessionRow): BatchSession {
     completedAt: row.completedAt?.toISOString() ?? null,
     rescheduledFrom: row.rescheduledFrom?.toISOString() ?? null,
     rescheduleReason: row.rescheduleReason,
+    cancelReason: row.cancelReason,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     assignmentCount: row._count.assignments,
