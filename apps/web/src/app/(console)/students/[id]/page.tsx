@@ -194,7 +194,7 @@ export default async function StudentDetailPage({
         <Card className="xl:col-span-2">
           <CardHeader as="h2" title="Profile" />
           <dl>
-            <DetailRow label="Student code" value={<span className="font-mono">{student.studentCode}</span>} />
+            <DetailRow label="Student code" value={student.studentCode} variant="code" />
             <DetailRow label="Email" value={student.email} />
             <DetailRow label="Phone" value={student.phone ?? "—"} />
             <DetailRow label="Segment" value={retail ? "Retail — walk-in" : "College — institutional"} />

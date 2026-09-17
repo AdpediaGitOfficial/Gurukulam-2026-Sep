@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { can } from "@gurukulam/contracts";
 import Link from "next/link";
 
+import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
@@ -77,20 +78,21 @@ export default async function CertificatePage({
           />
 
           <dl>
-            <Detail label="Certificate number" value={certificate.certificateNumber} mono />
-            <Detail label="Verification code" value={certificate.verificationCode} mono />
-            <Detail
+            <DetailRow label="Certificate number" value={certificate.certificateNumber} variant="code" />
+            <DetailRow label="Verification code" value={certificate.verificationCode} variant="code" />
+            <DetailRow
               label="Student"
               value={certificate.studentName ?? "—"}
               href={`/students/${certificate.studentId}`}
             />
-            <Detail label="Course" value={certificate.courseName ?? "—"} />
-            <Detail
+            <DetailRow label="Course" value={certificate.courseName ?? "—"} />
+            <DetailRow
               label="Batch"
               value={certificate.batchCode ?? "—"}
+              variant="code"
               href={`/batches/${certificate.batchId}`}
             />
-            <Detail
+            <DetailRow
               label="Issued"
               value={
                 certificate.issuedDate === null
@@ -100,11 +102,11 @@ export default async function CertificatePage({
             />
             {certificate.revokedAt === null ? null : (
               <>
-                <Detail
+                <DetailRow
                   label="Revoked"
                   value={new Date(certificate.revokedAt).toLocaleString("en-IN")}
                 />
-                <Detail label="Reason" value={certificate.revokedReason ?? "—"} />
+                <DetailRow label="Reason" value={certificate.revokedReason ?? "—"} />
               </>
             )}
           </dl>
@@ -149,33 +151,5 @@ export default async function CertificatePage({
         </div>
       </div>
     </PageBody>
-  );
-}
-
-function Detail({
-  label,
-  value,
-  href,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  href?: string;
-  mono?: boolean;
-}) {
-  const text = mono ? "font-mono text-body-sm text-ink" : "text-body text-ink";
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-hairline py-3 last:border-b-0">
-      <dt className="text-body-sm text-ink-muted">{label}</dt>
-      <dd className={text}>
-        {href === undefined ? (
-          value
-        ) : (
-          <Link href={href as never} className="text-gold underline-offset-4 hover:underline">
-            {value}
-          </Link>
-        )}
-      </dd>
-    </div>
   );
 }

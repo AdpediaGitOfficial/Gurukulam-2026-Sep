@@ -191,7 +191,7 @@ export default async function SessionDetailPage({
       <div className="grid gap-8 xl:grid-cols-3">
         <Card className="xl:col-span-1">
           <dl>
-            <DetailRow label="Session code" value={<span className="font-mono">{session.sessionCode}</span>} />
+            <DetailRow label="Session code" value={session.sessionCode} variant="code" />
             <DetailRow label="Date" value={session.scheduledDate} />
             <DetailRow
               label="Time"
