@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
 import { SegmentTag } from "@/components/patterns/segment-tag";
 import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
+import { DeleteRecord } from "@/components/patterns/delete-record";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -48,6 +49,10 @@ export default async function StudentDetailPage({
   // The outcome is a write, so the control only appears for somebody who may
   // make one — a disabled control is a promise the screen cannot keep.
   const mayEdit = can(principal, "students", "edit");
+  /* Not rendered at all without the permission — a button that answers 403
+     teaches people the console is broken rather than that they lack the
+     right. */
+  const mayDelete = can(principal, "students", "delete");
   const { id } = await params;
   const query = await searchParams;
   const student = await getStudent(id);
@@ -171,6 +176,20 @@ export default async function StudentDetailPage({
             />
           )}
         </span>
+
+        {/* Removing the record sits beside suspending it, because an operator
+            reaching for one has usually just weighed the other — and the two
+            are genuinely different: suspending stops a real student signing
+            in, removing says the record should not have existed.
+
+            The API decides whether it may happen, and it refuses a student
+            with a recorded payment in its own words: a receipt is a financial
+            record and the collection register has to stay able to reconcile.
+            The refusal is shown verbatim rather than translated into
+            "could not delete". */}
+        {mayDelete ? (
+          <DeleteRecord target="student" id={student.studentId} label={fullName(student)} />
+        ) : null}
       </div>
 
       <div className="grid gap-8 xl:grid-cols-3">
