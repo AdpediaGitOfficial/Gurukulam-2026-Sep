@@ -1,4 +1,4 @@
-name: Deploy Gurukulam App
+name: Deploy Gurukulam Application
 
 on:
   push:
