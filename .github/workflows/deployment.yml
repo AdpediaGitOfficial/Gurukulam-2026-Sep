@@ -23,7 +23,6 @@ jobs:
           BACKUP_FILE="${BACKUP_DIR}/gurukulamdbbackup_${TIMESTAMP}.sql"
           DB_NAME="gurukulam"
           TARGET_BRANCH="claude/project-analysis-6t08cr"
-          SCHEMA_PATH="./packages/db/prisma/schema.prisma"
 
           echo "1. Starting database backup..."
           sudo mkdir -p "${BACKUP_DIR}"
@@ -32,10 +31,6 @@ jobs:
           echo "2. Navigating to project directory..."
           cd "${PROJECT_DIR}"
 
-          echo "3. Marking safe directory & resetting permissions..."
-          git config --global --add safe.directory "${PROJECT_DIR}" || true
-          sudo chown -R ubuntu:ubuntu "${PROJECT_DIR}"
-
           echo "4. Fetching and checking out target branch..."
           git fetch origin
           git reset --hard HEAD
@@ -43,19 +38,8 @@ jobs:
           git checkout -B "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
           git pull origin "${TARGET_BRANCH}"
 
-
-
           echo "6. Installing dependencies..."
           npm install
-
-          echo "7. Checking Prisma migrations..."
-          STATUS=$(npx prisma migrate status --schema="${SCHEMA_PATH}" 2>&1 || true)
-          if echo "${STATUS}" | grep -q "Following migration(s) have not yet been applied"; then
-            echo "Applying migrations..."
-            npx prisma migrate deploy --schema="${SCHEMA_PATH}"
-          else
-            echo "No pending migrations."
-          fi
 
           echo "8. Building application..."
           npm run build
