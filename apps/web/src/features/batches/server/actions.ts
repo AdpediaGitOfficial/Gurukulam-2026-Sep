@@ -1,0 +1,574 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import {
+  parseSessionUpload,
+  sessionUploadResultSchema,
+  type SessionUploadResult,
+  batchSchema,
+  batchSessionSchema,
+  batchStatusSchema,
+  createBatchSchema,
+  createSessionSchema,
+  linkRecordingSchema,
+  updateSessionSchema,
+  releaseTrainerSchema,
+  respondToProposalSchema,
+  assignmentSchema,
+  createAssignmentSchema,
+  rescheduleSessionSchema,
+  updateAssignmentSchema,
+} from "@gurukulam/contracts";
+
+import { apiFetch, checkShape } from "@/server/api";
+import { apiFormError, checked, clearable, fieldErrors, number, text } from "@/lib/action";
+import { formError, type FormState } from "@/lib/form";
+
+/**
+ * What the upload form carries between submits.
+ *
+ * Wider than `FormState` because a plan is not a field error — it is the whole
+ * answer to "what will this do", and it has to survive the round trip so the
+ * commit button has something to commit.
+ */
+export interface UploadState {
+  status: "idle" | "error";
+  message?: string;
+  result?: SessionUploadResult;
+  /** The exact text that was planned, so the commit sends the same rows. */
+  csv?: string;
+}
+
+/*
+ * A batch cannot change its course or its college.
+ *
+ * Both are omitted from the contract's update and from this schema. The course
+ * decides which trainers may take it and which topics its sessions hang off;
+ * the college decides who may sit on the roster (invariant 2). Changing either
+ * on a batch that already has students would silently invalidate the roster it
+ * already has, so the form shows them locked rather than hiding them.
+ */
+const editBatchSchema = createBatchSchema
+  .omit({ courseId: true, collegeId: true, requirementId: true })
+  .extend({ status: batchStatusSchema });
+
+/**
+ * Creates a retail batch, or saves a correction to any batch.
+ *
+ * A college batch is not created here: it comes from confirming that college's
+ * requirement, which is what keeps the batch tied to the ask that produced it.
+ * Omitting the college is what makes this batch retail, and retail and college
+ * rosters never mix.
+ */
+export async function saveBatch(
+  batchId: string | undefined,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const editing = batchId !== undefined;
+  const optional = editing
+    ? (key: string) => clearable(formData, key)
+    : (key: string) => text(formData, key);
+
+  const body = {
+    name: text(formData, "name"),
+    cityId: text(formData, "cityId"),
+    mode: text(formData, "mode") ?? "OFFLINE",
+    startDate: text(formData, "startDate"),
+    endDate: optional("endDate"),
+    maxCapacity: number(formData, "maxCapacity"),
+    venue: optional("venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
+    notes: optional("notes"),
+  };
+
+  const parsed = editing
+    ? editBatchSchema.safeParse({ ...body, status: text(formData, "status") })
+    : createBatchSchema.safeParse({ ...body, courseId: text(formData, "courseId") });
+
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  let id = batchId;
+  try {
+    const saved = await apiFetch<{ batchId?: string }>(editing ? `/batches/${batchId}` : "/batches", {
+      method: editing ? "PATCH" : "POST",
+      body: parsed.data,
+    });
+    checkShape(batchSchema, saved, editing ? "PATCH /batches/:id" : "POST /batches");
+    id = saved.batchId ?? id;
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  /*
+   * A trainer is proposed, not assigned. The proposal is a separate call and a
+   * separate state — it is not a commitment until the trainer confirms — so a
+   * failure here leaves a real batch with nobody proposed rather than no batch.
+   *
+   * The form only offers the picker when nothing is open: the API refuses a
+   * second proposal while one is proposed or confirmed, and withdrawing is a
+   * deliberate act rather than a side effect of correcting a venue.
+   */
+  const trainerId = text(formData, "trainerId");
+  if (id !== undefined && trainerId !== undefined) {
+    try {
+      await apiFetch(`/batches/${id}/trainer/propose`, {
+        method: "POST",
+        body: { trainerId },
+      });
+    } catch {
+      revalidatePath("/batches");
+      redirect(`/batches?${editing ? "saved" : "created"}=1&trainer=failed`);
+    }
+  }
+
+  revalidatePath("/batches");
+  redirect(`/batches?${editing ? "saved" : "created"}=1`);
+}
+
+/**
+ * Records the trainer's answer to an open proposal.
+ *
+ * An admin may record it on their behalf: the admin portal performs every
+ * action the deferred trainer portal will, permanently, because an operations
+ * team needs the override regardless.
+ *
+ * Confirming makes the batch's primary trainer and commits its sessions;
+ * declining returns the batch to unassigned and keeps the reason, so whoever
+ * proposes next knows what happened. Nothing is reassigned automatically.
+ */
+export async function respondToProposal(
+  batchId: string,
+  decision: "CONFIRM" | "DECLINE",
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = respondToProposalSchema.safeParse({
+    decision,
+    // Only a decline carries one, and the contract requires it there.
+    ...(decision === "DECLINE" ? { reason: text(formData, "reason") } : {}),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/${batchId}/trainer/respond`, { method: "POST", body: parsed.data });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?${decision === "CONFIRM" ? "confirmed" : "declined"}=1`);
+}
+
+/**
+ * Releases the batch's trainer, so someone else can be put forward.
+ *
+ * Withdrawing an open proposal takes nothing away. Releasing a CONFIRMED
+ * trainer does: the batch loses its primary trainer and its scheduled sessions
+ * are cleared, which is why this is a deliberate act with its own control
+ * rather than a side effect of editing the batch.
+ */
+export async function releaseTrainer(
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = releaseTrainerSchema.safeParse({ reason: text(formData, "reason") });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/${batchId}/trainer/propose`, {
+      method: "DELETE",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?released=1`);
+}
+
+/**
+ * Schedules a session under a batch.
+ *
+ * A session belongs to a batch and is taught against a topic OF THAT BATCH'S
+ * COURSE — the API refuses any other topic, because a session mapped to a
+ * foreign topic makes the curriculum report meaningless.
+ *
+ * Nothing stops a date in the past. Backdating is how a batch that started two
+ * months ago gets its history recorded, and refusing it would make the console
+ * unusable for exactly the cohorts most in need of catching up.
+ */
+export async function createSession(
+  batchId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = createSessionSchema.safeParse({
+    batchId,
+    topicId: text(formData, "topicId"),
+    trainerId: text(formData, "trainerId"),
+    title: text(formData, "title"),
+    scheduledDate: text(formData, "scheduledDate"),
+    startTime: text(formData, "startTime"),
+    endTime: text(formData, "endTime"),
+    mode: text(formData, "mode"),
+    venue: text(formData, "venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    checkShape(
+      batchSessionSchema,
+      await apiFetch("/batches/sessions", { method: "POST", body: parsed.data }),
+      "POST /batches/sessions",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/${batchId}`);
+  redirect(`/batches/${batchId}?session=1`);
+}
+
+/**
+ * Marks a session delivered.
+ *
+ * A deliberate act, not a date passing (invariant 10): it is what releases
+ * assignments against the session and what makes a missing recording a gap
+ * rather than a session that has not happened yet.
+ */
+export async function completeSession(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/complete`, { method: "POST", body: {} });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?completed=1`);
+}
+
+/** Completion is a human judgement, so it can be undone. */
+export async function reopenSession(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/reopen`, { method: "POST", body: {} });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?reopened=1`);
+}
+
+/**
+ * Attaches the recording of a delivered session.
+ *
+ * A YouTube URL is what the operator has to hand, so that is the default —
+ * the contract accepts S3 and Zoom too, and stores which it is rather than
+ * guessing from the URL later.
+ */
+export async function linkRecording(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = linkRecordingSchema.safeParse({
+    url: text(formData, "url"),
+    title: text(formData, "title"),
+    provider: text(formData, "provider") ?? "YOUTUBE",
+    isPublished: checked(formData, "isPublished"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/recording`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?recorded=1`);
+}
+
+/**
+ * A file of sessions: first the plan, then the commit.
+ *
+ * Two submits of one form rather than a wizard, because the operator's question
+ * is not "which step am I on" but "what is this about to do to my batch". The
+ * plan is the answer, and it comes back attached to the very text that produced
+ * it — so the commit sends the same rows that were planned, not whatever is in
+ * the box by then.
+ *
+ * The file is read here rather than in the browser. A server action takes a
+ * File directly, which saves a client-side reader and keeps the parser — the
+ * one in `@gurukulam/contracts`, beside the schema it has to agree with — as
+ * the only thing that ever interprets the format.
+ */
+export async function uploadSessions(
+  batchId: string,
+  _previous: UploadState,
+  formData: FormData,
+): Promise<UploadState> {
+  const commit = formData.get("intent") === "commit";
+
+  const file = formData.get("file");
+  const pasted = text(formData, "csv") ?? "";
+  const fromFile = file instanceof File && file.size > 0 ? await file.text() : "";
+  const source = commit ? pasted : fromFile || pasted;
+
+  if (source.trim() === "") {
+    return { status: "error", message: "Paste the rows, or choose a file." };
+  }
+
+  const parsed = parseSessionUpload(source);
+  if (!parsed.ok) return { status: "error", message: parsed.error, csv: source };
+
+  try {
+    const result = await apiFetch<SessionUploadResult>(`/batches/sessions/upload/${batchId}`, {
+      method: "POST",
+      body: { dryRun: !commit, rows: parsed.rows },
+    });
+    checkShape(sessionUploadResultSchema, result, "POST /batches/sessions/upload/:batchId");
+
+    if (result.committed) {
+      revalidatePath(`/batches/${batchId}`);
+      revalidatePath("/batches/sessions");
+    }
+    return { status: result.rejected > 0 ? "error" : "idle", result, csv: source };
+  } catch (error) {
+    const state = apiFormError(error);
+    return { status: "error", message: state.message ?? "That upload could not be read.", csv: source };
+  }
+}
+
+/**
+ * Correcting a scheduled session.
+ *
+ * Deliberately NOT the date or the time. Moving a session is a reschedule: it
+ * updates in place so attendance and the recording stay attached, and it tells
+ * the roster why it moved — so it needs a reason, and it has its own action.
+ * An edit form that quietly moved a session would notify nobody.
+ *
+ * A delivered session is refused by the API ("reopen it before editing"),
+ * which is why the screen shows the fields closed rather than letting somebody
+ * fill them in and lose the typing.
+ */
+export async function updateSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = updateSessionSchema.safeParse({
+    title: text(formData, "title"),
+    topicId: clearable(formData, "topicId") ?? "",
+    trainerId: clearable(formData, "trainerId") ?? "",
+    mode: text(formData, "mode"),
+    venue: clearable(formData, "venue") ?? "",
+    meetingLink: text(formData, "meetingLink") ?? "",
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/batches/sessions/${sessionId}`, {
+      method: "PATCH",
+      body: parsed.data,
+    });
+    checkShape(batchSessionSchema, saved, "PATCH /batches/sessions/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?saved=1`);
+}
+
+/**
+ * Work set against a delivered session.
+ *
+ * Invariant 17: a session must be marked COMPLETE before an assignment can be
+ * set against it. The API enforces that; the screen hides the control until
+ * then, so nobody fills in a form that is going to be refused.
+ *
+ * `sessionId` comes from the route rather than the form. An assignment belongs
+ * to a batch and hangs off the session that actually happened, and a session
+ * id in a posted field is a way to attach work to somebody else's day.
+ */
+export async function createAssignment(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = createAssignmentSchema.safeParse({
+    title: text(formData, "title"),
+    description: text(formData, "description"),
+    instructions: text(formData, "instructions"),
+    attachmentUrl: text(formData, "attachmentUrl") ?? "",
+    maxMarks: number(formData, "maxMarks"),
+    dueAt: text(formData, "dueAt"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const created = await apiFetch(`/batches/sessions/${sessionId}/assignments`, {
+      method: "POST",
+      body: parsed.data,
+    });
+    checkShape(assignmentSchema, created, "POST /batches/sessions/:id/assignments");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?assigned=1`);
+}
+
+/**
+ * Correcting work already set.
+ *
+ * The SESSION cannot change — moving an assignment to another day would move
+ * it away from the delivery it belongs to, and students already have it. That
+ * is why the contract omits `sessionId` from the update and this does too.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = updateAssignmentSchema.safeParse({
+    title: text(formData, "title"),
+    description: clearable(formData, "description"),
+    instructions: clearable(formData, "instructions"),
+    attachmentUrl: text(formData, "attachmentUrl") ?? "",
+    maxMarks: number(formData, "maxMarks"),
+    dueAt: text(formData, "dueAt"),
+    status: text(formData, "status"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    const saved = await apiFetch(`/batches/assignments/${assignmentId}`, {
+      method: "PATCH",
+      body: parsed.data,
+    });
+    checkShape(assignmentSchema, saved, "PATCH /batches/assignments/:id");
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?saved=1`);
+}
+
+/**
+ * Calling a session off.
+ *
+ * Distinct from deleting it, and the API keeps them apart: a CANCELLED session
+ * stays in the schedule carrying its reason, because "the trainer was ill on
+ * the 14th" is delivery history the batch has to be able to explain. Deleting
+ * would erase the fact that the morning was ever planned.
+ *
+ * The reason is required — a cancellation the roster is told about with no
+ * explanation is the thing that generates the phone calls.
+ */
+export async function cancelSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const reason = text(formData, "reason") ?? "";
+  if (reason.trim() === "") {
+    return formError("Check the details below.", { reason: "Say why it was cancelled" });
+  }
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/cancel`, {
+      method: "POST",
+      body: { reason },
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  revalidatePath("/batches/sessions");
+  redirect(`/batches/sessions/${sessionId}?cancelled=1`);
+}
+
+/**
+ * Moving a session, in place.
+ *
+ * The session keeps its identity rather than being cancelled and recreated, so
+ * attendance, the recording and anything already set against it stay attached
+ * — which is the whole reason the API reschedules rather than asking the
+ * console to delete and re-add.
+ *
+ * Venue and meeting link are here because a session that moves often moves
+ * somewhere else, and making the operator go back and edit them afterwards is
+ * how a roster gets told the wrong room.
+ */
+export async function rescheduleSession(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = rescheduleSessionSchema.safeParse({
+    scheduledDate: text(formData, "scheduledDate"),
+    startTime: text(formData, "startTime"),
+    endTime: text(formData, "endTime"),
+    venue: text(formData, "venue"),
+    meetingLink: text(formData, "meetingLink") ?? "",
+    reason: text(formData, "reason"),
+  });
+  if (!parsed.success) return formError("Check the details below.", fieldErrors(parsed.error.issues));
+
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/reschedule`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  revalidatePath("/batches/sessions");
+  redirect(`/batches/sessions/${sessionId}?moved=1`);
+}
+
+/**
+ * Taking a published recording back out of view.
+ *
+ * Not a delete: the row stays, so the link is still there to republish once
+ * whatever was wrong with it is fixed. The student portal reads the published
+ * flag, so this is the control that answers "that video should not be up".
+ */
+export async function unpublishRecording(
+  sessionId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    await apiFetch(`/batches/sessions/${sessionId}/recording/unpublish`, { method: "POST" });
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  redirect(`/batches/sessions/${sessionId}?unpublished=1`);
+}
