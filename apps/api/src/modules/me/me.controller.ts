@@ -1,5 +1,11 @@
-import { Body, Controller, Get, Patch } from "@nestjs/common";
-import { updateMeSchema, type Principal, type UpdateMeInput } from "@gurukulam/contracts";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import {
+  submitAssignmentSchema,
+  updateMeSchema,
+  type Principal,
+  type SubmitAssignmentInput,
+  type UpdateMeInput,
+} from "@gurukulam/contracts";
 import { MeService } from "./me.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
 import { CurrentPrincipal, RequireActor } from "../../common/decorators/principal.decorator";
@@ -60,5 +66,29 @@ export class MeController {
   @Get("schedule")
   schedule(@CurrentPrincipal() p: Principal) {
     return this.me.schedule(p);
+  }
+
+  /** Split three ways: still to do, handed in, and the window closed. */
+  @Get("assignments")
+  assignments(@CurrentPrincipal() p: Principal) {
+    return this.me.assignments(p);
+  }
+
+  /**
+   * The one write on this surface that touches somebody else's record.
+   *
+   * It takes an `:id`, which every read here deliberately avoids — an
+   * assignment belongs to a batch, not to a student, so there is nothing else
+   * to name it by. The id is not trusted: the service matches it against the
+   * caller's own batch mappings in the same query, so an assignment they are
+   * not on reads as not found rather than as a refusal.
+   */
+  @Post("assignments/:assignmentId/submit")
+  submitAssignment(
+    @CurrentPrincipal() p: Principal,
+    @Param("assignmentId") assignmentId: string,
+    @Body(zodBody(submitAssignmentSchema)) body: SubmitAssignmentInput,
+  ) {
+    return this.me.submitAssignment(p, assignmentId, body);
   }
 }

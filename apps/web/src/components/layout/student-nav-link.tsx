@@ -67,10 +67,13 @@ export function StudentNavLink({
 export function StudentTabLink({
   href,
   label,
+  short,
   icon,
 }: {
   href: string;
   label: string;
+  /** The tab's own word, where the sidebar's is too long. See `StudentNavEntry`. */
+  short?: string;
   icon: IconName;
 }) {
   const active = useIsActive(href);
@@ -87,7 +90,7 @@ export function StudentTabLink({
       )}
     >
       <Icon name={icon} size={22} />
-      <span className="max-w-full truncate">{label}</span>
+      <span className="max-w-full truncate">{short ?? label}</span>
     </Link>
   );
 }

@@ -159,6 +159,121 @@ export const meScheduleSchema = z.object({
 
 export type MeSchedule = z.infer<typeof meScheduleSchema>;
 
+// ── My assignments ────────────────────────────────────────────────────────
+
+/**
+ * Work set against a session, and what this student handed in.
+ *
+ * ── Why a closed assignment still appears ───────────────────────────────
+ *
+ * Closing stops submission; it does not hide the work. A student who missed
+ * something needs to see what it was — to ask about it, to know why a mark is
+ * missing, to catch up before the next one. A list that quietly shortened
+ * would leave them unable to tell "I did everything" from "I never saw it".
+ *
+ * A DRAFT assignment is a different thing: nobody has decided it exists yet,
+ * and showing one would set work the trainer has not set.
+ */
+
+export const meSubmissionStatusSchema = z.enum(["PENDING", "SUBMITTED", "GRADED", "LATE"]);
+export type MeSubmissionStatus = z.infer<typeof meSubmissionStatusSchema>;
+
+/** What this student handed in. Absent until they do. */
+export const meSubmissionSchema = z.object({
+  submissionId: z.string(),
+  status: meSubmissionStatusSchema,
+  submittedAt: z.string().nullable(),
+  /** A link. There is no file storage, so nothing is uploaded — see `submitAssignmentSchema`. */
+  fileUrl: z.string().nullable(),
+  contentText: z.string().nullable(),
+  /**
+   * Marks and feedback are the TRAINER's to write, and the trainer portal is
+   * not built. These read null today, which is the honest answer — a zero
+   * would say the work was marked and found worthless.
+   */
+  marksAwarded: z.number().int().nullable(),
+  feedback: z.string().nullable(),
+  gradedAt: z.string().nullable(),
+});
+
+export type MeSubmission = z.infer<typeof meSubmissionSchema>;
+
+export const meAssignmentSchema = z.object({
+  assignmentId: z.string(),
+  assignmentCode: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  instructions: z.string().nullable(),
+  /** Reference material the trainer attached. Not somewhere to upload to. */
+  attachmentUrl: z.string().nullable(),
+  maxMarks: z.number().int().nullable(),
+  dueAt: z.string().nullable(),
+  batchCode: z.string(),
+  courseName: z.string().nullable(),
+  /** The delivered session this was set against, when there is one. */
+  sessionTitle: z.string().nullable(),
+  /** OPEN takes submissions; CLOSED is history you can still read. */
+  open: z.boolean(),
+  /**
+   * Past its due date and nothing handed in. Computed at read time — there is
+   * no nightly job moving assignments, so a stored flag would simply be wrong
+   * the moment the date passed.
+   */
+  overdue: z.boolean(),
+  submission: meSubmissionSchema.nullable(),
+});
+
+export type MeAssignment = z.infer<typeof meAssignmentSchema>;
+
+/**
+ * Handing work in.
+ *
+ * ── Why there is no file ────────────────────────────────────────────────
+ *
+ * S3 is not integrated. An upload control with nowhere to put the file is a
+ * promise the product cannot keep, so a submission is a LINK plus a note —
+ * which is what the columns model, and what a student can produce from any
+ * drive they already use.
+ *
+ * At least one of the two is required. A submission carrying neither is a row
+ * saying "handed in" with nothing in it, which is worse than not having
+ * submitted: it stops the reminder and gives the trainer nothing to mark.
+ */
+export const submitAssignmentSchema = z
+  .object({
+    fileUrl: z.string().url("Paste a link that starts with https://").optional().or(z.literal("")),
+    contentText: z.string().trim().max(5000).optional().or(z.literal("")),
+  })
+  .refine((v) => (v.fileUrl ?? "") !== "" || (v.contentText ?? "") !== "", {
+    message: "Add a link to your work, or write your answer here",
+    path: ["fileUrl"],
+  });
+
+export type SubmitAssignmentInput = z.infer<typeof submitAssignmentSchema>;
+
+/**
+ * The three states a student's assignment list actually has.
+ *
+ * Split server-side rather than filtered on the screen, because each part
+ * needs a DIFFERENT sentence and the difference is not cosmetic: one is work
+ * you can still do, one is work you are waiting to hear about, and one is work
+ * the window closed on. A single list sorted by date says all three with the
+ * same voice.
+ *
+ * `missed` is the one that would be easiest to leave out, and the one that
+ * matters most: a student cannot ask about work they were never shown.
+ */
+export const meAssignmentsSchema = z.object({
+  /** Open, and nothing handed in yet. The only part carrying a verb. */
+  outstanding: z.array(meAssignmentSchema),
+  /** Handed in — marked or waiting to be. */
+  submitted: z.array(meAssignmentSchema),
+  /** Closed with nothing handed in. Readable, and no longer actionable. */
+  missed: z.array(meAssignmentSchema),
+});
+
+export type MeAssignments = z.infer<typeof meAssignmentsSchema>;
+
 /**
  * The landing page's three answers: when is my next session, what am I on,
  * and what have I finished. Computed server-side so the page is one fetch.
@@ -172,6 +287,15 @@ export const meHomeSchema = z.object({
   /** Delivered sessions across every batch, and how many carry a recording. */
   deliveredSessions: z.number().int(),
   availableRecordings: z.number().int(),
+  /**
+   * The soonest piece of work still to hand in, and how many there are.
+   *
+   * Carried in full rather than as a count, for the same reason `nextSession`
+   * is: the home page's job is to answer "what do I do next", and a number
+   * makes a student open another screen to find out what the next thing IS.
+   */
+  nextAssignment: meAssignmentSchema.nullable(),
+  assignmentsDue: z.number().int(),
 });
 
 export type MeHome = z.infer<typeof meHomeSchema>;

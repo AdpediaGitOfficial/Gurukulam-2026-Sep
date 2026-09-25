@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  meAssignmentsSchema,
   meBatchSchema,
   meHomeSchema,
   meProfileSchema,
@@ -11,6 +12,7 @@ import {
   accountSchema,
   meFeesSchema,
   type Account,
+  type MeAssignments,
   type MeFees,
   type MeSchedule,
 } from "@gurukulam/contracts";
@@ -81,4 +83,17 @@ export async function getMeAccount(): Promise<Account> {
   const account = await apiFetch<Account>("/account");
   checkShape(accountSchema, account, "GET /account");
   return account;
+}
+
+/**
+ * The work set against this student's batches, split three ways.
+ *
+ * The split is the API's, not this file's, and deliberately so: "handed in"
+ * has one definition in one place, rather than a filter per screen that the
+ * home card and the assignments page could drift apart on.
+ */
+export async function getAssignments(): Promise<MeAssignments> {
+  const assignments = await apiFetch<MeAssignments>("/me/assignments");
+  checkShape(meAssignmentsSchema, assignments, "GET /me/assignments");
+  return assignments;
 }

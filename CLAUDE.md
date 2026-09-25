@@ -45,7 +45,7 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning, fees and account; assignments, certificates, jobs and notifications are specified
+home, my learning, assignments, fees and account; certificates, jobs and notifications are specified
 and not yet built. Trainer and College come later. The admin portal performs every action they will,
 permanently, because an operations team needs the override regardless.
 
@@ -74,11 +74,20 @@ and `verify:portal` signs in as both.
 of paise. `features/me/money.ts` is the portal's only conversion, and nothing in the portal adds,
 subtracts or compares money — the API sums in `bigint`, the screen formats.
 
+**A student writes in exactly one place, and it is scoped by a join.** Handing work in is the only
+`/me` route that takes an `:id`, because an assignment belongs to a batch rather than to a student.
+The id is never trusted: `submitAssignment` matches it against the caller's own batch mappings inside
+the same query, so an assignment they are not on reads as *not found* rather than as a refusal —
+there is no authorisation step a later handler can forget. A DRAFT assignment is withheld for the
+same reason; a CLOSED one is shown, because closing stops submission and does not erase what was
+asked.
+
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
 race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and
-checks this, the recording's two gates, that no admin-only field reaches the screen, and that every
-portal screen fits 390px.
+checks this, the recording's two gates, the draft-and-scope gates on assignments, that a second
+hand-in is refused, that no admin-only field reaches the screen, and that every portal screen fits
+390px.
 
 ---
 

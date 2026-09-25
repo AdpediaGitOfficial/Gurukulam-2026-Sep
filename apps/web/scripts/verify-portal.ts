@@ -41,6 +41,15 @@ const STUDENT = "stu-2026-0891@gurukulam.com";
 /** A COLLEGE student, to prove Fees is absent rather than empty for them. */
 const COLLEGE_STUDENT = process.env["VERIFY_COLLEGE_STUDENT"] ?? "stu-2026-0003@gurukulam.com";
 const PASSWORD = "Gurukulam@2026";
+/**
+ * The API, reached directly for the two checks a browser cannot make.
+ *
+ * Every other assertion here drives the screen, which is the right default.
+ * But "an assignment on somebody else's batch is not yours to submit to" has
+ * no control to click — the whole point is that the portal never renders one —
+ * so it is exercised where the refusal lives.
+ */
+const API = process.env["API_INTERNAL_URL"] ?? "http://127.0.0.1:4000/api/v1";
 
 const prisma = new PrismaClient();
 let passed = 0;
@@ -80,7 +89,14 @@ const NARROW = 390;
 /** The scale, exactly as globals.css declares it. See verify:type. */
 const SCALE = [36, 30, 25, 20, 18, 16, 14, 12, 10];
 
-const ROUTES = ["/portal", "/portal/learning", "/portal/fees", "/portal/account", "/portal/account/password"];
+const ROUTES = [
+  "/portal",
+  "/portal/learning",
+  "/portal/assignments",
+  "/portal/fees",
+  "/portal/account",
+  "/portal/account/password",
+];
 
 async function main(): Promise<void> {
   const student = await prisma.student.findFirstOrThrow({
@@ -322,6 +338,215 @@ async function main(): Promise<void> {
     else bad("every instalment is listed", `database has ${count}, the page shows ${listed}`);
   }
 
+  // ── 9b. Assignments: what is shown, what is withheld, and the write ─────
+  const allAssignments = await prisma.assignment.findMany({
+    where: {
+      deletedAt: null,
+      batch: { studentMappings: { some: { studentId: student.studentId, deletedAt: null } } },
+    },
+    select: { assignmentId: true, assignmentCode: true, title: true, status: true, dueAt: true },
+  });
+  const released = allAssignments.filter((a) => a.status !== "DRAFT");
+  const drafts = allAssignments.filter((a) => a.status === "DRAFT");
+
+  if (released.length === 0) {
+    console.log("  \x1b[90m· no released assignment on this student's batches — not exercised\x1b[0m");
+  } else {
+    await page.goto(`${BASE}/portal/assignments`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const work = await page.locator("body").innerText();
+
+    const absent = released.filter((a) => !work.includes(a.assignmentCode));
+    if (absent.length === 0) {
+      ok(
+        "every released assignment is on the page",
+        `${released.length}, closed ones included`,
+      );
+    } else {
+      bad(
+        "every released assignment is on the page",
+        `missing ${absent.map((a) => a.assignmentCode).join(", ")}`,
+      );
+    }
+
+    // A DRAFT is work nobody has decided to set. Showing one sets it.
+    if (drafts.length === 0) {
+      console.log("  \x1b[90m· no DRAFT assignment in the data — the withholding is not exercised\x1b[0m");
+    } else {
+      const leaked = drafts.filter(
+        (a) => work.includes(a.assignmentCode) || work.includes(a.title),
+      );
+      if (leaked.length === 0) {
+        ok("a draft assignment is withheld", `${drafts.length} draft(s) on their batches`);
+      } else {
+        bad("a draft assignment is withheld", `${leaked.map((a) => a.assignmentCode).join(", ")} rendered`);
+      }
+    }
+
+    // Overdue is computed at read time, so it has to be true on the screen the
+    // morning after the date — not after a nightly run touches a column.
+    const lateOne = await prisma.assignment.findFirst({
+      where: {
+        deletedAt: null, status: "OPEN", dueAt: { lt: startOfToday() },
+        batch: { studentMappings: { some: { studentId: student.studentId, deletedAt: null } } },
+        submissions: { none: { studentId: student.studentId, deletedAt: null, submittedAt: { not: null } } },
+      },
+      select: { assignmentCode: true },
+    });
+    if (lateOne === null) {
+      console.log("  \x1b[90m· nothing past its date and unsubmitted — overdue not exercised\x1b[0m");
+    } else {
+      const card = await cardText(page, lateOne.assignmentCode);
+      if (/overdue/i.test(card) && /Was due/i.test(card)) {
+        ok("past its date reads as overdue", lateOne.assignmentCode);
+      } else {
+        bad("past its date reads as overdue", `${lateOne.assignmentCode} card says: ${card.slice(0, 120)}`);
+      }
+    }
+
+    // ── The write ─────────────────────────────────────────────────────────
+    const toHandIn = await prisma.assignment.findFirst({
+      where: {
+        deletedAt: null, status: "OPEN",
+        batch: { studentMappings: { some: { studentId: student.studentId, deletedAt: null } } },
+        submissions: { none: { studentId: student.studentId, deletedAt: null } },
+      },
+      select: { assignmentId: true, assignmentCode: true },
+    });
+
+    if (toHandIn === null) {
+      console.log("  \x1b[90m· nothing open and unsubmitted — handing in is not exercised\x1b[0m");
+    } else {
+      const marker = `https://example.test/work/${Date.now()}`;
+      const card = page.locator("li").filter({ hasText: toHandIn.assignmentCode }).last();
+      const opener = card.getByRole("button", { name: "Hand it in" });
+
+      if ((await opener.count()) === 0) {
+        bad("handing work in", `no Hand it in control on ${toHandIn.assignmentCode}`);
+      } else {
+        await opener.click();
+        await card.locator('input[name="fileUrl"]').fill(marker);
+        await Promise.all([
+          page.waitForURL(/handed-in=/, { timeout: 30000 }).catch(() => undefined),
+          card.getByRole("button", { name: /^Hand it in$|Sending/ }).click(),
+        ]);
+
+        // Read back out of the database. The screen is the thing under test.
+        const row = await prisma.assignmentSubmission.findFirst({
+          where: { assignmentId: toHandIn.assignmentId, studentId: student.studentId, deletedAt: null },
+        });
+        if (row?.fileUrl === marker && row.submittedAt !== null) {
+          ok("handing work in", `${toHandIn.assignmentCode} → ${row.status}`);
+        } else {
+          bad("handing work in", `database holds ${JSON.stringify(row?.fileUrl ?? null)}`);
+        }
+
+        await page.waitForLoadState("load");
+        const after = await cardText(page, toHandIn.assignmentCode);
+        if (/That is in/i.test(after) && after.includes(marker)) {
+          ok("and the screen confirms that one", "named, not a generic banner");
+        } else {
+          bad("and the screen confirms that one", after.slice(0, 160));
+        }
+
+        /*
+         * The double tap.
+         *
+         * A student on a slow connection presses twice; both requests read "no
+         * submission yet" and both insert. A read-then-write cannot be made
+         * safe in process, so the guard is the partial unique index — and this
+         * is the check that it is actually there. Written straight at the
+         * database rather than through the portal, because the race cannot be
+         * reproduced by clicking.
+         */
+        let refused = false;
+        try {
+          await prisma.assignmentSubmission.create({
+            data: {
+              assignmentId: toHandIn.assignmentId,
+              studentId: student.studentId,
+              status: "SUBMITTED",
+              submittedAt: new Date(),
+              fileUrl: "https://example.test/second-tap",
+            },
+          });
+        } catch {
+          refused = true;
+        }
+        if (refused) {
+          ok("a second submission is refused", "one student, one hand-in");
+        } else {
+          bad("a second submission is refused", "two live submissions now exist for one student");
+        }
+        await prisma.assignmentSubmission.deleteMany({
+          where: { assignmentId: toHandIn.assignmentId, studentId: student.studentId },
+        });
+      }
+    }
+
+    // ── Somebody else's work is not theirs to hand in ─────────────────────
+    const otherBatch = await prisma.batch.findFirst({
+      where: {
+        deletedAt: null,
+        studentMappings: { none: { studentId: student.studentId, deletedAt: null } },
+      },
+      select: { batchId: true, batchCode: true },
+    });
+
+    if (otherBatch === null) {
+      console.log("  \x1b[90m· this student is on every batch — the scope check is vacuous\x1b[0m");
+    } else {
+      const foreign = await prisma.assignment.create({
+        data: {
+          assignmentCode: `ASG-PROBE-${Date.now().toString().slice(-6)}`,
+          batchId: otherBatch.batchId,
+          title: "scope-probe — another batch's work",
+          status: "OPEN",
+        },
+        select: { assignmentId: true, assignmentCode: true },
+      });
+
+      const login = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // `actor` is part of the credential — the same address can exist on two
+        // surfaces, so a login without it is an ADMIN login and is refused.
+        body: JSON.stringify({ email: STUDENT, password: PASSWORD, actor: "STUDENT" }),
+      });
+      const token = ((await login.json()) as { tokens?: { accessToken?: string } }).tokens?.accessToken;
+
+      if (token === undefined) {
+        bad("another batch's assignment is out of reach", "could not sign the student in at the API");
+      } else {
+        const listed = (await (
+          await fetch(`${API}/me/assignments`, { headers: { Authorization: `Bearer ${token}` } })
+        ).text()).includes(foreign.assignmentCode);
+
+        const refusal = await fetch(`${API}/me/assignments/${foreign.assignmentId}/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ fileUrl: "https://example.test/not-mine" }),
+        });
+
+        const wrote = await prisma.assignmentSubmission.count({
+          where: { assignmentId: foreign.assignmentId, deletedAt: null },
+        });
+
+        if (!listed && refusal.status === 404 && wrote === 0) {
+          ok("another batch's assignment is out of reach", "unlisted, and a submit reads as not found");
+        } else {
+          bad(
+            "another batch's assignment is out of reach",
+            `listed=${listed} status=${refusal.status} (want 404) rows=${wrote}`,
+          );
+        }
+      }
+
+      await prisma.assignmentSubmission.deleteMany({ where: { assignmentId: foreign.assignmentId } });
+      await prisma.assignment.delete({ where: { assignmentId: foreign.assignmentId } });
+    }
+  }
+
   // ── 10. Invariant 3: absent for a college student, not empty ────────────
   const college = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await college.route("**fonts.g**", (r) => r.abort());
@@ -414,6 +639,19 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/**
+ * The text of one assignment's card, found by the code printed on it.
+ *
+ * Scoped rather than searched across the whole page: "overdue" appearing
+ * SOMEWHERE while three assignments are on screen says nothing about which one
+ * is overdue, and a check that cannot fail is not a check.
+ */
+async function cardText(page: Page, assignmentCode: string): Promise<string> {
+  const card = page.locator("li").filter({ hasText: assignmentCode }).last();
+  if ((await card.count()) === 0) return "";
+  return (await card.innerText()).replace(/\u00a0/g, " ");
 }
 
 const startOfToday = (): Date => {

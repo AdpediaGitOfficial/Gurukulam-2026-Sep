@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { updateMeSchema } from "@gurukulam/contracts";
+import { submitAssignmentSchema, updateMeSchema } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
 import { apiFormError, fieldErrors, text } from "@/lib/action";
@@ -44,4 +44,53 @@ export async function updateMyDetails(
 
   revalidatePath("/portal/account");
   redirect("/portal/account?saved=1");
+}
+
+/**
+ * Handing work in.
+ *
+ * ── Why the id is bound rather than posted ──────────────────────────────
+ *
+ * The form carries no `assignmentId` field. A hidden input would be a value
+ * the browser can edit, and while the API refuses an assignment that is not on
+ * one of this student's batches, a form that cannot express the wrong id is a
+ * better place for that to be true than a check downstream. The card binds the
+ * id when it renders the form.
+ *
+ * ── Why the success path redirects to the same screen ───────────────────
+ *
+ * There is nowhere better to go: what a student wants after handing in is to
+ * see that it went in. `?handed-in=` names the assignment so the page can
+ * confirm THAT one rather than a generic "saved" — with four pieces of work on
+ * the screen, a banner that does not say which is a banner that has to be
+ * trusted.
+ */
+export async function submitAssignment(
+  assignmentId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = submitAssignmentSchema.safeParse({
+    fileUrl: text(formData, "fileUrl") ?? "",
+    contentText: text(formData, "contentText") ?? "",
+  });
+  if (!parsed.success) {
+    return formError("Check what you are handing in.", fieldErrors(parsed.error.issues));
+  }
+
+  try {
+    await apiFetch(`/me/assignments/${encodeURIComponent(assignmentId)}/submit`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    // A closed assignment and an already-marked one both land here as a
+    // conflict, and both are things the student can see on their own screen —
+    // so the API's own sentence is shown rather than a generic failure.
+    return apiFormError(error);
+  }
+
+  revalidatePath("/portal/assignments");
+  revalidatePath("/portal");
+  redirect(`/portal/assignments?handed-in=${encodeURIComponent(assignmentId)}`);
 }

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AssignmentCard } from "@/features/me/components/assignment-card";
 import { MoneyCard } from "@/features/me/components/money-card";
 import { PortalCard, PortalPage, PortalStat } from "@/features/me/components/portal-page";
 import { SessionCard } from "@/features/me/components/session-card";
@@ -57,6 +59,33 @@ export default async function StudentHomePage() {
       )}
 
       {fees.billedToCollege ? null : <MoneyCard fees={fees} />}
+
+      {/* Work comes after money and before the figures, because it is the third
+          question and the only other one with a date attached. The card is
+          absent when nothing is outstanding rather than saying "0 assignments
+          due" — an empty section on a landing page is a thing to read past
+          every time, and the good news is already carried by its absence. */}
+      {home.nextAssignment === null ? null : (
+        <section aria-labelledby="due-next" className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="due-next" className="text-h2 text-ink">
+              {home.assignmentsDue === 1 ? "One thing to hand in" : "Next to hand in"}
+            </h2>
+            {home.assignmentsDue > 1 ? (
+              <Link
+                href="/portal/assignments"
+                className="text-body-sm font-medium text-brand underline-offset-4 hover:underline"
+              >
+                All {home.assignmentsDue} assignments
+              </Link>
+            ) : null}
+          </div>
+          {/* The whole card, not a summary line: it carries the hand-in form,
+              so a student who opened the portal to submit something can do it
+              here rather than navigating to find the same card again. */}
+          <AssignmentCard assignment={home.nextAssignment} />
+        </section>
+      )}
 
       <PortalCard title="Where you stand" action={{ href: "/portal/learning", label: "All sessions" }}>
         {/* Two across even on the narrowest phone: four figures stacked is a

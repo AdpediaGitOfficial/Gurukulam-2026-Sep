@@ -35,12 +35,21 @@ export interface StudentNavEntry {
   href: string;
   label: string;
   icon: IconName;
+  /**
+   * What the phone tab says, when the sidebar's word is too long for it.
+   *
+   * A tab is a fifth of 390px and its label truncates, so "Assignments" would
+   * arrive as "Assignment…" — a word cut mid-air, which is worse than a
+   * shorter true one. The sidebar has 240px and no such problem, so it keeps
+   * the name the rest of the product uses.
+   */
+  short?: string;
 }
 
 /**
  * The entries that exist, in the order a student needs them.
  *
- * Assignments, Certificates, Jobs and Updates are specified and not yet built.
+ * Certificates, Jobs and Updates are specified and not yet built.
  * An entry leading to a page that does not answer is worse than a missing one:
  * a student cannot tell "not built" from "I tapped the wrong thing", and this
  * repo's own audit fails a control that does nothing. They arrive with their
@@ -59,6 +68,7 @@ function navFor(segment: "RETAIL" | "COLLEGE"): readonly StudentNavEntry[] {
   return [
     { href: "/portal", label: "Home", icon: "dash" },
     { href: "/portal/learning", label: "Learning", icon: "book" },
+    { href: "/portal/assignments", label: "Assignments", icon: "task", short: "Work" },
     ...(segment === "RETAIL"
       ? [{ href: "/portal/fees", label: "Fees", icon: "rupee" } as const]
       : []),

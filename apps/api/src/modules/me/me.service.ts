@@ -1,5 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import type {
+  MeAssignment,
+  MeAssignments,
   MeBatch,
   MeFees,
   MeHome,
@@ -8,7 +11,9 @@ import type {
   MeProfile,
   MeSchedule,
   MeSession,
+  MeSubmission,
   Principal,
+  SubmitAssignmentInput,
   UpdateMeInput,
 } from "@gurukulam/contracts";
 import { toWire } from "@gurukulam/contracts";
@@ -336,6 +341,217 @@ export class MeService {
     };
   }
 
+  // ── My assignments ──────────────────────────────────────────────────────
+
+  /**
+   * The work set against this student's batches, and what they handed in.
+   *
+   * ── Which assignments exist, as far as a student is concerned ───────────
+   *
+   * Only those on a batch they hold a live mapping to — the same anchor every
+   * read here uses, so there is no batch id to tamper with.
+   *
+   * DRAFT is invisible. An assignment nobody has published is one the trainer
+   * is still writing, and showing it sets work that has not been set. OPEN and
+   * CLOSED are both visible: closing stops submission, it does not erase what
+   * was asked. A list that quietly shortened would leave a student unable to
+   * tell "I did everything" from "I never saw it".
+   *
+   * ── Why the split happens here ─────────────────────────────────────────
+   *
+   * Three states, three sentences: still to do, waiting to be marked, and the
+   * window closed with nothing in. Deciding that in the service means one
+   * definition of "handed in" rather than one per screen — and the definition
+   * is `submittedAt`, not `status`, because a PENDING row with no timestamp is
+   * an assignment allocated to a student rather than work they did.
+   */
+  async assignments(principal: Principal): Promise<MeAssignments> {
+    const mappings = await this.prisma.studentBatchMapping.findMany({
+      where: { studentId: principal.id, deletedAt: null },
+      select: { batchId: true },
+    });
+    const batchIds = mappings.map((m) => m.batchId);
+    if (batchIds.length === 0) return { outstanding: [], submitted: [], missed: [] };
+
+    const rows = await this.prisma.assignment.findMany({
+      where: {
+        batchId: { in: batchIds },
+        deletedAt: null,
+        // DRAFT withheld. See above.
+        status: { in: ["OPEN", "CLOSED"] },
+      },
+      include: {
+        batch: { select: { batchCode: true, course: { select: { name: true } } } },
+        session: { select: { title: true } },
+        // Scoped to THIS student inside the include, so another student's
+        // submission cannot arrive here even as a row that is later dropped.
+        submissions: {
+          where: { studentId: principal.id, deletedAt: null },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+        },
+      },
+      orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+    });
+
+    /*
+     * The START of today, not `now()`.
+     *
+     * `due_at` is a DateTime column, but the console collects it from a DATE
+     * input, so every value in it is midnight UTC on a calendar day. Compared
+     * against an instant, an assignment due today is already overdue at one
+     * minute past midnight — a student is owed the day they were given.
+     */
+    const today = startOfToday();
+    const outstanding: MeAssignment[] = [];
+    const submitted: MeAssignment[] = [];
+    const missed: MeAssignment[] = [];
+
+    for (const row of rows) {
+      const assignment = toAssignment(row, today);
+      if (assignment.submission?.submittedAt != null) submitted.push(assignment);
+      else if (assignment.open) outstanding.push(assignment);
+      else missed.push(assignment);
+    }
+
+    // What is due reads soonest first — Prisma's `nulls: last` on `dueAt` is
+    // not expressible alongside a second key here, so an undated assignment is
+    // pushed to the end of its own list rather than leading it with no date.
+    const undatedLast = (a: MeAssignment, b: MeAssignment): number =>
+      a.dueAt === b.dueAt ? 0 : a.dueAt === null ? 1 : b.dueAt === null ? -1 : 0;
+    outstanding.sort(undatedLast);
+    // History reads newest first, the same way the schedule's past does.
+    submitted.reverse();
+    missed.reverse();
+
+    return { outstanding, submitted, missed };
+  }
+
+  /**
+   * Handing work in.
+   *
+   * The first WRITE a student makes in this product, and the first place the
+   * `/me` surface has to refuse something rather than simply answer.
+   *
+   * ── Why every refusal here is a 404 except the two that are not ─────────
+   *
+   * An assignment on somebody else's batch, a deleted one, and a DRAFT one all
+   * read "not found": a student may not learn that a piece of work exists by
+   * being told they are not allowed to submit to it. CLOSED and already-marked
+   * are conflicts, because those are assignments they can see on their own
+   * screen — a 404 there would read as a fault in the page.
+   *
+   * ── Why a re-submission is allowed, and where it stops ─────────────────
+   *
+   * A student who pasted the wrong link needs to fix it, and an assignment
+   * that is still open has not been judged yet. So a hand-in replaces the
+   * previous one while the assignment is OPEN and nothing has been marked. It
+   * stops dead at GRADED: silently changing work a trainer has already put a
+   * mark against would make the mark a statement about something that is no
+   * longer there.
+   *
+   * `submittedAt` moves to the latest hand-in rather than staying at the
+   * first, because lateness is a fact about the work being assessed, and the
+   * work being assessed is the one that is there now.
+   */
+  async submitAssignment(
+    principal: Principal,
+    assignmentId: string,
+    input: SubmitAssignmentInput,
+  ): Promise<MeAssignment> {
+    const row = await this.prisma.assignment.findFirst({
+      where: {
+        assignmentId,
+        deletedAt: null,
+        status: { in: ["OPEN", "CLOSED"] },
+        // The scope, as a join rather than a check: an assignment on a batch
+        // this student is not mapped to does not match, so there is no
+        // authorisation step for a later handler to forget.
+        batch: { studentMappings: { some: { studentId: principal.id, deletedAt: null } } },
+      },
+      select: { assignmentId: true, status: true, dueAt: true },
+    });
+    if (!row) throw ApiException.notFound("Assignment");
+
+    if (row.status !== "OPEN") {
+      throw ApiException.conflict(
+        "This assignment is closed for submission. Speak to your trainer if you still need to hand it in.",
+      );
+    }
+
+    const existing = await this.prisma.assignmentSubmission.findFirst({
+      where: { assignmentId, studentId: principal.id, deletedAt: null },
+      select: { submissionId: true, status: true },
+    });
+    if (existing?.status === "GRADED") {
+      throw ApiException.conflict(
+        "Your work has already been marked, so it cannot be replaced. Speak to your trainer.",
+      );
+    }
+
+    const fileUrl = blank(input.fileUrl);
+    const contentText = blank(input.contentText);
+    const now = new Date();
+    /*
+     * LATE is recorded rather than derived, because it is the TRAINER's input:
+     * they open a list and need to see which hand-ins arrived after the date
+     * without recomputing it against a due date an admin may since have moved.
+     *
+     * Judged on the DAY, for the reason `assignments` records: a due date is a
+     * calendar day here, so work handed in during that day is on time.
+     */
+    const status = row.dueAt !== null && startOfToday() > row.dueAt ? "LATE" : "SUBMITTED";
+
+    if (existing) {
+      await this.prisma.assignmentSubmission.update({
+        where: { submissionId: existing.submissionId },
+        data: { fileUrl, contentText, status, submittedAt: now },
+      });
+    } else {
+      try {
+        await this.prisma.assignmentSubmission.create({
+          data: {
+            assignmentId,
+            studentId: principal.id,
+            fileUrl,
+            contentText,
+            status,
+            submittedAt: now,
+            createdBy: principal.id,
+          },
+        });
+      } catch (error) {
+        /*
+         * The double tap. Two requests both read "no submission yet" and both
+         * insert; the partial unique index tells the second it lost. Reported
+         * as a conflict rather than a 500, because the student's work IS in —
+         * theirs was the request that arrived second, not the one that failed.
+         */
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          throw ApiException.conflict("Your work is already in. Reload the page to see it.");
+        }
+        throw error;
+      }
+    }
+
+    const saved = await this.prisma.assignment.findFirstOrThrow({
+      where: { assignmentId },
+      include: {
+        batch: { select: { batchCode: true, course: { select: { name: true } } } },
+        session: { select: { title: true } },
+        submissions: {
+          where: { studentId: principal.id, deletedAt: null },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+        },
+      },
+    });
+    return toAssignment(saved, startOfToday());
+  }
+
   /**
    * The landing page.
    *
@@ -343,10 +559,11 @@ export class MeService {
    * survey. When is my next session, what am I on, and what can I catch up on.
    */
   async home(principal: Principal): Promise<MeHome> {
-    const [profile, batches, schedule] = await Promise.all([
+    const [profile, batches, schedule, assignments] = await Promise.all([
       this.profile(principal),
       this.batches(principal),
       this.schedule(principal),
+      this.assignments(principal),
     ]);
 
     return {
@@ -357,6 +574,12 @@ export class MeService {
       completedBatches: batches.filter((b) => b.outcome === "COMPLETED").length,
       deliveredSessions: schedule.past.filter((s) => s.status === "COMPLETED").length,
       availableRecordings: schedule.past.filter((s) => s.recording !== null).length,
+      // Already sorted soonest-first by `assignments`, so the head of the list
+      // IS the next thing to do. Missed work is deliberately not counted here:
+      // the home page's job is what to do next, and nothing can be done about
+      // an assignment whose window has closed.
+      nextAssignment: assignments.outstanding[0] ?? null,
+      assignmentsDue: assignments.outstanding.length,
     };
   }
 }
@@ -458,6 +681,73 @@ function toSession(row: SessionRow): MeSession {
         : null,
   };
 }
+
+type SubmissionRow = {
+  submissionId: string;
+  status: MeSubmission["status"];
+  submittedAt: Date | null;
+  fileUrl: string | null;
+  contentText: string | null;
+  marksAwarded: number | null;
+  feedback: string | null;
+  gradedAt: Date | null;
+};
+
+type AssignmentRow = {
+  assignmentId: string;
+  assignmentCode: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  attachmentUrl: string | null;
+  maxMarks: number | null;
+  dueAt: Date | null;
+  status: "DRAFT" | "OPEN" | "CLOSED";
+  batch: { batchCode: string; course: { name: string } | null };
+  session: { title: string } | null;
+  submissions: SubmissionRow[];
+};
+
+function toAssignment(row: AssignmentRow, today: Date): MeAssignment {
+  const submission = row.submissions[0] ?? null;
+  const handedIn = submission?.submittedAt != null;
+
+  return {
+    assignmentId: row.assignmentId,
+    assignmentCode: row.assignmentCode,
+    title: row.title,
+    description: row.description,
+    instructions: row.instructions,
+    attachmentUrl: row.attachmentUrl,
+    maxMarks: row.maxMarks,
+    dueAt: row.dueAt?.toISOString() ?? null,
+    batchCode: row.batch.batchCode,
+    courseName: row.batch.course?.name ?? null,
+    sessionTitle: row.session?.title ?? null,
+    open: row.status === "OPEN",
+    // Past its date with nothing in. Work already handed in is never overdue,
+    // whatever the date says — the student did their part, and `status` carries
+    // LATE for the trainer who needs to know it arrived after the deadline.
+    overdue: !handedIn && row.dueAt !== null && row.dueAt < today,
+    submission:
+      submission === null
+        ? null
+        : {
+            submissionId: submission.submissionId,
+            status: submission.status,
+            submittedAt: submission.submittedAt?.toISOString() ?? null,
+            fileUrl: submission.fileUrl,
+            contentText: submission.contentText,
+            marksAwarded: submission.marksAwarded,
+            feedback: submission.feedback,
+            gradedAt: submission.gradedAt?.toISOString() ?? null,
+          },
+  };
+}
+
+/** An empty string is a cleared field, not a value. */
+const blank = (value: string | undefined): string | null =>
+  value === undefined || value.trim() === "" ? null : value.trim();
 
 const startOfToday = (): Date => {
   const now = new Date();
