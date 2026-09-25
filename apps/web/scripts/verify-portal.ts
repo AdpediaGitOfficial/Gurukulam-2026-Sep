@@ -30,10 +30,16 @@
  */
 import { PrismaClient } from "@gurukulam/db";
 import { chromium, type Page } from "playwright";
+import { formatRupees } from "@gurukulam/contracts";
+
+/** The screen's own formatter, so a mismatch is a real one and not a rounding difference. */
+const rupees = (minor: bigint): string => formatRupees(minor, { paise: false });
 
 const BASE = process.env["VERIFY_BASE_URL"] ?? "http://127.0.0.1:3000";
 const EXECUTABLE = process.env["CHROMIUM_PATH"] ?? process.env["CHROME"];
 const STUDENT = "stu-2026-0891@gurukulam.com";
+/** A COLLEGE student, to prove Fees is absent rather than empty for them. */
+const COLLEGE_STUDENT = process.env["VERIFY_COLLEGE_STUDENT"] ?? "stu-2026-0003@gurukulam.com";
 const PASSWORD = "Gurukulam@2026";
 
 const prisma = new PrismaClient();
@@ -53,6 +59,19 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
+  /*
+   * Waited on the PATHNAME, not on a regex.
+   *
+   * `/\/portal/` also matches `/portal/login`, so an earlier version resolved
+   * the moment the click was registered and left every later assertion running
+   * against the sign-in screen. The college-student nav check then passed
+   * because a login page has no navigation — a vacuous pass, which is worse
+   * than a failure: it reports that a rule holds on a screen that never
+   * rendered.
+   */
+  await page
+    .waitForURL((url) => url.pathname === "/portal", { timeout: 30000 })
+    .catch(() => undefined);
 }
 
 /** 390px: a modern phone in portrait, which is what this portal is for. */
@@ -61,7 +80,7 @@ const NARROW = 390;
 /** The scale, exactly as globals.css declares it. See verify:type. */
 const SCALE = [36, 30, 25, 20, 18, 16, 14, 12, 10];
 
-const ROUTES = ["/portal", "/portal/learning", "/portal/account", "/portal/account/password"];
+const ROUTES = ["/portal", "/portal/learning", "/portal/fees", "/portal/account", "/portal/account/password"];
 
 async function main(): Promise<void> {
   const student = await prisma.student.findFirstOrThrow({
@@ -259,11 +278,88 @@ async function main(): Promise<void> {
     });
   }
 
-  // ── 9. Every screen fits a phone, and every size is on the scale ────────
+  // ── 9. Money: the figures are the database's, to the paise ──────────────
+  const ledgers = await prisma.studentFeeLedger.findMany({
+    where: { studentId: student.studentId, deletedAt: null },
+    include: { installments: { where: { deletedAt: null } } },
+  });
+
+  if (ledgers.length === 0) {
+    console.log("  \x1b[90m· this student has no ledger — the fees figures are not exercised\x1b[0m");
+  } else {
+    await page.goto(`${BASE}/portal/fees`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const feesText = (await page.locator("body").innerText()).replace(/\u00a0/g, " ");
+
+    // Summed in bigint, exactly as the API does. A float here would agree with
+    // a float bug rather than catch one.
+    let paid = 0n;
+    let outstanding = 0n;
+    for (const ledger of ledgers) {
+      paid += ledger.totalPaidMinor;
+      outstanding += ledger.balancePendingMinor;
+    }
+    const shown = [rupees(paid), rupees(outstanding)];
+    const missing = shown.filter((amount) => !feesText.includes(amount));
+    if (missing.length === 0) {
+      ok("fees show the database's figures", `${shown[0]} paid, ${shown[1]} outstanding`);
+    } else {
+      bad("fees show the database's figures", `page does not contain ${missing.join(" or ")}`);
+    }
+
+    // Every instalment appears, whatever its state — a paid one is how a
+    // student checks that the money they sent was recorded.
+    // Counted inside the ledger sections: the Money card's caption also reads
+    // "Installment 2 of 4", and counting it made four instalments look like
+    // five.
+    const count = ledgers.reduce((n, l) => n + l.installments.length, 0);
+    const listed = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("section[aria-labelledby]"))
+        .map((section) => (section.textContent ?? "").match(/Installment \d+ of \d+/g)?.length ?? 0)
+        .reduce((a, b) => a + b, 0),
+    );
+    if (listed === count) ok("every instalment is listed", `${count}`);
+    else bad("every instalment is listed", `database has ${count}, the page shows ${listed}`);
+  }
+
+  // ── 10. Invariant 3: absent for a college student, not empty ────────────
+  const college = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await college.route("**fonts.g**", (r) => r.abort());
+  await signIn(college, COLLEGE_STUDENT, PASSWORD);
+  await college.waitForLoadState("load");
+
+  // Asserted against a navigation that EXISTS, so "no Fees entry" cannot be
+  // satisfied by a screen that has no entries at all.
+  const collegeEntries = await college.locator('nav[aria-label="Sections"] a').count();
+  const collegeNav = await college.locator('nav[aria-label="Sections"] a[href="/portal/fees"]').count();
+  if (collegeEntries === 0) {
+    bad("a college student has no Fees entry", `not signed in — landed on ${college.url()}`);
+  } else if (collegeNav === 0) {
+    ok("a college student has no Fees entry", `absent from ${collegeEntries} entries, not disabled`);
+  } else {
+    bad("a college student has no Fees entry", "Fees is in their navigation");
+  }
+
+  // Typed or bookmarked, the URL still has to answer honestly.
+  await college.goto(`${BASE}/portal/fees`, { waitUntil: "domcontentloaded" });
+  await college.waitForLoadState("load");
+  const collegeText = await college.locator("body").innerText();
+  const explains = /billed to your college/i.test(collegeText);
+  const showsMoney = /Paid so far|Outstanding|Installment \d+ of/i.test(collegeText);
+  if (explains && !showsMoney) {
+    ok("and the URL explains rather than showing zero", "invariant 3, as a screen");
+  } else {
+    bad(
+      "and the URL explains rather than showing zero",
+      `explains=${explains} showsMoney=${showsMoney}`,
+    );
+  }
+  await college.close();
+
+  // ── 11. Every screen fits a phone, and every size is on the scale ───────
   const phone = await browser.newPage({ viewport: { width: NARROW, height: 844 } });
   await phone.route("**fonts.g**", (r) => r.abort());
   await signIn(phone, STUDENT, PASSWORD);
-  await phone.waitForURL(/\/portal/, { timeout: 30000 }).catch(() => undefined);
 
   const sideways: string[] = [];
   const offScale: string[] = [];
@@ -301,7 +397,7 @@ async function main(): Promise<void> {
   if (offScale.length === 0) ok("every size is on the type scale");
   else bad("every size is on the type scale", offScale.join(" · "));
 
-  // ── 10. An administrator is sent back to their console ──────────────────
+  // ── 12. An administrator is sent back to their console ──────────────────
   const admin = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await admin.route("**fonts.g**", (r) => r.abort());
   await admin.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { deliveryModeSchema, sessionStatusSchema } from "../batches/index.js";
+import { moneyMinor } from "../common/money.js";
 
 /**
  * What a student may see of themselves.
@@ -174,3 +175,117 @@ export const meHomeSchema = z.object({
 });
 
 export type MeHome = z.infer<typeof meHomeSchema>;
+
+// ── My fees ───────────────────────────────────────────────────────────────
+
+/**
+ * Money, in the portal.
+ *
+ * ── Invariant 3, as a shape rather than a rule ──────────────────────────
+ *
+ * Billing follows segment: retail bills the student, college bills the
+ * institution, and a college student has **no individual ledger**. That is not
+ * "an empty ledger" — an empty Fees page reads as "you owe nothing yet", when
+ * the truth is that it will never concern them.
+ *
+ * So the response says which world the reader is in before it says anything
+ * about money. `ledgers` is empty for a college student *because there are
+ * none*, and `billedToCollege` is what the screen renders instead of a total
+ * of zero. A caller cannot accidentally show a college student a balance,
+ * because there is no field carrying one.
+ *
+ * Every amount is a decimal string of paise. Nothing in the portal does
+ * arithmetic on it — the API computes, the screen formats (invariant 5).
+ */
+
+export const meInstallmentStatusSchema = z.enum([
+  "PENDING",
+  "PARTIALLY_PAID",
+  "PAID",
+  "OVERDUE",
+]);
+
+export type MeInstallmentStatus = z.infer<typeof meInstallmentStatusSchema>;
+
+/**
+ * One payment against one instalment.
+ *
+ * A reversal appears as its own entry rather than quietly removing the
+ * original: the receipt keeps its number, and a student who was told money was
+ * received is owed the record of it being taken back off.
+ */
+export const mePaymentSchema = z.object({
+  transactionId: z.string(),
+  transactionCode: z.string(),
+  amountMinor: moneyMinor,
+  paidAt: z.string(),
+  paymentMode: z.string(),
+  isReversal: z.boolean(),
+  receiptNumber: z.string().nullable(),
+});
+
+export type MePayment = z.infer<typeof mePaymentSchema>;
+
+export const meInstallmentSchema = z.object({
+  installmentId: z.string(),
+  installmentNumber: z.number().int(),
+  amountMinor: moneyMinor,
+  paidAmountMinor: moneyMinor,
+  /** What is still owed on this one. Computed by the API, never by a screen. */
+  outstandingMinor: moneyMinor,
+  dueDate: z.string(),
+  status: meInstallmentStatusSchema,
+  /**
+   * Past its due date with money still owed. Derived at READ time rather than
+   * trusted from the stored status, which only moves when the nightly run
+   * touches it — a student looking the morning after a missed date should not
+   * be told it is still pending.
+   */
+  overdue: z.boolean(),
+  payments: z.array(mePaymentSchema),
+});
+
+export type MeInstallment = z.infer<typeof meInstallmentSchema>;
+
+/** One enrolment's money. A student on two courses has two of these. */
+export const meLedgerSchema = z.object({
+  ledgerId: z.string(),
+  courseName: z.string().nullable(),
+  batchCode: z.string().nullable(),
+  /** What was actually agreed, after any negotiated discount. */
+  enrolmentValueMinor: moneyMinor,
+  paidMinor: moneyMinor,
+  outstandingMinor: moneyMinor,
+  installments: z.array(meInstallmentSchema),
+});
+
+export type MeLedger = z.infer<typeof meLedgerSchema>;
+
+/** The next instalment with money still owed, across every enrolment. */
+export const meNextDueSchema = z.object({
+  installmentId: z.string(),
+  courseName: z.string().nullable(),
+  installmentNumber: z.number().int(),
+  totalInstallments: z.number().int(),
+  amountMinor: moneyMinor,
+  outstandingMinor: moneyMinor,
+  dueDate: z.string(),
+  overdue: z.boolean(),
+});
+
+export type MeNextDue = z.infer<typeof meNextDueSchema>;
+
+export const meFeesSchema = z.object({
+  /** Read this before anything else on the object. See the note above. */
+  billedToCollege: z.boolean(),
+  collegeName: z.string().nullable(),
+  ledgers: z.array(meLedgerSchema),
+  /** Totals across every enrolment. All zero — and meaningless — for a college student. */
+  totalPayableMinor: moneyMinor,
+  totalPaidMinor: moneyMinor,
+  totalOutstandingMinor: moneyMinor,
+  nextDue: meNextDueSchema.nullable(),
+  overdueCount: z.number().int(),
+});
+
+export type MeFees = z.infer<typeof meFeesSchema>;

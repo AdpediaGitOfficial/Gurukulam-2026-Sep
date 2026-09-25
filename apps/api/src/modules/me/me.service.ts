@@ -1,13 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import type {
   MeBatch,
+  MeFees,
   MeHome,
+  MeInstallment,
+  MeLedger,
   MeProfile,
   MeSchedule,
   MeSession,
   Principal,
   UpdateMeInput,
 } from "@gurukulam/contracts";
+import { toWire } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { ApiException } from "../../common/errors";
 
@@ -206,6 +210,132 @@ export class MeService {
     return { upcoming, past };
   }
 
+  // ── My fees ─────────────────────────────────────────────────────────────
+
+  /**
+   * What this student owes, and what they have paid.
+   *
+   * ── Invariant 3 is answered before any money is ────────────────────────
+   *
+   * Billing follows segment. A college student is billed through their
+   * institution's contract and has no ledger of their own — so this returns
+   * `billedToCollege` and an EMPTY list, and the screen renders an explanation
+   * rather than a total of zero. Those are different sentences: one says
+   * nothing is owed yet, the other says it will never be theirs to owe.
+   *
+   * The query is still anchored to `principal.id`, so even a mistake here
+   * cannot reach another student's ledger.
+   *
+   * ── Why `overdue` is computed rather than read ─────────────────────────
+   *
+   * `status` only moves to OVERDUE when the nightly run touches the row. A
+   * student looking the morning after a missed date would be told their
+   * instalment is still pending, which is worse than silence. Past its date
+   * with money still owed is overdue, and that is decided at read time.
+   */
+  async fees(principal: Principal): Promise<MeFees> {
+    const student = await this.prisma.student.findFirst({
+      where: { studentId: principal.id, deletedAt: null },
+      include: { college: { select: { name: true } } },
+    });
+    if (!student) throw ApiException.notFound("Student");
+
+    const zero = toWire(0n);
+    if (student.collegeId !== null) {
+      return {
+        billedToCollege: true,
+        collegeName: student.college?.name ?? null,
+        ledgers: [],
+        totalPayableMinor: zero,
+        totalPaidMinor: zero,
+        totalOutstandingMinor: zero,
+        nextDue: null,
+        overdueCount: 0,
+      };
+    }
+
+    const rows = await this.prisma.studentFeeLedger.findMany({
+      where: { studentId: principal.id, deletedAt: null },
+      include: {
+        course: { select: { name: true } },
+        batch: { select: { batchCode: true } },
+        installments: {
+          where: { deletedAt: null },
+          orderBy: { installmentNumber: "asc" },
+          include: {
+            transactions: {
+              where: { deletedAt: null },
+              orderBy: { paidAt: "asc" },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const today = startOfToday();
+    const ledgers: MeLedger[] = rows.map((row) => ({
+      ledgerId: row.ledgerId,
+      courseName: row.course?.name ?? null,
+      batchCode: row.batch?.batchCode ?? null,
+      enrolmentValueMinor: toWire(row.enrolmentValueMinor),
+      paidMinor: toWire(row.totalPaidMinor),
+      outstandingMinor: toWire(row.balancePendingMinor),
+      installments: row.installments.map((i) => toInstallment(i, today)),
+    }));
+
+    // Summed as bigint. A float here would be wrong by paise on a real
+    // schedule, and wrong in a way nobody notices until a reconciliation.
+    let payable = 0n;
+    let paid = 0n;
+    let outstanding = 0n;
+    for (const row of rows) {
+      payable += row.enrolmentValueMinor;
+      paid += row.totalPaidMinor;
+      outstanding += row.balancePendingMinor;
+    }
+
+    /*
+     * The next thing to pay: the earliest instalment still carrying money,
+     * across every enrolment. An overdue one sorts first whatever its date,
+     * because "what do I owe now" is answered by the oldest miss, not by the
+     * nearest deadline.
+     */
+    const open = ledgers
+      .flatMap((ledger) =>
+        ledger.installments
+          .filter((i) => BigInt(i.outstandingMinor) > 0n)
+          .map((i) => ({ ledger, installment: i })),
+      )
+      .sort((a, b) => a.installment.dueDate.localeCompare(b.installment.dueDate));
+
+    const first = open[0];
+    const overdueCount = open.filter((entry) => entry.installment.overdue).length;
+
+    return {
+      billedToCollege: false,
+      collegeName: null,
+      ledgers,
+      totalPayableMinor: toWire(payable),
+      totalPaidMinor: toWire(paid),
+      totalOutstandingMinor: toWire(outstanding),
+      nextDue:
+        first === undefined
+          ? null
+          : {
+              installmentId: first.installment.installmentId,
+              courseName: first.ledger.courseName,
+              installmentNumber: first.installment.installmentNumber,
+              totalInstallments: first.ledger.installments.length,
+              amountMinor: first.installment.amountMinor,
+              outstandingMinor: first.installment.outstandingMinor,
+              dueDate: first.installment.dueDate,
+              overdue: first.installment.overdue,
+            },
+      overdueCount,
+    };
+  }
+
   /**
    * The landing page.
    *
@@ -229,6 +359,52 @@ export class MeService {
       availableRecordings: schedule.past.filter((s) => s.recording !== null).length,
     };
   }
+}
+
+type InstallmentRow = {
+  installmentId: string;
+  installmentNumber: number;
+  amountMinor: bigint;
+  paidAmountMinor: bigint;
+  dueDate: Date;
+  status: MeInstallment["status"];
+  transactions: {
+    transactionId: string;
+    transactionCode: string;
+    amountMinor: bigint;
+    paidAt: Date;
+    paymentMode: string;
+    isReversal: boolean;
+    receiptNumber: string | null;
+  }[];
+};
+
+function toInstallment(row: InstallmentRow, today: Date): MeInstallment {
+  // Clamped at zero: an overpayment is a real thing on a real schedule, and
+  // "you owe minus two hundred rupees" is not a sentence to show anybody.
+  const owed = row.amountMinor - row.paidAmountMinor;
+  const outstanding = owed > 0n ? owed : 0n;
+
+  return {
+    installmentId: row.installmentId,
+    installmentNumber: row.installmentNumber,
+    amountMinor: toWire(row.amountMinor),
+    paidAmountMinor: toWire(row.paidAmountMinor),
+    outstandingMinor: toWire(outstanding),
+    dueDate: row.dueDate.toISOString().slice(0, 10),
+    status: row.status,
+    // Read time, not stored: see the note on `fees`.
+    overdue: outstanding > 0n && row.dueDate < today,
+    payments: row.transactions.map((t) => ({
+      transactionId: t.transactionId,
+      transactionCode: t.transactionCode,
+      amountMinor: toWire(t.amountMinor),
+      paidAt: t.paidAt.toISOString(),
+      paymentMode: t.paymentMode,
+      isReversal: t.isReversal,
+      receiptNumber: t.receiptNumber,
+    })),
+  };
 }
 
 type SessionRow = {

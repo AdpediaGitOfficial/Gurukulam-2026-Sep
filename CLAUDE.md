@@ -45,8 +45,8 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning and account; assignments, fees, certificates and jobs are specified and not yet
-built. Trainer and College come later. The admin portal performs every action they will,
+home, my learning, fees and account; assignments, certificates, jobs and notifications are specified
+and not yet built. Trainer and College come later. The admin portal performs every action they will,
 permanently, because an operations team needs the override regardless.
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
@@ -63,6 +63,16 @@ are `text-metric` rather than `text-h1`, because a portal screen holds one thing
 holds nine. Same tokens either way; what differs is which of them each surface spends. The portal's
 own grammar lives in `features/me/components/portal-page.tsx` — never edit a console pattern to suit
 it.
+
+**Absent, not empty — invariant 3 as a screen.** A college student has no individual ledger, so Fees
+is absent from their navigation rather than present and showing zero: an empty Fees page reads as
+"you owe nothing yet", when the truth is it will never be theirs to owe. Typing the URL still
+answers, with the sentence their situation needs. The nav is built per segment in `student-shell.tsx`
+and `verify:portal` signs in as both.
+
+**Money never leaves `bigint` until it is words.** Every amount crosses the wire as a decimal string
+of paise. `features/me/money.ts` is the portal's only conversion, and nothing in the portal adds,
+subtracts or compares money — the API sums in `bigint`, the screen formats.
 
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the

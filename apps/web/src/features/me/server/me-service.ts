@@ -9,7 +9,9 @@ import {
   type MeHome,
   type MeProfile,
   accountSchema,
+  meFeesSchema,
   type Account,
+  type MeFees,
   type MeSchedule,
 } from "@gurukulam/contracts";
 import { z } from "zod";
@@ -52,6 +54,19 @@ export async function getSchedule(): Promise<MeSchedule> {
   const schedule = await apiFetch<MeSchedule>("/me/schedule");
   checkShape(meScheduleSchema, schedule, "GET /me/schedule");
   return schedule;
+}
+
+/**
+ * What is owed, and what has been paid.
+ *
+ * Answers for a college student too — `billedToCollege` rather than a refusal,
+ * because the screen's honest answer is "your institution is billed for this"
+ * and a refusal would render as an error.
+ */
+export async function getFees(): Promise<MeFees> {
+  const fees = await apiFetch<MeFees>("/me/fees");
+  checkShape(meFeesSchema, fees, "GET /me/fees");
+  return fees;
 }
 
 /**

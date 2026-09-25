@@ -44,6 +44,18 @@ export class MeController {
     return this.me.batches(p);
   }
 
+  /**
+   * What is owed, and what has been paid.
+   *
+   * Answers for a college student too, and says `billedToCollege` rather than
+   * refusing — a refusal would render as an error on a screen whose honest
+   * answer is "your institution is billed for this".
+   */
+  @Get("fees")
+  fees(@CurrentPrincipal() p: Principal) {
+    return this.me.fees(p);
+  }
+
   /** Already split into upcoming and past — see the service for why. */
   @Get("schedule")
   schedule(@CurrentPrincipal() p: Principal) {

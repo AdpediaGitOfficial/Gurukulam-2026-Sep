@@ -38,27 +38,46 @@ export interface StudentNavEntry {
 }
 
 /**
- * Three entries, not the eight in the design.
+ * The entries that exist, in the order a student needs them.
  *
- * Assignments, Fees, Certificates, Jobs and Updates are specified and not yet
- * built. An entry that navigates to a page which does not answer is worse than
- * a missing entry: a student cannot tell "not built" from "I tapped the wrong
- * thing", and this repo's own audit fails a control that does nothing. They
- * arrive with their screens.
+ * Assignments, Certificates, Jobs and Updates are specified and not yet built.
+ * An entry leading to a page that does not answer is worse than a missing one:
+ * a student cannot tell "not built" from "I tapped the wrong thing", and this
+ * repo's own audit fails a control that does nothing. They arrive with their
+ * screens.
+ *
+ * ── Why Fees depends on the reader ─────────────────────────────────────
+ *
+ * Invariant 3: billing follows segment, and a college student has no
+ * individual ledger. Not an empty one — an empty Fees page reads as "you owe
+ * nothing yet", when the truth is that it will never be theirs to owe. So the
+ * entry is ABSENT for them rather than present and empty, which is the same
+ * distinction the console's portal-access roll-up makes between a null and a
+ * NONE.
  */
-export const STUDENT_NAV: readonly StudentNavEntry[] = [
-  { href: "/portal", label: "Home", icon: "dash" },
-  { href: "/portal/learning", label: "Learning", icon: "book" },
-  { href: "/portal/account", label: "Account", icon: "acct" },
-];
+function navFor(segment: "RETAIL" | "COLLEGE"): readonly StudentNavEntry[] {
+  return [
+    { href: "/portal", label: "Home", icon: "dash" },
+    { href: "/portal/learning", label: "Learning", icon: "book" },
+    ...(segment === "RETAIL"
+      ? [{ href: "/portal/fees", label: "Fees", icon: "rupee" } as const]
+      : []),
+    { href: "/portal/account", label: "Account", icon: "acct" },
+  ];
+}
 
 export function StudentShell({
   principal,
+  segment,
   children,
 }: {
   principal: Principal;
+  /** Decides whether Fees exists at all. See `navFor`. */
+  segment: "RETAIL" | "COLLEGE";
   children: ReactNode;
 }) {
+  const nav = navFor(segment);
+
   return (
     <div className="flex min-h-dvh flex-col bg-canvas lg:flex-row">
       {/* ── The sidebar, once there is room for one ───────────────────── */}
@@ -69,7 +88,7 @@ export function StudentShell({
         <Brand />
 
         <div className="mt-6 flex flex-col gap-1">
-          {STUDENT_NAV.map((entry) => (
+          {nav.map((entry) => (
             <StudentNavLink key={entry.href} {...entry} />
           ))}
         </div>
@@ -102,7 +121,7 @@ export function StudentShell({
         aria-label="Sections"
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-hairline bg-surface lg:hidden"
       >
-        {STUDENT_NAV.map((entry) => (
+        {nav.map((entry) => (
           <StudentTabLink key={entry.href} {...entry} />
         ))}
       </nav>

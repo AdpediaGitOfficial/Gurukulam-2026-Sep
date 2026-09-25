@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MoneyCard } from "@/features/me/components/money-card";
 import { PortalCard, PortalPage, PortalStat } from "@/features/me/components/portal-page";
 import { SessionCard } from "@/features/me/components/session-card";
-import { getHome } from "@/features/me/server/me-service";
+import { getFees, getHome } from "@/features/me/server/me-service";
 import { requireStudent } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Home — Gurukulam" };
@@ -14,10 +15,15 @@ export const metadata: Metadata = { title: "Home — Gurukulam" };
  * answers the question they opened the portal with — when is my next class —
  * in the one highlighted card above the fold, then says where they stand.
  *
- * The design also shows Money and an updates feed here. Both need endpoints
- * that do not exist yet — a student fee view and an `emit()` beside the
- * notification sweep — and they arrive with those, rather than as cards
- * rendering zeroes that read as facts.
+ * Money sits directly under it, because what is owed is the second question
+ * and a student should not have to go looking for a date they might miss. It
+ * is absent for a college student — invariant 3, and the same absent-rather-
+ * than-empty rule that keeps Fees out of their navigation.
+ *
+ * The design also shows an updates feed here. That needs an `emit()` beside
+ * the notification sweep — a cancelled session is an event, and the engine
+ * only evaluates conditions — so it arrives with that, rather than as a card
+ * rendering nothing that reads as "nothing has happened".
  */
 export default async function StudentHomePage() {
   /* Guarded here as well as in the layout, and for the reason `server/api.ts`
@@ -28,7 +34,10 @@ export default async function StudentHomePage() {
      both places for the same reason. */
   await requireStudent();
 
-  const home = await getHome();
+  // One round trip each, in parallel: the page needs both before it can
+  // render anything, so serialising them would cost a whole request of
+  // latency for nothing.
+  const [home, fees] = await Promise.all([getHome(), getFees()]);
 
   return (
     <PortalPage
@@ -46,6 +55,8 @@ export default async function StudentHomePage() {
       ) : (
         <SessionCard session={home.nextSession} highlight />
       )}
+
+      {fees.billedToCollege ? null : <MoneyCard fees={fees} />}
 
       <PortalCard title="Where you stand" action={{ href: "/portal/learning", label: "All sessions" }}>
         {/* Two across even on the narrowest phone: four figures stacked is a
