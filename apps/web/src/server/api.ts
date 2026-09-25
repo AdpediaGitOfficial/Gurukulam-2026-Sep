@@ -7,6 +7,7 @@ import { apiErrorSchema, type ApiError } from "@gurukulam/contracts";
 import { safePath } from "@/lib/safe-path";
 import { API_INTERNAL_URL } from "./env";
 import { readAccessToken, readRefreshToken } from "./session";
+import { signInPathFor } from "@/lib/safe-path";
 
 /**
  * A failure the API described in its own error envelope.
@@ -61,7 +62,10 @@ async function recoverSession(): Promise<never> {
   const refresh = await readRefreshToken();
   redirect(
     refresh === undefined
-      ? `/login?next=${encodeURIComponent(target)}`
+      // The portal has its own door, and the actor kind is part of the
+      // credential — a student sent to the console's form would type the
+      // right password and be told it does not match.
+      ? `${signInPathFor(target)}?next=${encodeURIComponent(target)}`
       : `/auth/refresh?next=${encodeURIComponent(target)}`,
   );
 }

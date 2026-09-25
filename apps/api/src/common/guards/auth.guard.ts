@@ -7,7 +7,7 @@ import { can, type Action, type ModuleName, type Principal } from "@gurukulam/co
 import { ENV, type Env } from "../../config/env";
 import { ApiException } from "../errors";
 import { PrincipalService } from "../../modules/auth/principal.service";
-import { IS_PUBLIC, REQUIRED_PERMISSION } from "../decorators/principal.decorator";
+import { IS_PUBLIC, REQUIRED_ACTOR, REQUIRED_PERMISSION } from "../decorators/principal.decorator";
 
 export interface AccessTokenPayload {
   sub: string;
@@ -59,6 +59,18 @@ export class AuthGuard implements CanActivate {
     // a narrowed city scope takes effect now, not when the token expires.
     const principal = await this.principals.forActor(payload.actor, payload.sub);
     request.principal = principal;
+
+    // Checked BEFORE the permission gate, because the two answer different
+    // questions and the actor one is the coarser: a student holds no
+    // permissions at all, so a permission failure would report the wrong
+    // reason for a route they were never the audience for.
+    const actors = this.reflector.getAllAndOverride<Principal["actor"][]>(REQUIRED_ACTOR, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (actors && !actors.includes(principal.actor)) {
+      throw ApiException.forbidden("That surface is not for this kind of account.");
+    }
 
     const required = this.reflector.getAllAndOverride<{ module: ModuleName; action: Action }>(
       REQUIRED_PERMISSION,

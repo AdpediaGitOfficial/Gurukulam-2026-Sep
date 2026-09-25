@@ -28,5 +28,7 @@ export * from "./localisation/index.js";
 export * from "./requirements/index.js";
 export * from "./availability/index.js";
 export * from "./access/index.js";
+/* The student portal reads its own shapes, never the admin ones. See me/index.ts. */
+export * from "./me/index.js";
 export * from "./reports/index.js";
 export * from "./notifications/index.js";

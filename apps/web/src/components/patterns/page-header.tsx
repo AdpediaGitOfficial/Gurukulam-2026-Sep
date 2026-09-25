@@ -38,7 +38,14 @@ export function PageHeader({
           <span className="mb-1 block text-overline text-ink-muted uppercase">{eyebrow}</span>
         )}
         <h1 className="text-balance text-h1 text-ink">{title}</h1>
-        {description ? <p className="text-body text-ink-muted">{description}</p> : null}
+        {/* `break-words` because this line is usually a record's identity —
+            a code and an email address joined by a dot — and an address has no
+            space in it to wrap at. Without it a long one overflows its column
+            and takes the page sideways; `min-w-0` on the parent lets the
+            column shrink but cannot break a word. */}
+        {description ? (
+          <p className="text-body break-words text-ink-muted">{description}</p>
+        ) : null}
       </div>
       {/*
         `shrink-0` keeps the action row off the title's line at ordinary widths;

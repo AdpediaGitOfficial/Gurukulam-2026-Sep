@@ -34,3 +34,22 @@ export async function requireModule(
   if (!can(principal, module, action)) redirect("/no-access");
   return principal;
 }
+
+/**
+ * The signed-in student.
+ *
+ * ── Why the actor is checked and not a permission ───────────────────────
+ *
+ * A student principal carries no permissions at all — that is what keeps them
+ * out of the admin console, and it fails closed. So there is no `can(...)` that
+ * can express "is this the portal's audience"; the question is who is asking.
+ *
+ * The API gates the same way, on every `/me/*` route. This copy exists so an
+ * administrator who follows a portal link gets sent back to their own console
+ * instead of a 403 rendered as a broken page.
+ */
+export async function requireStudent(): Promise<Principal> {
+  const principal = await requirePrincipal();
+  if (principal.actor !== "STUDENT") redirect("/dashboard");
+  return principal;
+}

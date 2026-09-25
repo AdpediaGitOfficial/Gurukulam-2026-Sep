@@ -16,6 +16,7 @@
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "verify:widths": "tsx scripts/verify-widths.ts",
     "verify:type": "tsx scripts/verify-type.ts",
+    "verify:portal": "tsx scripts/verify-portal.ts",
     "shoot": "tsx scripts/shoot.ts"
   },
   "dependencies": {

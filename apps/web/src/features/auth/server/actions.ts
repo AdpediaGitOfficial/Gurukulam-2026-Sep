@@ -6,6 +6,7 @@ import { changePasswordSchema, loginSchema, sessionSchema } from "@gurukulam/con
 
 import { apiFetch, ApiRequestError } from "@/server/api";
 import { clearSession, readRefreshToken, writeSession } from "@/server/session";
+import { requirePrincipal } from "@/server/principal";
 import { formError, type FormState } from "@/lib/form";
 import { safePath } from "@/lib/safe-path";
 
@@ -53,6 +54,63 @@ export async function login(_previous: FormState, formData: FormData): Promise<F
   // `redirect` throws, so it must sit outside the try — caught, it would be
   // reported to the user as a failed login.
   redirect(session.mustResetPassword ? "/account/password?reason=first-login" : safeNext(formData));
+}
+
+/**
+ * Signs a student in.
+ *
+ * ── Why this is its own action and not a flag on `login` ────────────────
+ *
+ * The actor kind is part of the credential, not a preference: the same address
+ * can exist as an administrator and as a college user, so the API asks which
+ * surface is signing in and defaults to `ADMIN_USER`. A student therefore has
+ * to declare themselves, and the honest way to do that is a separate sign-in
+ * screen rather than a dropdown on the console's — a student should never see
+ * a form that offers to log them into an operations console.
+ *
+ * It also fixes where they land. `login` sends people to `/dashboard`, which a
+ * student has no permission to read; this sends them to their portal.
+ */
+export async function studentLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "STUDENT",
+    deviceLabel: "Student portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      // Same refusal for a wrong password and an unknown address, for the same
+      // reason as the console: telling them apart turns the form into a way to
+      // find out who has an account here.
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+
+  // Credentials are issued at allocation with `mustReset` set, so a first
+  // sign-in lands on the change-password screen rather than the portal.
+  redirect(session.mustResetPassword ? "/portal/account/password?reason=first-login" : "/portal");
 }
 
 export async function logout(): Promise<void> {
@@ -118,5 +176,12 @@ export async function changePassword(
   }
 
   revalidatePath("/account");
-  redirect("/dashboard?password=changed");
+  // Where they land follows WHO they are. A student has no permission to read
+  // the dashboard, so sending everyone there turned a successful password
+  // change into an access refusal — on the one screen every new student is
+  // forced through before they can reach anything else.
+  const principal = await requirePrincipal();
+  redirect(
+    principal.actor === "STUDENT" ? "/portal?password=changed" : "/dashboard?password=changed",
+  );
 }

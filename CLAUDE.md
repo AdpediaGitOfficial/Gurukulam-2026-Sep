@@ -44,9 +44,22 @@ contract, and **the college** downloads its students' certificates.
 topics; a topic carries one or more sessions; assignments and recordings hang off the session,
 because the session is the unit that actually happens on a given day.
 
-**Four portals, one built.** Admin is in scope. Trainer, Student and College portals come later —
-but the admin portal performs every action they will, permanently, because an operations team needs
-the override regardless.
+**Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
+home, my learning and account; assignments, fees, certificates and jobs are specified and not yet
+built. Trainer and College come later. The admin portal performs every action they will,
+permanently, because an operations team needs the override regardless.
+
+**The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
+`permissions: {}` and null scopes, so it could not be built by narrowing scope the way the college
+portal will be. `/me` is its own controller, service and contracts: a field a student must not see
+never enters the function, instead of being removed again by a projection that is one `if` away from
+being wrong. Its routes gate with `@RequireActor("STUDENT")`, not a permission.
+
+**Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
+`redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
+race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and
+checks this, the recording's two gates, that no admin-only field reaches the screen, and that every
+portal screen fits 390px.
 
 ---
 

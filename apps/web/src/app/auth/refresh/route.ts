@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { sessionSchema } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
-import { safePath } from "@/lib/safe-path";
+import { passwordPathFor, safePath, signInPathFor } from "@/lib/safe-path";
 import { clearSession, readRefreshToken, writeSession } from "@/server/session";
 
 /**
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const next = safePath(request.nextUrl.searchParams.get("next"));
 
   const refreshToken = await readRefreshToken();
-  if (refreshToken === undefined) redirect(`/login?next=${encodeURIComponent(next)}`);
+  if (refreshToken === undefined) redirect(`${signInPathFor(next)}?next=${encodeURIComponent(next)}`);
 
   let mustResetPassword = false;
 
@@ -42,10 +42,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     // Expired, revoked, or already used. Either way there is no session left
     // to save, and holding on to a dead cookie only repeats this round trip.
     await clearSession();
-    redirect(`/login?next=${encodeURIComponent(next)}&reason=expired`);
+    redirect(`${signInPathFor(next)}?next=${encodeURIComponent(next)}&reason=expired`);
   }
 
   // Outside the try: `redirect` works by throwing, and caught here it would be
   // read as a failed refresh and end the session it just renewed.
-  redirect(mustResetPassword ? "/account/password?reason=required" : next);
+  redirect(mustResetPassword ? `${passwordPathFor(next)}?reason=required` : next);
 }
