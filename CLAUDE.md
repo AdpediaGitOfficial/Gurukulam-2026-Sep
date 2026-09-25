@@ -55,6 +55,15 @@ portal will be. `/me` is its own controller, service and contracts: a field a st
 never enters the function, instead of being removed again by a projection that is one `if` away from
 being wrong. Its routes gate with `@RequireActor("STUDENT")`, not a permission.
 
+**The student portal has its own visual language; the console is unchanged.** The console keeps the
+terracotta rail `brand-guidelines.md` calls structural — icon-first, 80px, nine modules. A portal is
+a different product for a different person: a light sidebar the colour of a card, labels beside every
+icon, and colour spent on one thing — the active entry, in `accent` with `on-accent` ink. Page titles
+are `text-metric` rather than `text-h1`, because a portal screen holds one thing and a console screen
+holds nine. Same tokens either way; what differs is which of them each surface spends. The portal's
+own grammar lives in `features/me/components/portal-page.tsx` — never edit a console pattern to suit
+it.
+
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
 race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and

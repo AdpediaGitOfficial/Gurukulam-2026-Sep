@@ -44,9 +44,12 @@ export function StudentNavLink({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex h-11 items-center gap-3 rounded-control px-3 text-body-sm transition-colors",
+        // `on-accent` rather than white: amber cannot carry white text at any
+        // accessible ratio, and the token pair exists so nobody has to
+        // rediscover that per screen.
         active
-          ? "bg-white/15 font-semibold text-white"
-          : "text-white/75 hover:bg-white/10 hover:text-white",
+          ? "bg-accent font-semibold text-on-accent"
+          : "text-ink-muted hover:bg-surface-sunken hover:text-ink",
       )}
     >
       <Icon name={icon} size={20} />
@@ -77,7 +80,10 @@ export function StudentTabLink({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-caption transition-colors",
-        active ? "font-semibold text-rail" : "text-ink-subtle hover:text-ink",
+        // The sidebar fills its active entry; a tab bar cannot without looking
+        // like a button, so the same answer is given in ink weight and the
+        // `gold` shade — amber's text-safe relative, at 4.9:1 on white.
+        active ? "font-semibold text-gold" : "text-ink-subtle hover:text-ink",
       )}
     >
       <Icon name={icon} size={22} />

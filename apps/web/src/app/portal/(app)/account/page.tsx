@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 
 import { DetailRow } from "@/components/patterns/detail-row";
 import { Alert } from "@/components/ui/alert";
-import { Card, CardHeader } from "@/components/ui/card";
+
 import { portalDate } from "@/features/me/format";
+import { PortalCard, PortalPage } from "@/features/me/components/portal-page";
 import { MyDetailsForm } from "@/features/me/components/my-details-form";
 import { getProfile } from "@/features/me/server/me-service";
 import type { SearchParams } from "@/server/list";
@@ -50,13 +51,11 @@ export default async function StudentAccountPage({
   const fullName = me.lastName === null ? me.firstName : `${me.firstName} ${me.lastName}`;
 
   return (
-    <div className="flex flex-col gap-8">
-      <header>
-        <h1 className="text-h1 text-ink">Account</h1>
-        <p className="text-body-sm text-ink-muted">
-          What Gurukulam holds about you, and which address each thing goes to.
-        </p>
-      </header>
+    <PortalPage
+      eyebrow="Account"
+      title="Account"
+      description="What Gurukulam holds about you, and which address each thing goes to."
+    >
 
       {query["saved"] === "1" ? (
         <Alert intent="success" title="Saved">
@@ -64,8 +63,7 @@ export default async function StudentAccountPage({
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader as="h2" title="You" />
+      <PortalCard title="You">
         <dl>
           <DetailRow label="Name" value={fullName} />
           <DetailRow label="Student code" value={me.studentCode} variant="code" />
@@ -82,18 +80,14 @@ export default async function StudentAccountPage({
             value={portalDate(me.enrolledOn)}
           />
         </dl>
-      </Card>
+      </PortalCard>
 
-      <Card>
-        <CardHeader
-          as="h2"
-          title="How you are enrolled"
-          description={
-            me.segment === "COLLEGE"
-              ? "Your institution enrolled you and is billed for your course."
-              : "You enrolled with us directly."
-          }
-        />
+      <PortalCard title="How you are enrolled">
+        <p className="mb-4 text-body-sm text-ink-muted">
+          {me.segment === "COLLEGE"
+            ? "Your institution enrolled you and is billed for your course."
+            : "You enrolled with us directly."}
+        </p>
         <dl>
           <DetailRow
             label="Enrolled through"
@@ -112,17 +106,15 @@ export default async function StudentAccountPage({
             />
           ) : null}
         </dl>
-      </Card>
+      </PortalCard>
 
-      <Card className="flex flex-col gap-4">
-        <CardHeader
-          as="h2"
-          title="Changing any of this"
-          description="Your phone and address are yours to change. Your name, email and student code are set by the office — write to them if one is wrong."
-          className="pb-0"
-        />
+      <PortalCard title="Changing any of this">
+        <p className="mb-4 text-body-sm text-ink-muted">
+          Your phone and address are yours to change. Your name, email and student code are set by
+          the office — write to them if one is wrong.
+        </p>
         <MyDetailsForm me={me} />
-      </Card>
-    </div>
+      </PortalCard>
+    </PortalPage>
   );
 }

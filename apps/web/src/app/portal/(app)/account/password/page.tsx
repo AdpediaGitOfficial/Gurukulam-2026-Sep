@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { Alert } from "@/components/ui/alert";
-import { Card, CardHeader } from "@/components/ui/card";
+import { PortalCard, PortalPage } from "@/features/me/components/portal-page";
 import { ChangePasswordForm } from "@/features/auth/components/change-password-form";
 import { getMeAccount } from "@/features/me/server/me-service";
 import { requireStudent } from "@/server/principal";
@@ -30,14 +30,11 @@ export default async function StudentPasswordPage({
   const required = account.mustResetPassword || firstLogin;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-h1 text-ink">Change your password</h1>
-        <p className="text-body-sm text-ink-muted">
-          The one thing about your account that is yours to set.
-        </p>
-      </header>
-
+    <PortalPage
+      eyebrow="Account"
+      title="Change your password"
+      description="The one thing about your account that is yours to set."
+    >
       {required ? (
         <Alert intent="warning" title="Choose your own before carrying on">
           {/* The issued password travelled to them in a welcome message. It is
@@ -47,10 +44,9 @@ export default async function StudentPasswordPage({
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader as="h2" title="New password" />
+      <PortalCard title="New password">
         <ChangePasswordForm required={required} />
-      </Card>
-    </div>
+      </PortalCard>
+    </PortalPage>
   );
 }
