@@ -16,13 +16,13 @@ writing code.
 | `docs/architecture.md` | Domain model, the 19 invariants, transactional flows, extension contract. **Start here.** |
 | `docs/modules.md` | Every module, screen, route, entity and operation |
 | `docs/prototype/index.html` | Clickable prototype — 60 routes, all screens. **Open it in a browser.** This is the design reference |
-| `docs/prototype/student.html` | The student portal, clickable. Same tokens, phone-first shell. Its segment switch shows invariants 3 and 7 as screens rather than prose |
+| `docs/prototype/student.html` | The student portal, clickable. Same tokens, phone-first shell. Its segment switch shows invariants 3 and 7 as screens rather than prose — both segments walk, and `#!decision` records why |
 | `docs/prototype/trainer.html` | The trainer portal, clickable. Green rail. Shows the two screens with no server side — attendance and marking — and what an in-house trainer does not have |
 | `docs/prototype/check.mjs` | Walks all three prototypes — every route, every segment, both widths — and fails on a dead link, a blank screen or sideways scroll. `CHROME=… node docs/prototype/check.mjs` |
 | `docs/deploy-runbook.md` | **How gurukulam.club actually deploys** — the Actions runner, PM2, and the pre-flight for this release |
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
 | `docs/notifications-and-reports.md` | The notification catalogue and report grammar |
-| `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and the gaps |
+| `docs/student-portal-plan.md` | The student portal, derived from the admin console — features, the two design decisions, and what is settled versus still open. §1.2 records a decision that was **reversed**: a college student does get an account |
 | `docs/trainer-portal-plan.md` | The trainer portal — its scope axis, why it is a write surface, and the nav |
 | `docs/design-system.md` | UI layer rules |
 | `docs/brand-guidelines.md` | Visual language |
@@ -192,6 +192,17 @@ are `text-metric` rather than `text-h1`, because a portal screen holds one thing
 holds nine. Same tokens either way; what differs is which of them each surface spends. The portal's
 own grammar lives in `features/me/components/portal-page.tsx` — never edit a console pattern to suit
 it.
+
+**A college student has a portal account, and the plan said otherwise for a long time.**
+`student-portal-plan.md` §1.2 decided they should get none — the college enrols them, is billed for
+them and collects their certificates, so strip Fees and the download out and what is left looked like
+a schedule for somebody who is not our customer. Four things built afterwards each need the account:
+a student hands work in and a trainer marks that submission, so a submission needs an author;
+attendance now has a writer and the course's floor decides their certificate; invariant 7's
+`COLLEGE_HOLDS_IT` verdict has no other reader; and session notices are emitted per student in both
+segments. The section now records the reversal rather than the decision, the prototype no longer
+overrides its college segment with a "no access" screen, and `allocation.service.ts` keeps issuing
+credentials for both segments — the comment saying so is correct, not stale.
 
 **Absent, not empty — invariant 3 as a screen.** A college student has no individual ledger, so Fees
 is absent from their navigation rather than present and showing zero: an empty Fees page reads as

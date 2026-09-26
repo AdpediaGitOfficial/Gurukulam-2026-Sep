@@ -8,10 +8,17 @@ Companion documents — [`architecture.md`](architecture.md) for the domain mode
 [`notifications-and-reports.md`](notifications-and-reports.md) for those two subsystems,
 [`prototype/index.html`](prototype/index.html) for the visual reference (60 routes, open in a browser).
 
-**Portal scope:** Admin only. Trainer, Student and College portals are deferred — but every action
-they will perform is performable by an admin today, permanently (§1.2 of the architecture doc).
-The student portal is specified in `student-portal-plan.md`: what each module below becomes when
-read by the person it is about, and the two decisions that shape it.
+**Portal scope:** every module below is written from the ADMIN console's point of view, and that is
+still the right reading of them — but all four portals are now built, and each action an admin
+performs here remains performable by an admin permanently (§1.2 of the architecture doc). The student
+portal is at `/portal/*` and specified in `student-portal-plan.md`; the trainer portal at `/teach/*`
+in `trainer-portal-plan.md`; the college portal at `/campus/*`, which has no plan document of its own
+because it was built by narrowing these modules with `collegeScope` rather than by adding surfaces —
+its reasoning is in `CLAUDE.md` and in `common/scope/scope.ts`.
+
+**A college student has a portal account**, with Fees absent and their certificate held by their
+institution. `student-portal-plan.md` §1.2 carried the opposite decision for most of the design's
+life and records why it was reversed.
 
 ---
 

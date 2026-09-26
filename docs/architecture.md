@@ -473,14 +473,16 @@ whichever choice is made here, because the student portal will inherit it.
 
 ## 11. Deferred by design
 
-Not omissions. Each is a decision with a known re-entry point.
+Not omissions. Each is a decision with a known re-entry point — and the struck-through rows are the
+ones that have since been taken, through the re-entry point this section named for them. They are kept
+rather than deleted because the re-entry point holding is the claim this section was making.
 
 | Deferred | Re-entry point |
 | --- | --- |
-| Attendance | Deferred by request. `student_attendance` stays in the schema so sessions do not need reshaping when it lands; admin and trainer will write the same row |
-| Trainer portal | `batch_trainer_assignments` already exists; the trainer portal writes the same rows |
-| Student portal | Credentials issued at allocation; session access already granted |
-| College portal | `college_users` + `collegeScope` on the principal; admin performs every college action today |
+| ~~Attendance~~ | **Built.** `POST /batches/sessions/:id/attendance`, written by the trainer portal and by the console. The whole register posts at once, and the gate is the calendar rather than completion |
+| ~~Trainer portal~~ | **Built** at `/teach/*`, on a third scope axis — `trainerScope` is a relationship rather than a column, and reading and writing are deliberately different sets |
+| ~~Student portal~~ | **Built** at `/portal/*`, as its own `/me/*` surface because a student has no scope to narrow. BOTH segments sign in: a college student's differs by Fees (absent) and the certificate download (their college's) |
+| ~~College portal~~ | **Built** at `/campus/*`, by narrowing these endpoints with `collegeScope` exactly as this section anticipated. What scope could not answer was which ACTS are theirs — see `assertOursToDecide` |
 | Naukri feed | `job_postings.source` / `external_ref` / `external_url` already carried |
 | Application tracking | Would need an applications table and a student-side action — in scope explicitly or not at all |
 | Payment gateway | Ledger records offline receipts; a gateway would write the same transaction rows |

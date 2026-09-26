@@ -266,11 +266,11 @@ ul{padding:0;list-style:none}
 
 <div class="protobar">
   <b>Prototype</b>
-  <p>Static screens, no back end. The portal is for <b>retail students only</b> — switch the
-     segment to see what a college student gets instead.</p>
+  <p>Static screens, no back end. Both segments sign in — switch to see the two screens a
+     college student does not get, and why.</p>
   <div class="segswitch" role="group" aria-label="View as">
     <button id="seg-retail" type="button" onclick="setSeg('retail')">Retail student</button>
-    <button id="seg-college" type="button" onclick="setSeg('college')">College student — no access</button>
+    <button id="seg-college" type="button" onclick="setSeg('college')">College student</button>
   </div>
 </div>
 
@@ -479,30 +479,36 @@ const V={};
 
    Shown as a sign-in refusal rather than an empty shell, because a refusal is
    what the person would actually meet. */
-V['#!noaccess']=()=>{
-  const p=me();
-  return `
-  ${head('Sign in','Your college manages your training')}
-  <div class="absent">
-    <h3>${p.college} holds your record</h3>
-    <p>You were enrolled by your institution, it is billed for your course, and it collects
-       your certificate. There is no separate student account for you — your schedule,
-       materials and results all come through your college.</p>
-    <p style="margin-top:14px"><b>Ask your placement office</b> for your timetable, session
-       recordings or your certificate.</p>
+/* Reached only by typing #!decision — kept as the record of a reversal.
+   The college segment no longer routes here. */
+V['#!decision']=()=>`
+  ${head('Design note','A college student does sign in')}
+
+  <div class="card">
+    <div class="sechead"><h2>What this prototype used to show</h2></div>
+    <p class="sub">Every route in the college segment rendered one screen: <i>your college holds
+      your record, there is no separate student account for you</i>. The reasoning was the
+      engagement rather than the screens — the college enrols its students, is billed for them,
+      and collects their certificates, so strip Fees and the certificate download out and what
+      is left looked like a schedule for somebody who is not our customer.</p>
   </div>
 
   <div class="card">
-    <div class="sechead"><h2>What a retail student sees instead</h2></div>
-    <p class="sub">Switch the segment above to walk the portal as Aarav Menon — a walk-in who
-      negotiated his own price, pays his own instalments and downloads his own certificate.
-      Every screen there exists because he is the one we deal with directly.</p>
+    <div class="sechead"><h2>Why it was reversed</h2></div>
+    <p class="sub">Four things were built afterwards and each one needs the student to have an
+      account: <b>assignments are handed in by the student</b>, and a trainer marks that
+      submission, so a submission needs an author; <b>attendance now has a writer</b>, and the
+      course's attendance floor is what decides their certificate; <b>invariant 7's refusal is
+      addressed to the student</b> — the API returns a distinct verdict whose only reader is a
+      college student being told their office holds the file; and <b>session notices are emitted
+      per student in both segments</b>, so with no account those rows are written and never read.</p>
+    <p class="sub" style="margin-top:12px">"Not our customer" is a statement about who pays, and
+      invariant 3 already answers it by removing Fees. It does not follow that the person in the
+      room has no relationship with us: they are the one whose register we take, whose work we
+      mark, and whose name is on the certificate.</p>
   </div>
 
-  ${rule('This replaces the earlier design, where a college student signed in and found <b>Fees</b> absent and their certificate held by the college. Removing the account is cleaner than a portal with the two things a student most wants taken out of it — and it matches how the engagement actually runs: <b>the college is the customer</b>.')}
-
-  ${rule('Two consequences to settle. <b>Allocation issues credentials for both segments today</b> — the code says so in a comment, and that has to change. And a trainer can still set an assignment against a college cohort, which would now have nowhere for those students to submit it.','gap')}`;
-};
+  ${rule('So a college student gets every screen a retail student gets except two. <b>Fees</b> is absent from the navigation — not empty, because an empty Fees page reads as "you owe nothing yet" when the truth is it will never be theirs to owe. And the <b>certificate download</b> is their college\'s, while the record, the number and the verification code are theirs. Switch the segment above and walk it.')}`;
 
 V['#/']=()=>{
   const p=me();
@@ -838,7 +844,16 @@ function paint(){
 
   // One gate, not a check on every screen. A college student has no portal at
   // all, so nothing past this point is theirs to read.
-  const render=(SEG==='college')?V['#!noaccess']:(V[hash]||V['#/']);
+  /* No blanket override by segment.
+     This line used to be `(SEG==='college') ? V['#!noaccess'] : …`, which rendered
+     one "your college holds your record" screen for every route and hid the
+     complete per-screen college design underneath it — the nav's `retailOnly`
+     flag, the home screen's missing Money card, the certificate held by the
+     institution, and the Fees URL that answers instead of 404ing. That decision
+     was reversed before the portal was built: a college student signs in, and
+     what differs is Fees (absent) and the certificate download (their
+     college's). See §1.2 of student-portal-plan.md for why. */
+  const render=V[hash]||V['#/'];
   document.getElementById('view').innerHTML=render()
     +`<p class="foot">Gurukulam TMS · student portal prototype · static screens, no back end</p>`;
   window.scrollTo(0,0);

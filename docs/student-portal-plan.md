@@ -1,9 +1,15 @@
 # Student portal — what it is, derived from the admin portal
 
-The admin portal performs every action the deferred portals will. That is not a
-slogan here: it means the student portal is mostly a **reading** of work the
-admin console already does, through a different lens, with two rules that make
-it more than a filtered copy.
+The admin console performs every action the portals do, permanently. That is not
+a slogan here: it means the student portal is mostly a **reading** of work the
+console already does, through a different lens, with two rules that make it more
+than a filtered copy.
+
+**This document is now partly a record rather than a plan.** The portal is built
+and live at `/portal/*`; §1.2 carried a decision that was reversed and says so,
+and §6 separates what is settled from what is still open. Where it describes
+something as deferred and the code disagrees, the code is right and the section
+should be corrected rather than trusted.
 
 Read `architecture.md` §4 first. This document assumes the nineteen invariants
 and only calls out the ones the portal changes the shape of. The trainer portal
@@ -12,7 +18,7 @@ questions differently — deliberately.
 
 **There is a clickable prototype:** `prototype/student.html`. Open it in a
 browser. Its segment switch — retail student, college student — is the fastest
-way to see §1.2, because the two rules it demonstrates are invisible until you
+way to see §1.3, because the two rules it demonstrates are invisible until you
 look at the other segment.
 
 ---
@@ -55,32 +61,81 @@ The duplicated query logic is real and is the price. It is bounded — the reads
 are simple, and the *rules* (which batch is mine, which assignment is published)
 stay in one service each.
 
-### 1.2 The portal is for RETAIL students only
+### 1.2 The portal is for BOTH segments — a college student's is two things short
 
-**Decided: a college student gets no portal account at all.**
+**Decided, then reversed, and the reversal is what shipped.** This section carried
+the opposite decision for most of the design's life, and the reasoning is kept
+because the argument is a good one and because the prototype was built to it.
 
-The reasoning is the engagement, not the screens. A college enrols its own
+**What was decided.** A college student gets no portal account at all. The
+reasoning was the engagement rather than the screens: a college enrols its own
 students, is billed for them under its contract, and collects their
 certificates. Strip fees and certificate download out of a student portal — as
-invariants 3 and 7 require — and what is left is a schedule and some
-recordings, for a person who is not our customer and whose institution already
-holds everything.
+invariants 3 and 7 require — and what is left is a schedule and some recordings,
+for a person who is not our customer and whose institution already holds
+everything.
 
-Two consequences, both of which need action rather than agreement:
+**What overtook it.** Four things were built afterwards, and each one needs the
+student to have an account:
 
-- **Allocation issues credentials for both segments today.** The comment in
-  `allocation.service.ts` says so explicitly — *"Issued for BOTH segments: a
-  college student still needs the schedule, materials and recordings"*. That is
-  now wrong, and `issueCredentials` has to be gated on segment.
-- **A trainer can still set an assignment against a college cohort**, and those
-  students would have nowhere to submit it. Either college batches do not use
-  assignments, or submission goes through the college portal, or it is
-  collected offline. **Unresolved** — see §6.
+- **Assignments are handed in by the student.** `submitAssignment` is the only
+  `/me` route that writes, and it is scoped by the caller's own batch mappings.
+  A college student with no account leaves a trainer able to set work for a
+  cohort with nobody to hand it in — which this section itself flagged as
+  **unresolved**, and which the trainer portal then made worse: `gradeSubmission`
+  marks a submission, and a submission has an author.
+- **Attendance now has a writer**, and the attendance floor on the course is
+  what decides certificate eligibility. A student whose certificate can be
+  refused for a figure they cannot see has no way of knowing they are at risk
+  until it is too late to attend anything.
+- **Invariant 7's refusal is addressed TO the student.** `certificateAccess`
+  returns a distinct `COLLEGE_HOLDS_IT` verdict whose entire purpose is to be
+  read by a college student — *your college holds it, ask your office*. With no
+  account that verdict is unreachable code, and `certificate-access.test.ts`
+  pins a rule nothing can exercise.
+- **The session lifecycle emits per student, in both segments.** "Your Tuesday
+  was cancelled" is written for a college student the same as a retail one. With
+  no account those rows are written and never read by anyone.
 
-What follows in §1.3 is kept because it is still the rule the API enforces, and
-because the college portal will meet the same two invariants when it is built.
+**And the commercial argument proves less than it looks.** "Not our customer" is
+a statement about who PAYS, and invariant 3 already answers it by removing Fees
+entirely. It does not follow that the person in the room has no relationship
+with us: they are the one whose register we take, whose work we mark, and whose
+name is on the certificate. The college portal, now built, tells the institution
+those certificates are "yours to hand out" — and the student side of that
+sentence is the record, the number and the verification code, which §1.3 says
+are the student's in both segments. Only the FILE is the college's.
 
-### 1.3 The retail/college split runs through the product, if not the portal
+**What is therefore true.** A college student signs in and gets every screen a
+retail student gets except two:
+
+| | Retail | College |
+| --- | --- | --- |
+| Home, My learning, Assignments, Certificates, Jobs, Updates, Account | yes | yes |
+| **Fees** | yes | **absent from the navigation** (invariant 3) |
+| **Certificate download** | theirs | **their college's** (invariant 7) |
+
+Absent, not empty, and not hidden — §1.3 has the reasoning for each, and it is
+unchanged. `verify:portal` signs in as both segments and checks the difference.
+
+**The two consequences this section used to ask for are both settled the other
+way:**
+
+- **Credentials stay issued for both segments.** The comment in
+  `allocation.service.ts` — *"Issued for BOTH segments: a college student still
+  needs the schedule, materials and recordings"* — is correct, not stale. It was
+  to be gated on segment; it must not be.
+- **The assignment submitter is the student**, in both segments, through
+  `/portal/assignments`. The gap is closed rather than deferred to the college
+  portal or to paper.
+
+**The prototype was built to the abandoned decision and has been corrected.**
+`prototype/student.html` rendered a single "your college holds your record" screen
+for every route in the college segment, on top of a complete per-screen college
+design that the override hid. The override is gone; the segment switch now walks
+the real thing.
+
+### 1.3 The retail/college split runs through the product, and through the portal
 
 Two invariants become visible features rather than internal rules:
 
@@ -97,6 +152,11 @@ implemented server-side: `certificates.service.ts` returns a distinct
 `COLLEGE_HOLDS_IT` verdict for exactly this case. The portal must show the
 certificate exists, show its verification code, and explain who to ask —
 silently hiding it would look like a bug to the student who knows they passed.
+
+Three states are real, and collapsing any two of them is a support call: a link,
+"your college holds it", and "there is no file yet". `heldByCollege` and
+`downloadUrl` are therefore separate fields — merging the last two sends a
+student to argue with an office that was never given anything.
 
 ---
 
@@ -189,11 +249,13 @@ rather than hide the assignment — a student needs to see what they missed.
 
 | Admin does | Student gets |
 | --- | --- |
-| *Nothing yet* — the admin UI is deferred, but `student_attendance` is in the schema and admin and trainer will write the same row | Per-session presence, and a percentage per batch |
+| Takes the register, on the session screen. The trainer portal writes the same row through the same endpoint | Per-session presence, and a percentage per batch |
 
-Build the read now and it renders empty until someone writes a row; that is
-honest and costs almost nothing. Say "attendance has not been recorded for this
-batch" rather than showing 0%.
+There is a writer now, so this screen would render real rows rather than an empty
+one — and it is the figure a certificate turns on, because the course carries an
+attendance floor. Say "attendance has not been recorded for this batch" rather
+than showing 0% when a register was never taken: `eligibility.service.ts` makes
+the same distinction, reporting NOT_EVALUATED rather than a fabricated zero.
 
 ### 3.6 Fee ledger → **My fees** — retail only
 
@@ -201,7 +263,7 @@ batch" rather than showing 0%.
 | --- | --- |
 | Creates the ledger at allocation, hand-authors the installment schedule, records offline payments, sends reminders | Their installments: amount, due date, status. What has been paid and when. A receipt per payment |
 
-**Absent entirely for a college student** (§1.2). Money is integer minor units
+**Absent entirely for a college student** (§1.3). Money is integer minor units
 everywhere; the portal renders it and never computes with a float.
 
 No payment gateway exists — payments are collected offline and recorded — so the
@@ -215,7 +277,7 @@ that cannot take money is worse than no button.
 | Checks eligibility, issues, revokes; approves a college's submitted name list | The certificates they hold, with the verification code |
 
 Retail: a download. College: the record and an explanation that the institution
-holds the download (§1.2). The public verifier at `/certificates/verify/:code`
+holds the download (§1.3). The public verifier at `/certificates/verify/:code`
 already exists and is unauthenticated by design — the portal should show the
 student their code so they can hand it to an employer.
 
@@ -391,20 +453,32 @@ landing page, not a dashboard of metrics — a student has no fleet to survey.
 
 ---
 
-## 6. Gaps that need a decision or new code
+## 6. Gaps — settled, and still open
+
+A gaps table that lists things now built is the same kind of lie as §1.2 was, so
+it is split. **Settled** records how, because several were settled differently
+from the way this document proposed.
+
+### 6.1 Settled
+
+| Gap | How |
+| --- | --- |
+| **`/me` surface vs `selfScope`** | Option B, as recommended. `/me/*` is its own controller, service and contracts, gated with `@RequireActor("STUDENT")`. The college portal then went the OTHER way and narrowed the admin endpoints with `collegeScope` — the two together are the argument for §1.1: a student has no scope axis to narrow, a college has one that already worked |
+| **Assignments on a college cohort have no submitter** | The student is, in both segments (§1.2). `submitAssignment` matches the assignment against the caller's own batch mappings inside the same query, so one they are not on reads as *not found* rather than as a refusal |
+| **Allocation still issues college credentials** | Kept, deliberately. §1.2 reverses the decision that asked for it to be gated |
+| **Attendance has no writer** | `POST /batches/sessions/:id/attendance`, written by the trainer portal and by the console. The whole register posts at once, and the gate is the calendar rather than completion |
+| **No `emit()` beside `sweep()`** | `emit(tx, event)` and `emitToRoster(tx, batchId, event)`, called from inside the transaction that made the change. `EmittedEvent` has no `groupKey` field at all — the sweep resolves BY group key, so a borrowed one would have the next nightly run delete the notice silently |
+| **`reminder_sent_flag` is a boolean** | `fee_installment_reminders`, unique on `(installment, offset)`. The run climbs ONE rung, the latest reached: sending every rung an installment had passed produced 9,968 reminders on its first run against real data |
+
+### 6.2 Still open
 
 | Gap | What it blocks | Note |
 | --- | --- | --- |
-| **`/me` surface vs `selfScope`** | Everything | §1.1. Decide before writing the first endpoint |
 | **No password reset for a student** | A student who forgets their password | Only administrators have a reset endpoint today. Either an admin-initiated reset on the student's admin page (cheap, matches the credential pattern already in use) or a real forgot-password flow with emailed tokens — and there is no email integration, so it is the first one |
 | **No email integration** | Forgot-password, submission receipts, "your recording is up" | Deferred by design |
-| **No file storage** | Assignment uploads, certificate PDFs | v1 submissions are a link plus text |
-| **Attendance has no writer** | The attendance view renders empty | Lands with the admin or trainer attendance UI |
+| **No file storage** | Assignment uploads, certificate PDFs | v1 submissions are a link plus text. Every `pdf_url` is null, which is why `verify:portal` puts one there for the length of the invariant-7 check and takes it away again — otherwise "no download offered" holds whatever the access rule says |
 | **No job application record** | "Applied" state, admin visibility of interest | Schema addition. Worth deciding alongside the Naukri feed |
-| **Assignments on a college cohort have no submitter** | A trainer can set work for a batch whose students have no account (§1.2) | **Unresolved.** Either college batches do not use assignments, submission goes through the college portal, or it is collected offline |
-| **Allocation still issues college credentials** | The decision in §1.2 | `allocation.service.ts` — gate `issueCredentials` on segment |
-| **No `emit()` beside `sweep()`** | Every session and assignment notice in §4 | The engine only evaluates conditions. Events need writing at the moment they happen |
-| **`reminder_sent_flag` is a boolean** | The 5-day reminder ladder | §4.3 — needs `fee_installment_reminders`, keyed on (installment, offset) so the nightly run stays idempotent |
+| **My attendance has no screen** | A student cannot see the figure their certificate depends on | The rows exist now (above) and the course carries `attendance_floor_pct`; the portal reads neither yet. §1.2 counts this as a reason a college student needs an account, so it is the next thing this document argues for |
 
 ---
 
