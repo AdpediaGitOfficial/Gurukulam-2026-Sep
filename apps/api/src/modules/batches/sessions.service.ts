@@ -3,6 +3,7 @@ import { Prisma } from "@gurukulam/db";
 import type {
   BatchSession, CreateAssignmentInput, CreateSessionInput, LinkRecordingInput, Page, Principal,
   AssignmentSubmission, AssignmentSubmissionQuery,
+  GradeSubmissionInput,
   RescheduleSessionInput, SessionQuery, SessionUploadInput, SessionUploadLine,
   SessionUploadResult, UpdateAssignmentInput, UpdateSessionInput,
 } from "@gurukulam/contracts";
@@ -10,7 +11,9 @@ import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope, assertTrainerMayWrite, cityScope, collegeScope, isTrainer, liveOnly,
+} from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { parseDate } from "./batches.service";
 
@@ -900,6 +903,122 @@ export class SessionsService {
       ]);
       return [rows.map(toSubmission), total];
     });
+  }
+
+  /**
+   * Marking a submission — the other write path that has never existed.
+   *
+   * `marks_awarded`, `feedback`, `graded_by` and `graded_at` have been on the
+   * table since the first migration and nothing in the API has ever written
+   * them. A student's "18 / 20 — clear work, look at broadcasting again" has
+   * had nowhere to come from, and `/me/assignments` returns null for both
+   * fields with a comment saying why.
+   *
+   * ── Both actors, for the same reason attendance is ─────────────────────
+   *
+   * The admin console cannot mark anything today either. Building this inside
+   * the trainer portal would mean the operations override had to be written a
+   * second time, against the same rules, by somebody else.
+   *
+   * ── The two hops again ─────────────────────────────────────────────────
+   *
+   * A submission belongs to an assignment, which belongs to a batch. For a
+   * trainer the question is whether that assignment's SESSION is theirs — not
+   * merely whether the batch is — so the same check attendance uses applies
+   * here. An assignment with no session falls back to the batch, because there
+   * is no session to be more precise about.
+   */
+  async gradeSubmission(
+    principal: Principal,
+    submissionId: string,
+    input: GradeSubmissionInput,
+  ) {
+    const submission = await this.prisma.assignmentSubmission.findFirst({
+      where: { submissionId, deletedAt: null },
+      include: {
+        assignment: {
+          include: {
+            batch: { include: { trainerAssignments: { where: { deletedAt: null } } } },
+            session: true,
+          },
+        },
+      },
+    });
+    if (!submission) throw ApiException.notFound("Submission");
+    assertInScope(principal, submission.assignment.batch);
+
+    if (isTrainer(principal)) {
+      const session = submission.assignment.session;
+      assertTrainerMayWrite(principal, {
+        // No session means the assignment hangs off the batch alone, so the
+        // batch is the only thing there is to check. Passing the batch's
+        // primary trainer as the session's keeps one code path rather than
+        // two rules that could disagree.
+        trainerId: session?.trainerId ?? submission.assignment.batch.primaryTrainerId,
+        batch: submission.assignment.batch,
+      });
+    }
+
+    if (submission.submittedAt === null) {
+      throw ApiException.conflict(
+        "Nothing has been handed in against this yet, so there is nothing to mark.",
+      );
+    }
+
+    const ceiling = submission.assignment.maxMarks;
+    if (input.marksAwarded !== null) {
+      if (ceiling === null) {
+        throw ApiException.validation({
+          marksAwarded: "This assignment carries no maximum, so it cannot be scored. Leave feedback instead.",
+        });
+      }
+      if (input.marksAwarded > ceiling) {
+        throw ApiException.validation({
+          marksAwarded: `This assignment is out of ${ceiling}.`,
+        });
+      }
+    }
+
+    const graded = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.assignmentSubmission.update({
+        where: { submissionId },
+        data: {
+          marksAwarded: input.marksAwarded,
+          feedback: input.feedback || null,
+          gradedBy: principal.id,
+          gradedAt: new Date(),
+          status: "GRADED",
+        },
+        include: SUBMISSION_INCLUDE,
+      });
+
+      /*
+       * The student is told, and told what they got.
+       *
+       * FYI rather than ACTION_REQUIRED: a mark is news, not a task. Emitted
+       * inside the same transaction as the mark, so a student is never told
+       * about a grade that did not land.
+       */
+      await this.notifications.emit(tx, {
+        type: "assignment.graded",
+        class: "FYI",
+        title: `${submission.assignment.title} has been marked`,
+        body:
+          input.marksAwarded === null
+            ? "Your trainer has left feedback on it."
+            : `${input.marksAwarded}${ceiling === null ? "" : ` out of ${ceiling}`}.`,
+        ctaLabel: "See it",
+        ctaHref: "/portal/assignments",
+        recipientType: "STUDENT",
+        recipientId: submission.studentId,
+        subjectType: "assignment",
+        subjectId: submission.assignmentId,
+      });
+
+      return row;
+    });
+
+    return toSubmission(graded);
   }
 
   // ── Recording ───────────────────────────────────────────────────────────

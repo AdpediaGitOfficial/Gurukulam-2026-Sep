@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { ActorType, Principal } from "@gurukulam/contracts";
-import { MODULES } from "@gurukulam/contracts";
+import { MODULES, TRAINER_PERMISSIONS, TRAINER_READ_ONLY } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { ApiException } from "../../common/errors";
 
@@ -53,6 +53,7 @@ export class PrincipalService {
       // translation happens here, once, rather than at every call site.
       cityScope: user.cityScope.length === 0 ? null : user.cityScope,
       collegeScope: null,
+      trainerScope: null,
       permissions: asPermissions(user.role.permissions),
     };
   }
@@ -79,16 +80,38 @@ export class PrincipalService {
       // portal is built.
       cityScope: null,
       collegeScope: user.collegeId,
+      trainerScope: null,
       permissions: asPermissions(user.permissions),
     };
   }
 
+  /**
+   * A trainer, with a derived scope and a fixed matrix.
+   *
+   * ── Why SUSPENDED signs in ─────────────────────────────────────────────
+   *
+   * Suspension withdraws a trainer from the pickers without touching live
+   * delivery — pulling somebody off a running cohort as a side effect of a
+   * status change would strand it. So a suspended trainer still HOLDS their
+   * confirmed batches. Refusing them at login, as this used to, left them
+   * nominally teaching sessions they could not see, which is how a class ends
+   * up with nobody in the room.
+   *
+   * They read and cannot write, and the matrix is what says so — every
+   * `@RequirePermission(…, "edit")` in the product refuses them without
+   * knowing suspension exists.
+   *
+   * INACTIVE is different and still refused: that is an account that is over,
+   * not one that is paused.
+   */
   private async forTrainer(id: string): Promise<Principal> {
     const trainer = await this.prisma.trainer.findFirst({
       where: { trainerId: id, deletedAt: null },
     });
     if (!trainer) throw ApiException.unauthenticated();
-    if (trainer.accountStatus !== "ACTIVE") throw ApiException.accountInactive();
+    if (trainer.accountStatus !== "ACTIVE" && trainer.accountStatus !== "SUSPENDED") {
+      throw ApiException.accountInactive();
+    }
 
     return {
       id: trainer.trainerId,
@@ -96,13 +119,13 @@ export class PrincipalService {
       actor: "TRAINER",
       roleId: null,
       roleName: "Trainer",
+      // Neither city nor college: a trainer's reach is a relationship, and
+      // `trainerScope` is where the services traverse it from.
       cityScope: null,
       collegeScope: null,
-      // The trainer portal is deferred. Credentials exist and the actor type
-      // resolves, but it carries no module permissions until that portal
-      // defines them — so a trainer token cannot read the admin console's
-      // endpoints in the meantime.
-      permissions: {},
+      trainerScope: trainer.trainerId,
+      permissions:
+        trainer.accountStatus === "SUSPENDED" ? TRAINER_READ_ONLY : TRAINER_PERMISSIONS,
     };
   }
 
@@ -121,6 +144,7 @@ export class PrincipalService {
       roleName: "Student",
       cityScope: null,
       collegeScope: null,
+      trainerScope: null,
       permissions: {},
     };
   }
@@ -140,6 +164,7 @@ export class PrincipalService {
       roleName: "API client",
       cityScope: client.cityScope.length === 0 ? null : client.cityScope,
       collegeScope: client.collegeScope,
+      trainerScope: null,
       permissions: asPermissions(client.permissions),
     };
   }

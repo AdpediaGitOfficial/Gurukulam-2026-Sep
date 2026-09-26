@@ -104,3 +104,133 @@ export function inScope(
  */
 export const liveOnly = (includeDeleted = false): { deletedAt?: null } =>
   includeDeleted ? {} : { deletedAt: null };
+
+/* ── The trainer axis ──────────────────────────────────────────────────────
+ *
+ * City and college scope are COLUMNS: a row is in scope when its column
+ * matches. A trainer's is a RELATIONSHIP, so these are relation filters rather
+ * than field comparisons, and they traverse from `principal.trainerScope`.
+ *
+ * Two properties have to be decided rather than assumed, and both are decided
+ * here so no service decides them differently:
+ *
+ * **Reading and writing are not the same set.** A trainer released from a
+ * batch loses the roster at the moment of release — but they delivered those
+ * sessions, and the attendance and grades they wrote stay attributable to
+ * them. So history stays readable and the ability to write more stops.
+ *
+ * **The session is more precise than the batch.** `batch_sessions.trainer_id`
+ * is per session, and a substitute for one day is a legitimate thing the
+ * schema models. Attendance and completion authorise on the SESSION's trainer;
+ * reading the schedule authorises on the batch.
+ */
+
+/** True when this principal's reach is a teaching relationship. */
+export const isTrainer = (principal: Principal): boolean =>
+  principal.actor === "TRAINER" && principal.trainerScope !== null;
+
+/**
+ * The batches a trainer may READ.
+ *
+ * Primary trainer, or a live CONFIRMED assignment. A PROPOSED one is not
+ * enough — an invitation is not a cohort, and a trainer who could read the
+ * roster of every batch they were ever offered would be reading students they
+ * never taught.
+ *
+ * Returns `{}` for anyone else, so a service spreads it unconditionally.
+ */
+export function trainerBatchScope(principal: Principal): Record<string, unknown> {
+  if (!isTrainer(principal)) return {};
+  return {
+    OR: [
+      { primaryTrainerId: principal.trainerScope },
+      {
+        trainerAssignments: {
+          some: { trainerId: principal.trainerScope, status: "CONFIRMED", deletedAt: null },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * The sessions a trainer may READ.
+ *
+ * Their own sessions, plus every session of a batch that is currently theirs.
+ * The first half is what keeps HISTORY: a session they delivered stays visible
+ * after they are released from the batch, because `trainer_id` on the row
+ * records that they were the one who taught it.
+ */
+export function trainerSessionScope(principal: Principal): Record<string, unknown> {
+  if (!isTrainer(principal)) return {};
+  return {
+    OR: [{ trainerId: principal.trainerScope }, { batch: trainerBatchScope(principal) }],
+  };
+}
+
+/**
+ * Whether this trainer may WRITE against a session — mark it delivered, take
+ * attendance, set work, attach a recording.
+ *
+ * Deliberately narrower than reading, and narrower than the batch:
+ *
+ *   · the session's trainer must be them, so a colleague on the same cohort
+ *     cannot write against a day they did not teach;
+ *   · the batch must be theirs NOW, so a released trainer stops writing while
+ *     keeping everything they already wrote.
+ *
+ * Anyone who is not a trainer passes — an admin's authority here is their
+ * module permission plus city scope, which the caller has already applied.
+ */
+export function trainerMayWrite(
+  principal: Principal,
+  session: {
+    trainerId: string | null;
+    batch: { primaryTrainerId: string | null; trainerAssignments: { trainerId: string; status: string; deletedAt: Date | null }[] };
+  },
+): boolean {
+  if (!isTrainer(principal)) return true;
+  const me = principal.trainerScope;
+  if (session.trainerId !== me) return false;
+  const stillMine =
+    session.batch.primaryTrainerId === me ||
+    session.batch.trainerAssignments.some(
+      (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
+    );
+  return stillMine;
+}
+
+/**
+ * The same, thrown.
+ *
+ * A 404 rather than a 403, for the reason `assertInScope` gives: a refusal
+ * that distinguishes "not yours" from "does not exist" is itself a way to
+ * enumerate what exists.
+ */
+export function assertTrainerMayWrite(
+  principal: Principal,
+  session: Parameters<typeof trainerMayWrite>[1],
+): void {
+  if (!trainerMayWrite(principal, session)) throw ApiException.outOfScope();
+}
+
+/**
+ * The second hop.
+ *
+ * "May this trainer write attendance for this student?" is TWO questions: is
+ * this session mine, and is this student on that session's batch roster.
+ * Neither alone is sufficient — the first alone lets a trainer mark any
+ * student in the database against their own session, and the second alone lets
+ * any trainer of that cohort write against a day they did not deliver.
+ *
+ * This is the half that is easy to leave out, because the first check passing
+ * feels like the answer.
+ */
+export function assertOnRoster(studentIds: string[], roster: Set<string>): void {
+  const strangers = studentIds.filter((id) => !roster.has(id));
+  if (strangers.length > 0) {
+    throw ApiException.validation({
+      attendance: `${strangers.length} of those students are not on this batch's roster`,
+    });
+  }
+}

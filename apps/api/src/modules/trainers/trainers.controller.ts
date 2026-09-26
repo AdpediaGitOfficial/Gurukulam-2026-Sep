@@ -79,6 +79,20 @@ export class TrainersController {
     return this.trainers.reinstate(p, id);
   }
 
+  /**
+   * Grants portal access.
+   *
+   * Deliberately separate from creating the trainer: a record exists long
+   * before there is anything to sign in to, and issuing at creation would give
+   * every CV on the bench a live account.
+   */
+  @Post(":trainerId/access")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("trainers", "edit")
+  issueAccess(@CurrentPrincipal() p: Principal, @Param("trainerId") id: string) {
+    return this.trainers.issueAccess(p, id);
+  }
+
   @Get(":id/availability")
   @RequirePermission("trainers", "read")
   listAvailability(@CurrentPrincipal() p: Principal, @Param("id") id: string) {

@@ -471,3 +471,97 @@ export const assignmentSubmissionQuerySchema = pageQuerySchema.extend({
 });
 
 export type AssignmentSubmissionQuery = z.infer<typeof assignmentSubmissionQuerySchema>;
+
+// ── Attendance ────────────────────────────────────────────────────────────
+
+/**
+ * The register for one session.
+ *
+ * ── Why the whole session is marked at once ─────────────────────────────
+ *
+ * A register is ONE act. Marking students one at a time leaves a half-taken
+ * register that is indistinguishable from one where everybody else was absent
+ * — and that distinction is load-bearing: `eligibility.service.ts` deliberately
+ * reports NOT_EVALUATED rather than 0% when a batch has no rows, because a
+ * certificate must not be refused on the strength of a register nobody took.
+ *
+ * So the write takes every student on the roster, and `takenAt` on the read
+ * answers "has this been done" without counting rows.
+ */
+export const attendanceStatusSchema = z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]);
+export type AttendanceStatus = z.infer<typeof attendanceStatusSchema>;
+
+export const attendanceRowSchema = z.object({
+  studentId: z.string(),
+  studentCode: z.string(),
+  studentName: z.string(),
+  /** Null until the register is taken. Not the same as ABSENT. */
+  status: attendanceStatusSchema.nullable(),
+  minutesPresent: z.number().int().nullable(),
+  remarks: z.string().nullable(),
+  markedAt: z.string().nullable(),
+});
+
+export type AttendanceRow = z.infer<typeof attendanceRowSchema>;
+
+export const sessionAttendanceSchema = z.object({
+  sessionId: z.string(),
+  sessionCode: z.string(),
+  sessionTitle: z.string(),
+  batchId: z.string(),
+  batchCode: z.string(),
+  scheduledDate: z.string(),
+  sessionStatus: z.enum(["SCHEDULED", "LIVE", "COMPLETED", "CANCELLED"]),
+  /** When the register was last taken. Null means never. */
+  takenAt: z.string().nullable(),
+  /** Whether this reader may still write it — see `trainerMayWrite`. */
+  editable: z.boolean(),
+  rows: z.array(attendanceRowSchema),
+  present: z.number().int(),
+  absent: z.number().int(),
+  late: z.number().int(),
+  excused: z.number().int(),
+});
+
+export type SessionAttendance = z.infer<typeof sessionAttendanceSchema>;
+
+export const markAttendanceSchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        studentId: z.string().min(1),
+        status: attendanceStatusSchema,
+        minutesPresent: z.number().int().min(0).max(1440).optional(),
+        remarks: z.string().trim().max(400).optional(),
+      }),
+    )
+    .min(1, "Mark at least one student")
+    .max(500),
+});
+
+export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
+
+/**
+ * Marking a submission.
+ *
+ * ── Why `marksAwarded` is nullable in the input ─────────────────────────
+ *
+ * Feedback without a number is a real thing to want — "look at broadcasting
+ * again" on a piece of work that was never scored out of anything. So an
+ * assignment with no `maxMarks` can still be marked, and the refusal is the
+ * other way round: a number against an assignment that has no ceiling is a
+ * mark out of nothing, and a number above the ceiling is a typo.
+ *
+ * ── Why there is no "ungrade" ───────────────────────────────────────────
+ *
+ * Correcting a mark is re-grading it, which this does. Removing one entirely
+ * would leave a student who was told 18/20 with a blank and no explanation —
+ * and `graded_at` is what the portal reads to decide whether to show a mark at
+ * all, so clearing it silently withdraws something a person already saw.
+ */
+export const gradeSubmissionSchema = z.object({
+  marksAwarded: z.number().int().min(0).max(1000).nullable(),
+  feedback: z.string().trim().max(4000).optional(),
+});
+
+export type GradeSubmissionInput = z.infer<typeof gradeSubmissionSchema>;

@@ -14,9 +14,14 @@ import {
   type RespondToProposalInput, type SessionQuery, type SessionUploadInput,
   type UpdateAssignmentInput, type UpdateBatchInput,
   type UpdateSessionInput,
+  markAttendanceSchema,
+  gradeSubmissionSchema,
+  type MarkAttendanceInput,
+  type GradeSubmissionInput,
 } from "@gurukulam/contracts";
 import { BatchesService } from "./batches.service";
 import { SessionsService } from "./sessions.service";
+import { AttendanceService } from "./attendance.service";
 import { zodBody } from "../../common/pipes/zod-validation.pipe";
 import { CurrentPrincipal, RequirePermission } from "../../common/decorators/principal.decorator";
 
@@ -27,6 +32,7 @@ export class BatchesController {
   constructor(
     private readonly batches: BatchesService,
     private readonly sessions: SessionsService,
+    private readonly attendance: AttendanceService,
   ) {}
 
   // ── Sessions first: static segments must be declared before ":id" so a
@@ -126,6 +132,48 @@ export class BatchesController {
   @RequirePermission("batches", "edit")
   createAssignment(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(createAssignmentSchema)) body: CreateAssignmentInput) {
     return this.sessions.createAssignment(p, id, body);
+  }
+
+  /**
+   * The register for a session.
+   *
+   * Both actors: the admin console cannot take one today either, and an
+   * operations team needs the override permanently — a trainer who did not
+   * mark the class is an ordinary Tuesday.
+   */
+  @Get("sessions/:sessionId/attendance")
+  @RequirePermission("batches", "read")
+  sessionAttendance(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.attendance.get(p, id);
+  }
+
+  /** The whole register at once — see the contract for why not one student. */
+  @Post("sessions/:sessionId/attendance")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  markAttendance(
+    @CurrentPrincipal() p: Principal,
+    @Param("sessionId") id: string,
+    @Body(zodBody(markAttendanceSchema)) body: MarkAttendanceInput,
+  ) {
+    return this.attendance.mark(p, id, body);
+  }
+
+  /**
+   * Marking one submission. Both actors — see the service.
+   *
+   * The student is told, from inside the same transaction, so nobody is
+   * notified about a mark that did not land.
+   */
+  @Post("submissions/:submissionId/grade")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  gradeSubmission(
+    @CurrentPrincipal() p: Principal,
+    @Param("submissionId") id: string,
+    @Body(zodBody(gradeSubmissionSchema)) body: GradeSubmissionInput,
+  ) {
+    return this.sessions.gradeSubmission(p, id, body);
   }
 
   /** Reached on its own, so the edit screen needs no query string. */

@@ -7,6 +7,9 @@ import {
   type Trainer, type TrainerDetail, type TrainerQuery, type UpdateTrainerInput,
   type TrainerAttention, type TrainerUtilisation,
 } from "@gurukulam/contracts";
+import { randomBytes } from "node:crypto";
+import { trainerLoginEmail } from "@gurukulam/contracts";
+import { hashPassword } from "../auth/password";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
@@ -366,6 +369,66 @@ export class TrainersService {
         approvedAt: r.approvedAt?.toISOString() ?? null,
       }));
     });
+  }
+
+  /**
+   * Portal access, issued deliberately.
+   *
+   * ── Why this is its own act and not part of creating a trainer ─────────
+   *
+   * A trainer record exists long before there is anything for them to sign in
+   * to — they are added to the bench when someone takes their CV. Issuing
+   * credentials at creation would mean every candidate on file holds a live
+   * account, and the notification sweep already raises "credentials issued but
+   * never used" as an operator situation for exactly that shape of mistake.
+   *
+   * ── Why it never re-issues silently ────────────────────────────────────
+   *
+   * Handing out a second temporary password invalidates the one the person is
+   * holding. So an existing credential is a conflict with the fact stated —
+   * resetting is a different act, and the operator should know which one they
+   * are doing.
+   *
+   * The temporary secret is not returned and not logged. It goes in the
+   * welcome pack, which is not this product's job yet.
+   */
+  async issueAccess(principal: Principal, trainerId: string) {
+    const trainer = await this.prisma.trainer.findFirst({
+      where: { trainerId, deletedAt: null },
+    });
+    if (!trainer) throw ApiException.notFound("Trainer");
+    assertInScope(principal, trainer);
+
+    /*
+     * Keyed on the field that RECORDS the act, not on the hash.
+     *
+     * The seed leaves trainers with a password hash and no `login_email`,
+     * which is not a credential at all — there is no identity to present it
+     * with, and `forTrainer` could never resolve one. Refusing those as
+     * "already has access" would leave 191 trainers permanently unable to be
+     * given any, which is exactly what happened the first time this ran.
+     */
+    if (trainer.credentialsIssuedAt !== null && trainer.loginEmail !== null) {
+      throw ApiException.conflict(
+        `${trainer.name} already has portal access as ${trainer.loginEmail ?? "an issued login"}. Reset the password instead of issuing a second one.`,
+      );
+    }
+
+    const updated = await this.prisma.trainer.update({
+      where: { trainerId },
+      data: {
+        // A temporary secret they must replace. Nothing here logs it.
+        passwordHash: hashPassword(randomBytes(18).toString("base64url")),
+        // Derived from the immutable trainer code, so it is unique by
+        // construction and survives a change of name. Their own email stays
+        // the contact address.
+        loginEmail: trainerLoginEmail(trainer.trainerCode),
+        mustReset: true,
+        credentialsIssuedAt: new Date(),
+      },
+    });
+
+    return { trainerId, loginEmail: updated.loginEmail, issuedAt: updated.credentialsIssuedAt?.toISOString() ?? null };
   }
 
   async remove(principal: Principal, trainerId: string): Promise<void> {
