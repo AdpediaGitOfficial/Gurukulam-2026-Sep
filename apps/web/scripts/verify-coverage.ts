@@ -12,11 +12,29 @@
  *
  *   · every write endpoint the API declares — the controllers are the source,
  *     because they are what actually exists rather than what a doc claims;
- *   · every write the console makes — every `apiFetch` carrying a method.
+ *   · every write each SURFACE makes — every `apiFetch` carrying a method,
+ *     attributed to the console, the student portal, `/teach` or `/campus` by
+ *     the directory it was written in.
  *
  * An endpoint nobody calls is either a missing screen or a deliberate
  * omission. The deliberate ones are listed below WITH THEIR REASON, which is
  * the point of writing it down: the next person reads why, not just that.
+ *
+ * ── Why the surface matters ─────────────────────────────────────────────
+ *
+ * It used to scan `apps/web/src` whole and ask only whether SOMETHING called
+ * the endpoint. That reads a call made from one portal as console coverage, and
+ * the product's premise is the opposite: the admin console performs every action
+ * all three portals do, permanently, because an operations team needs the
+ * override regardless. `POST /batches/submissions/:id/grade` was reachable from
+ * `/teach` and from nowhere else for as long as the trainer portal existed — an
+ * operator could not mark a submission at all — and this suite called it
+ * covered.
+ *
+ * The three `@RequireActor` controllers are the deliberate exception: `/me/*`,
+ * `/me/college/*` and `/me/trainer/*` refuse an administrator by construction,
+ * so a portal is the only surface that COULD call them. Those are read out of
+ * the controller rather than listed here, so a new one needs no bookkeeping.
  *
  * Static — no database, no browser, no running server. Cheap enough to run on
  * every change.
@@ -42,7 +60,51 @@ interface Endpoint {
   shape: string;
   file: string;
   line: number;
+  /**
+   * The surface this endpoint is gated to, when its controller carries
+   * `@RequireActor`. Null means any principal with the permission — which
+   * includes an administrator, so the console is expected to call it.
+   */
+  actorSurface: Surface | null;
 }
+
+/**
+ * Which part of the web app a call was written in.
+ *
+ * By directory, because that is what a surface IS here: a route group and the
+ * feature slice it reads. `shared` is `lib`, `server`, `components` and the
+ * public routes — code either portal or the console may pull in.
+ */
+type Surface = "console" | "portal" | "teach" | "campus" | "shared";
+
+const PORTAL_FEATURES: Record<string, Surface> = {
+  me: "portal",
+  teach: "teach",
+  campus: "campus",
+};
+
+function surfaceOf(file: string): Surface {
+  const rel = relative(WEB_SRC, file).split("\\").join("/");
+  if (rel.startsWith("app/portal/")) return "portal";
+  if (rel.startsWith("app/teach/")) return "teach";
+  if (rel.startsWith("app/campus/")) return "campus";
+  if (rel.startsWith("app/(console)/")) return "console";
+
+  const feature = /^features\/([^/]+)\//.exec(rel)?.[1];
+  if (feature !== undefined) return PORTAL_FEATURES[feature] ?? "console";
+
+  // `lib`, `server`, `components`, `config`, the auth and public route groups.
+  return "shared";
+}
+
+/** What a surface is called when the suite has to say it out loud. */
+const SURFACE_NAME: Record<Surface, string> = {
+  console: "the console",
+  portal: "the student portal",
+  teach: "/teach",
+  campus: "/campus",
+  shared: "shared code",
+};
 
 /**
  * Endpoints with no console caller, on purpose.
@@ -86,13 +148,40 @@ const joinPath = (prefix: string, route: string): string => {
  * under `/fee-ledger`, which is a suite reporting on endpoints that do not
  * exist while missing the ones that do.
  */
+/**
+ * `@RequireActor("STUDENT")` and friends, as the surface that answers them.
+ *
+ * Read per controller, and reset with the prefix: one file can declare several
+ * controllers, and an actor gate belongs to the one it sits above.
+ */
+const ACTOR_SURFACE: Record<string, Surface> = {
+  STUDENT: "portal",
+  TRAINER: "teach",
+  COLLEGE_USER: "campus",
+};
+
 function apiEndpoints(): Endpoint[] {
   const found: Endpoint[] = [];
   for (const file of walk(API_SRC).filter((f) => f.endsWith(".controller.ts"))) {
     const text = readFileSync(file, "utf8");
     let prefix: string | undefined;
+    let actorSurface: Surface | null = null;
 
     text.split("\n").forEach((line, index) => {
+      /* Above the `@Controller` it belongs to, in every one of the three, so it
+         is read first and cleared when the next controller starts.
+
+         Anchored to the start of the line, because every one of those three
+         controllers also NAMES the decorator in the docstring that explains it —
+         and an unanchored match read the prose as the gate. Commenting the real
+         decorator out therefore changed nothing, which is how this was found: a
+         controller could lose its actor gate and keep its exemption. */
+      const actor = /^\s*@RequireActor\(\s*["'`]([A-Z_]+)["'`]/.exec(line);
+      if (actor?.[1] !== undefined) {
+        actorSurface = ACTOR_SURFACE[actor[1]] ?? null;
+        return;
+      }
+
       const controller = /@Controller\(\s*["'`]([^"'`]*)["'`]\s*\)/.exec(line);
       if (controller) {
         prefix = controller[1];
@@ -110,6 +199,7 @@ function apiEndpoints(): Endpoint[] {
         shape: shapeOf(method, path),
         file: relative(ROOT, file),
         line: index + 1,
+        actorSurface,
       });
     });
   }
@@ -193,9 +283,10 @@ function pathLiterals(source: string): string[] {
   return out;
 }
 
-function consoleCalls(): Set<string> {
-  const shapes = new Set<string>();
+function callsBySurface(): Map<string, Set<Surface>> {
+  const shapes = new Map<string, Set<Surface>>();
   for (const file of walk(WEB_SRC)) {
+    const surface = surfaceOf(file);
     const text = readFileSync(file, "utf8");
     const pattern = /apiFetch(?:<[^>]*>)?\(/g;
     let match: RegExpExecArray | null;
@@ -261,7 +352,14 @@ function consoleCalls(): Set<string> {
       // No verb anywhere means a GET — that is what apiFetch defaults to.
       const verbs = methods.length === 0 ? ["GET"] : [...new Set(methods)];
 
-      for (const path of paths) for (const verb of verbs) shapes.add(shapeOf(verb, path));
+      for (const path of paths) {
+        for (const verb of verbs) {
+          const shape = shapeOf(verb, path);
+          const surfaces = shapes.get(shape) ?? new Set<Surface>();
+          surfaces.add(surface);
+          shapes.set(shape, surfaces);
+        }
+      }
     }
   }
   return shapes;
@@ -270,7 +368,7 @@ function consoleCalls(): Set<string> {
 // ── The answer ────────────────────────────────────────────────────────────
 
 const endpoints = apiEndpoints();
-const called = consoleCalls();
+const called = callsBySurface();
 
 /**
  * Covered when the console calls THIS endpoint — the same method and the same
@@ -304,15 +402,48 @@ const called = consoleCalls();
  * one shape here, which is deliberate — `:id` and `:studentId` are the same
  * hole in the same URL.
  */
-const covered = (endpoint: Endpoint): boolean => called.has(endpoint.shape);
+const callers = (endpoint: Endpoint): Set<Surface> => called.get(endpoint.shape) ?? new Set();
+
+const covered = (endpoint: Endpoint): boolean => callers(endpoint).size > 0;
+
+/**
+ * Whether the surface that is SUPPOSED to reach this endpoint does.
+ *
+ * For an actor-gated route that is its own portal, and only that portal — an
+ * administrator is refused by construction. For everything else it is the
+ * console, because the console performs every action the portals do. `shared`
+ * counts as the console: `lib` and `server` are where a call both surfaces make
+ * ends up, and nothing there is portal-only.
+ */
+const reachedByItsOwnSurface = (endpoint: Endpoint): boolean => {
+  const who = callers(endpoint);
+  if (endpoint.actorSurface !== null) return who.has(endpoint.actorSurface);
+  return who.has("console") || who.has("shared");
+};
 
 const gaps = endpoints.filter((e) => !covered(e) && DELIBERATE[e.shape] === undefined);
+
+/**
+ * Called, but not from the surface that owes it a way in.
+ *
+ * Reported separately from a gap because it is a different mistake and reads
+ * differently: the feature exists, somebody can do it, and the operations team
+ * cannot. That was true of grading for as long as `/teach` was the only caller.
+ */
+const wrongSurface = endpoints.filter(
+  (e) => covered(e) && !reachedByItsOwnSurface(e) && DELIBERATE[e.shape] === undefined,
+);
 const declared = endpoints.filter((e) => DELIBERATE[e.shape] !== undefined);
 const stale = Object.keys(DELIBERATE).filter((shape) => !endpoints.some((e) => e.shape === shape));
 
+const bySurface = (surface: Surface): number =>
+  [...called.values()].filter((who) => who.has(surface)).length;
+
 console.log(
-  `\n  ${endpoints.length} write endpoints on the API, ` +
-    `${called.size} distinct calls from the console\n`,
+  `\n  ${endpoints.length} write endpoints on the API; ${called.size} distinct calls — ` +
+    `${bySurface("console") + bySurface("shared")} from the console, ` +
+    `${bySurface("portal")} from the student portal, ` +
+    `${bySurface("teach")} from /teach, ${bySurface("campus")} from /campus\n`,
 );
 
 if (declared.length > 0) {
@@ -327,9 +458,25 @@ if (stale.length > 0) {
   console.log();
 }
 
-if (gaps.length === 0 && stale.length === 0) {
-  console.log(`  ${GREEN}Every write the API offers has a way in from the console.${RESET}\n`);
+if (gaps.length === 0 && stale.length === 0 && wrongSurface.length === 0) {
+  console.log(
+    `  ${GREEN}Every write the API offers has a way in from the surface that owes it one.${RESET}\n`,
+  );
   process.exit(0);
+}
+
+if (wrongSurface.length > 0) {
+  console.log(`  ${RED}${wrongSurface.length} endpoint(s) no operator can reach:${RESET}`);
+  for (const e of wrongSurface) {
+    const who = [...callers(e)].map((surface) => SURFACE_NAME[surface]).join(", ");
+    console.log(`    ${RED}${e.shape}${RESET}  ${DIM}called only from ${who} — ${e.file}:${e.line}${RESET}`);
+  }
+  console.log(
+    `\n  The console performs every action the portals do, permanently, because an\n` +
+      `  operations team needs the override regardless. A portal-only write is a\n` +
+      `  screen the console is missing — or, if the API refuses an administrator by\n` +
+      `  design, an \`@RequireActor\` the route does not carry.\n`,
+  );
 }
 
 if (gaps.length > 0) {

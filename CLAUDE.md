@@ -17,7 +17,7 @@ writing code.
 | `docs/modules.md` | Every module, screen, route, entity and operation |
 | `docs/prototype/index.html` | Clickable prototype — 60 routes, all screens. **Open it in a browser.** This is the design reference |
 | `docs/prototype/student.html` | The student portal, clickable. Same tokens, phone-first shell. Its segment switch shows invariants 3 and 7 as screens rather than prose — both segments walk, and `#!decision` records why |
-| `docs/prototype/trainer.html` | The trainer portal, clickable. Green rail. Shows the two screens with no server side — attendance and marking — and what an in-house trainer does not have |
+| `docs/prototype/trainer.html` | The trainer portal, clickable. Green rail. Marks attendance and marking as the two screens with no server side, which is how the design was drawn — **both are built now**, on both surfaces. Also shows what an in-house trainer does not have |
 | `docs/prototype/check.mjs` | Walks all three prototypes — every route, every segment, both widths — and fails on a dead link, a blank screen or sideways scroll. `CHROME=… node docs/prototype/check.mjs` |
 | `docs/deploy-runbook.md` | **How gurukulam.club actually deploys** — the Actions runner, PM2, and the pre-flight for this release |
 | `docs/admin-portal-plan.md` | Build specification and sequencing |
@@ -68,6 +68,19 @@ and share `batchIsTheirsNow`, because the read gate used to be spelled out insid
 service as "not their session AND not writable" — which made reading depend on the WRITE rule.
 Breaking `trainerMayWrite` in a fault-injection run therefore opened a foreign cohort's register too.
 
+**A loader cannot tell from an id whether a row is about to be rendered or cancelled, so `loadSession`
+asks.** It used to take `(principal, sessionId)` and answer the READ question, and every session
+mutation treated that answer as authorisation. Since a trainer's matrix carries `batches: edit`, a
+trainer released from a batch could still cancel the classes they had delivered, reschedule them, mark
+them complete, reopen them, re-venue them, set work against them and publish a recording on them: the
+history they are entitled to SEE was writable, and only `gradeSubmission` asked the write question —
+while the comment in the loader claimed all of them did. The third argument is now
+`"read" | "write"`, required, so a new call site cannot be silent about which it needs; the compiler
+asks, the way `assertOursToDecide(principal, act)` makes the college refusal name its act. The loader
+also held its own copy of the read rule, which was the second implementation of the sentence extracting
+`trainerMayRead` existed to end — it now calls `assertTrainerMayRead` and `assertTrainerMayWrite` and
+spells out neither.
+
 **Attendance is two hops, and the second is the one that gets left out.** "May this trainer write
 attendance for this student" is *is this session mine* AND *is this student on that session's batch
 roster*. The first passing feels like the answer: with only that, a trainer marks any student in the
@@ -75,8 +88,9 @@ database against a day that genuinely is theirs. The session is also more precis
 substitute for one day is a thing the schema models, so writes authorise on `batch_sessions.trainer_id`
 and reads authorise on the batch.
 
-**A register is taken whole, and a class that has not happened has no register.** The whole roster
-posts in one call, because a half-taken register is indistinguishable from one where everybody else
+**A register is taken whole, and a class that has not happened has no register.** Both surfaces post
+it — the trainer's session screen and the console's — and the whole roster goes in one call, because a
+half-taken register is indistinguishable from one where everybody else
 was absent — and that distinction decides a certificate, since `eligibility.service.ts` reports
 NOT_EVALUATED rather than 0% when a batch has no rows. The gate is the CALENDAR, not completion:
 a trainer marks the register while the room is still full, and requiring completion first would
@@ -106,6 +120,23 @@ with no screen calling it, which meant all 191 trainers were unreachable by any 
 exists, because re-issuing invalidates the password the person is already holding. The temporary
 secret is neither returned nor logged: the login address, derived from the immutable trainer code, is
 the only thing there is to hand over.
+
+**`verify:coverage` counts coverage PER SURFACE, because "somebody calls it" is not the rule.** It
+scanned `apps/web/src` whole and asked only whether some file made the call, so a write reachable from
+one portal and nowhere else read as console coverage — the exact opposite of the premise the product is
+arranged around. Attributing each `apiFetch` to the console, `/portal`, `/teach` or `/campus` by the
+directory it is written in found the real case immediately:
+`POST /batches/sessions/:id/attendance` had one caller and it was in `/teach`, so **no operator could
+take or correct a register at all** — on the one figure a certificate turns on. The console's session
+screen has the register now, with a select per row rather than the portal's four tap targets, and
+`marked_by` carries the operator where the trainer suite sees a trainer.
+
+The three `@RequireActor` controllers are the exception and they are read out of the controller rather
+than listed: `/me/*`, `/me/college/*` and `/me/trainer/*` refuse an administrator by construction, so a
+portal is the only surface that could call them. That match is anchored to the start of the line,
+because all three also NAME the decorator in the docstring above it — unanchored, the prose was read as
+the gate, and a controller could lose its `@RequireActor` and keep its exemption. Found by commenting
+one out and watching nothing happen.
 
 **The college portal is the one built by NARROWING, and that was always the plan.** `collegeScope`
 has sat on the principal beside `cityScope` since the first migration precisely so college users
@@ -332,9 +363,10 @@ be deleted tomorrow and nothing would fail.
 administrator or a student and a `/teach/*` route visited with either is correctly redirected — adding
 those routes to their arrays would test the redirect and nothing else. It measures the scope axis
 against the same database the admin sees whole, takes a register through the screen and reads the rows
-back, proves both attendance hops, proves a released trainer keeps their history and loses the write,
-proves a suspended one signs in and writes nothing, issues portal access from the console as an
-operator, and walks every trainer screen at 390px.
+back, proves both attendance hops, marks real work through the trainer's own screen and reads the mark
+and its attribution back, proves a released trainer keeps their history and loses the write — on all
+nine session verbs, not only attendance — proves a suspended one signs in and writes nothing, issues
+portal access from the console as an operator, and walks every trainer screen at 390px.
 
 Two of its checks needed the condition MANUFACTURED to mean anything, and both are the same shape as
 the certificate PDF. Every batch the seeded trainer holds carries one active student, and on a roster
@@ -343,6 +375,28 @@ borrows a second student of the same segment for the length of the check and han
 probe for "a student who is not on the roster is refused" picks a stranger with NO existing row, so
 "rows written" means what it says; an absolute count reported the previous run's leftovers as this
 run's failure, twice.
+
+**Marking is manufactured end to end, because the seed contains no submissions at all.** `verify:portal`
+deletes the hand-in it makes, so a marking check that waited for a real one to be lying about passed,
+skipped or failed depending on what the last run left behind — which is not a check; on a freshly
+seeded database it simply reported no data. Both suites now write the submission they need, with its
+text, mark it, and take the row and the notice it emitted away again. The foreign half is manufactured
+whole — the assignment as well as the hand-in — since every assignment in the estate hangs off one
+session of the seeded trainer's.
+
+**`{ not: id }` on a nullable column drops the NULLs**, and that made a check skip while reporting it
+as a fact about the data. `trainer_id <> id` is NULL rather than true for a session nobody is named on,
+and forty of the forty-one delivered sessions carry no trainer — so "find a session that is not theirs"
+matched none of them. Spelled `OR: [{ trainerId: null }, { trainerId: { not: me } }]` in both places
+that ask it.
+
+**A trainer who covers one day needs the day AND the cohort, and the suite pins both halves on one
+row.** Naming them on `batch_sessions.trainer_id` alone is refused, deliberately: that is exactly what
+a RELEASED trainer still has, so a rule reading the day by itself would hand their old cohorts back.
+Add a CONFIRMED assignment to the batch and the same request succeeds — and the mark is attributed to
+the stand-in rather than to the batch's own trainer. That second half is what makes attribution
+testable: on their own cohort the primary trainer IS them, so a build that stamped `graded_by` with the
+batch's trainer instead of the caller passed every check until this row existed.
 
 **`npm run verify:campus` holds a college session** — 18 checks, driven through the real screens and
 endpoints and read back out of the database. It measures the scope axis against what an admin sees
@@ -505,7 +559,7 @@ what makes institutional intake auditable.
 
 | Deferred | Where it lands |
 | --- | --- |
-| Marking a session delivered, setting work, attaching a recording, from `/teach` | The endpoints already authorise a trainer through `assertTrainerMayWrite`; the console owns the screens and `/teach` only reads |
+| Marking a session delivered, setting work, attaching a recording, from `/teach` | Every session endpoint now authorises a trainer through `assertTrainerMayWrite` — `loadSession` takes the intent — so these need a screen and nothing else. The console owns them today; `/teach` writes the register and the marks |
 | Bulk student import from `/campus` | `POST /students/import` is the same code the console calls and `collegeScope` already forces the college; the portal adds one at a time |
 | A narrower college account | `college_users.permissions` is a JSON column and the principal builder reads it, so `COLLEGE_PERMISSIONS` is what `grant()` writes rather than the only set that can exist |
 | Naukri feed | `job_postings.source` / `external_ref` / `external_url` already carried |

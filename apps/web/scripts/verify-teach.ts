@@ -12,6 +12,8 @@
  *
  *   · the scope axis, measured against the same database the admin sees whole;
  *   · the two hops on attendance — is the session mine, is the student on it;
+ *   · marking the work handed in on their own session, attributed to them, and
+ *     the refusal on another cohort's;
  *   · that a released trainer keeps their history and loses the write;
  *   · that a suspended trainer signs in, reads, and writes nothing;
  *   · that nothing commercial is reachable;
@@ -371,17 +373,25 @@ async function main(): Promise<void> {
       }
 
       // ── 5. Somebody else's session ──────────────────────────────────────
+      // The OR is the nullable-column trap recorded on the marking check: a
+      // batch with no primary trainer is emphatically not this trainer's, and
+      // `{ not: id }` would have excluded every one of them.
       const foreign = await prisma.batchSession.findFirst({
         where: {
           deletedAt: null,
           batch: {
-            primaryTrainerId: { not: trainer.trainerId },
-            trainerAssignments: { none: { trainerId: trainer.trainerId, deletedAt: null } },
+            AND: [
+              { OR: [{ primaryTrainerId: null }, { primaryTrainerId: { not: trainer.trainerId } }] },
+              { trainerAssignments: { none: { trainerId: trainer.trainerId, deletedAt: null } } },
+            ],
           },
         },
         select: { sessionId: true },
       });
-      if (foreign !== null) {
+      if (foreign === null) {
+        // Never silently: a skip that prints nothing reads as a pass.
+        console.log("  \x1b[90m· every session in the estate is theirs — not exercised\x1b[0m");
+      } else {
         const response = await fetch(`${API}/batches/sessions/${foreign.sessionId}/attendance`, {
           headers: { Authorization: `Bearer ${trainerToken}` },
         });
@@ -393,6 +403,9 @@ async function main(): Promise<void> {
       }
     }
   }
+
+  // ── 5b. Marking, which the dashboard has linked to since it was built ───
+  await markingChecks(page, trainer, trainerToken);
 
   // ── 6. Released: history kept, writing stopped ──────────────────────────
   if (trainerToken !== undefined && session !== null) {
@@ -476,6 +489,122 @@ async function main(): Promise<void> {
         "a released trainer keeps their history and loses the write",
         `read ${read.status} (want 200), write ${write.status} (want 404), rows ${wroteWhileReleased}`,
       );
+    }
+
+    /*
+     * ── And the other eight verbs, which is where the hole was ────────────
+     *
+     * Attendance was the only write this suite tried, and attendance was the
+     * only session write that asked the write question. Every other mutation
+     * called `loadSession` and took the READ answer as authorisation — and a
+     * trainer's matrix carries `batches: edit`, so a trainer released from a
+     * batch could still cancel the classes they had delivered, reschedule them,
+     * mark them complete, re-venue them, set work against them and publish a
+     * recording on them. The history they are entitled to SEE was writable.
+     *
+     * Checked against the row afterwards, not only against the status code: a
+     * refusal that arrives after the write has landed is not a refusal.
+     */
+    const probeStart = new Date();
+    const before = await prisma.batchSession.findUniqueOrThrow({
+      where: { sessionId: session.sessionId },
+      select: { status: true, venue: true, scheduledDate: true },
+    });
+    const assignmentsBefore = await prisma.assignment.count({
+      where: { sessionId: session.sessionId, deletedAt: null },
+    });
+    const bearer = { "Content-Type": "application/json", Authorization: `Bearer ${released ?? ""}` };
+    const verbs: [string, string, Record<string, unknown> | null][] = [
+      ["re-venue it", "PATCH:", { venue: "a room they no longer teach in" }],
+      ["cancel it", "cancel", { reason: "a class that is not theirs to call off" }],
+      /* Every field the schema asks for, `reason` included. A body that fails
+         validation comes back 400 from the pipe and never reaches the rule —
+         which is how this entry first reported a refusal it had not tested. */
+      [
+        "reschedule it",
+        "reschedule",
+        {
+          scheduledDate: "2026-12-31",
+          startTime: "10:00",
+          endTime: "12:00",
+          reason: "moved by somebody with no claim on the cohort",
+        },
+      ],
+      ["mark it delivered", "complete", null],
+      ["reopen it", "reopen", null],
+      ["set work on it", "assignments", { title: "Work set by somebody released", maxMarks: 10 }],
+      ["publish a recording", "recording", { url: "https://example.test/not-theirs" }],
+      ["unpublish the recording", "recording/unpublish", null],
+    ];
+
+    const allowed: string[] = [];
+    for (const [label, path, body] of verbs) {
+      const response =
+        path === "PATCH:"
+          ? await fetch(`${API}/batches/sessions/${session.sessionId}`, {
+              method: "PATCH",
+              headers: bearer,
+              body: JSON.stringify(body),
+            })
+          : await fetch(`${API}/batches/sessions/${session.sessionId}/${path}`, {
+              method: "POST",
+              headers: bearer,
+              ...(body === null ? {} : { body: JSON.stringify(body) }),
+            });
+      // 404 exactly. A 409 would mean the state of the session answered rather
+      // than the rule, and the rule is what is under test.
+      if (response.status !== 404) allowed.push(`${label}=${response.status}`);
+    }
+
+    const after = await prisma.batchSession.findUniqueOrThrow({
+      where: { sessionId: session.sessionId },
+      select: { status: true, venue: true, scheduledDate: true },
+    });
+    const assignmentsAfter = await prisma.assignment.count({
+      where: { sessionId: session.sessionId, deletedAt: null },
+    });
+    const untouched =
+      after.status === before.status &&
+      after.venue === before.venue &&
+      after.scheduledDate.getTime() === before.scheduledDate.getTime() &&
+      assignmentsAfter === assignmentsBefore;
+
+    if (allowed.length === 0 && untouched) {
+      ok("…and every other verb on that session too", `${verbs.length} refused, the row unchanged`);
+    } else {
+      bad(
+        "…and every other verb on that session too",
+        `${allowed.join(", ") || "all refused"}; row ${untouched ? "unchanged" : `CHANGED: ${JSON.stringify(after)}, ${assignmentsAfter} assignments`}`,
+      );
+      /*
+       * Undone HERE, in the failing branch.
+       *
+       * When the eight verbs are refused there is nothing to undo. When one of
+       * them goes through, this run has just cancelled a real class, moved it to
+       * December and re-venued it — and the next run would report the mess
+       * rather than the fault. The first injection run left exactly that behind.
+       */
+      await prisma.batchSession.update({
+        where: { sessionId: session.sessionId },
+        data: {
+          status: before.status,
+          venue: before.venue,
+          scheduledDate: before.scheduledDate,
+          cancelReason: null,
+          completedAt: null,
+          completedBy: null,
+        },
+      });
+      await prisma.assignment.deleteMany({
+        where: { sessionId: session.sessionId, title: "Work set by somebody released" },
+      });
+      await prisma.sessionRecording.deleteMany({
+        where: { sessionId: session.sessionId, url: "https://example.test/not-theirs" },
+      });
+      // And the notices a cancel or a reschedule emitted to the roster.
+      await prisma.notification.deleteMany({
+        where: { subjectType: "session", subjectId: session.sessionId, createdAt: { gte: probeStart } },
+      });
     }
 
     await prisma.batch.update({
@@ -736,6 +865,599 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/**
+ * Marking, from the portal of the person who taught the class.
+ *
+ * ── Why it is here and not only in the forms suite ─────────────────────
+ *
+ * `verify:forms` marks the same submission as an OPERATOR, which exercises the
+ * console's screen and the endpoint. Neither says anything about the trainer
+ * axis: the dashboard has counted "waiting to be marked" since it was built and
+ * linked to a session screen with no way to mark, and the submission list
+ * answered a trainer with every submission in the estate. Both faults live on
+ * this side of the door, so they can only be caught with a trainer's session in
+ * hand.
+ *
+ * ── What is MANUFACTURED, and why ──────────────────────────────────────
+ *
+ * The seed creates no submissions at all, and `verify:portal` deletes the one it
+ * hands in. So a check that waits for a real one to be lying around passes or
+ * skips depending on what the last run left behind — which is not a check. This
+ * one writes the submission it needs, marks it, and takes it away again; the
+ * text is written too, because "the marker can read the answer" is true of an
+ * empty string whatever the mapper does.
+ */
+async function markingChecks(
+  page: Page,
+  trainer: { trainerId: string; name: string },
+  trainerToken: string | undefined,
+): Promise<void> {
+  const WORK = "SELECT o.id FROM orders o JOIN customers c ON c.id = o.customer_id\n-- a second line, kept as written";
+
+  /*
+   * An assignment of THEIRS, with a ceiling, on a day that has happened.
+   *
+   * The ceiling is what makes the refusal below mean anything. "Of theirs" is
+   * the scope axis. And the date is the register's gate, which the mark form
+   * shares — `editable` arrives from the attendance endpoint, so a class in the
+   * future renders read-only and the form under test would not be on the page.
+   */
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      deletedAt: null,
+      status: { in: ["OPEN", "CLOSED"] },
+      maxMarks: { not: null },
+      session: {
+        deletedAt: null,
+        trainerId: trainer.trainerId,
+        status: { not: "CANCELLED" },
+        scheduledDate: { lte: new Date() },
+      },
+    },
+    select: { assignmentId: true, title: true, maxMarks: true, batchId: true, sessionId: true },
+  });
+
+  if (assignment === null || assignment.maxMarks === null || assignment.sessionId === null) {
+    console.log("  \x1b[90m· no assignment of theirs carries a ceiling — marking is not exercised\x1b[0m");
+    return;
+  }
+
+  const ceiling = assignment.maxMarks;
+  const held = await prisma.assignmentSubmission.findFirst({
+    where: { assignmentId: assignment.assignmentId, deletedAt: null, submittedAt: { not: null } },
+    select: {
+      submissionId: true,
+      studentId: true,
+      marksAwarded: true,
+      feedback: true,
+      gradedBy: true,
+      gradedAt: true,
+      status: true,
+      contentText: true,
+    },
+  });
+
+  /*
+   * Handed in by a student who is on the roster, because that is the only kind
+   * of submission the product can produce. Written straight at the table rather
+   * than through `/me/assignments/:id/submit`: that path has its own suite, and
+   * a sign-in as this batch's student here would need their password.
+   */
+  const rosterMember =
+    held !== null
+      ? null
+      : await prisma.studentBatchMapping.findFirst({
+          where: { batchId: assignment.batchId, deletedAt: null, isActive: true },
+          select: { studentId: true },
+        });
+  if (held === null && rosterMember === null) {
+    console.log("  \x1b[90m· nobody on this batch's roster — marking is not exercised\x1b[0m");
+    return;
+  }
+
+  const invented =
+    held !== null || rosterMember === null
+      ? null
+      : await prisma.assignmentSubmission.create({
+          data: {
+            assignmentId: assignment.assignmentId,
+            studentId: rosterMember.studentId,
+            status: "SUBMITTED",
+            submittedAt: new Date(),
+            contentText: WORK,
+            createdBy: rosterMember.studentId,
+          },
+          select: { submissionId: true, studentId: true },
+        });
+
+  const submissionId = held?.submissionId ?? invented?.submissionId ?? "";
+  const studentId = held?.studentId ?? invented?.studentId ?? "";
+  // A mark inside the ceiling and different from whatever is stored, so a pass
+  // cannot be the number that was already there.
+  const high = Math.min(9, ceiling);
+  const target = held?.marksAwarded === high ? high - 1 : high;
+  const since = new Date();
+
+  try {
+    if (held !== null) {
+      await prisma.assignmentSubmission.update({
+        where: { submissionId },
+        data: { contentText: WORK },
+      });
+    }
+
+    await page.goto(`${BASE}/teach/sessions/${assignment.sessionId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForLoadState("load");
+    /*
+     * Waited on THIS form's own island.
+     *
+     * `querySelector("form")` is whichever form hydrated first — the register,
+     * here — so a wait on it passes while the mark form is still bare, the click
+     * does nothing, and the probe then reads a database nothing has written.
+     * Found three times in one day, in three suites.
+     */
+    const marks = `input[id="marks-${submissionId}"]`;
+    await page
+      .waitForFunction(
+        (selector: string) => {
+          const form = document.querySelector(selector)?.closest("form") ?? null;
+          return form !== null && Object.keys(form).some((k) => k.startsWith("__reactProps$"));
+        },
+        marks,
+        { timeout: 15000 },
+      )
+      .catch(() => undefined);
+
+    if ((await page.locator(marks).count()) === 0) {
+      bad("a trainer can mark work handed in on their session", "no mark field on the session screen");
+    } else {
+      const shown = await page.locator("body").innerText();
+      if (shown.includes("a second line, kept as written")) {
+        ok("the work is on the trainer's screen", "line breaks and all");
+      } else {
+        // `content_text` was in no contract but the student's own, so a trainer
+        // was asked to mark work they could not read.
+        bad("the work is on the trainer's screen", "the submitted text is not rendered");
+      }
+
+      // The ceiling, where it is typed. The browser refuses the submit, so no
+      // request is made — which is the point of putting `max` on the field.
+      const field = page.locator(marks).first();
+      await field.fill(String(ceiling + 5));
+      const verdict = await field.evaluate((element: HTMLInputElement) => ({
+        max: element.max,
+        valid: element.checkValidity(),
+      }));
+      if (verdict.max === String(ceiling) && !verdict.valid) {
+        ok("a mark above the ceiling cannot be submitted", `max=${verdict.max}`);
+      } else {
+        bad("a mark above the ceiling cannot be submitted", `max=${verdict.max || "(none)"}, valid=${verdict.valid}`);
+      }
+
+      await field.fill(String(target));
+      await page.locator(`textarea[id="feedback-${submissionId}"]`).first().fill("Good joins. Watch the null rows.");
+      const card = page.locator("li").filter({ has: page.locator(marks) }).last();
+      await card.getByRole("button", { name: /save the mark|update the mark/i }).first().click();
+
+      /*
+       * Polled from the DATABASE.
+       *
+       * A server action posts and revalidates without navigating, so neither
+       * `networkidle` nor the success alert proved reliable — one probe read the
+       * old mark while the student's notice already carried the new one.
+       */
+      const graded = await poll(
+        () =>
+          prisma.assignmentSubmission.findUniqueOrThrow({
+            where: { submissionId },
+            select: { marksAwarded: true, feedback: true, gradedBy: true, gradedAt: true, status: true },
+          }),
+        (row) => row.marksAwarded === target,
+      );
+
+      /*
+       * Attribution is the assertion, not just the number.
+       *
+       * `graded_by` carries an admin id or a trainer id and has no foreign key
+       * to either, so a build that stamped the batch's primary trainer, or the
+       * operator who happened to seed the row, would still show a mark on the
+       * screen. The trainer who pressed the button is the only right answer.
+       */
+      if (
+        graded.marksAwarded === target &&
+        graded.status === "GRADED" &&
+        graded.gradedBy === trainer.trainerId &&
+        graded.gradedAt !== null
+      ) {
+        ok(
+          "a trainer can mark work handed in on their session",
+          `${target} of ${ceiling}, attributed to ${trainer.name}`,
+        );
+      } else {
+        bad(
+          "a trainer can mark work handed in on their session",
+          `marks ${graded.marksAwarded}, status ${graded.status}, gradedBy ${graded.gradedBy ?? "null"}`,
+        );
+      }
+
+      /*
+       * The student is told, and the notice carries NO group key.
+       *
+       * A mark is an event for one person at the moment it happened, so it is
+       * emitted rather than swept. The sweep resolves BY group key, so a
+       * borrowed one means the next nightly run deletes this notice and nobody
+       * ever knows they were marked.
+       */
+      const notice = await poll(
+        () =>
+          prisma.notification.findFirst({
+            where: {
+              recipientType: "STUDENT",
+              recipientId: studentId,
+              type: "assignment.graded",
+              createdAt: { gte: since },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { body: true, groupKey: true },
+          }),
+        (row) => (row?.body ?? "").includes(`${target} out of ${ceiling}`),
+      );
+      if ((notice?.body ?? "").includes(`${target} out of ${ceiling}`) && notice?.groupKey === null) {
+        ok("…and the student is told, with no group key on it", notice?.body ?? "");
+      } else {
+        bad(
+          "…and the student is told, with no group key on it",
+          `body ${notice?.body ?? "none"}, groupKey ${notice?.groupKey ?? "null"}`,
+        );
+      }
+    }
+  } finally {
+    /*
+     * Put back in a `finally`, and the notice with it.
+     *
+     * A failed assertion above would otherwise leave a mark this suite invented
+     * on a real student's work, and the next run would measure it. The emitted
+     * notice is deleted too: it is real news about a grade that no longer
+     * exists, and a student's bell is not a scratch pad.
+     */
+    if (invented !== null) {
+      await prisma.assignmentSubmission.delete({ where: { submissionId } });
+    } else if (held !== null) {
+      await prisma.assignmentSubmission.update({
+        where: { submissionId },
+        data: {
+          marksAwarded: held.marksAwarded,
+          feedback: held.feedback,
+          gradedBy: held.gradedBy,
+          gradedAt: held.gradedAt,
+          status: held.status,
+          contentText: held.contentText,
+        },
+      });
+    }
+    await prisma.notification.deleteMany({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: studentId,
+        type: "assignment.graded",
+        createdAt: { gte: since },
+      },
+    });
+  }
+
+  // ── Nothing handed in is not something to mark ──────────────────────────
+  /*
+   * A PENDING row with no `submitted_at` is work ALLOCATED to a student, not
+   * work they did. `/me` draws that exact line to tell "still to do" from
+   * "waiting to be marked", so marking one would tell a student what they got
+   * for something they never sent — and would move the row to GRADED, which is
+   * how the work then disappears off their own list of things to do.
+   */
+  if (trainerToken !== undefined) {
+    const unsubmitted = await prisma.assignment.findFirst({
+      where: {
+        deletedAt: null,
+        status: { in: ["OPEN", "CLOSED"] },
+        session: { deletedAt: null, trainerId: trainer.trainerId },
+        submissions: { none: { deletedAt: null } },
+      },
+      select: { assignmentId: true, batchId: true },
+    });
+    const allocatedTo =
+      unsubmitted === null
+        ? null
+        : await prisma.studentBatchMapping.findFirst({
+            where: { batchId: unsubmitted.batchId, deletedAt: null, isActive: true },
+            select: { studentId: true },
+          });
+
+    if (unsubmitted === null || allocatedTo === null) {
+      console.log("  \x1b[90m· nothing of theirs is unsubmitted — the empty hand-in is not exercised\x1b[0m");
+    } else {
+      const pending = await prisma.assignmentSubmission.create({
+        data: {
+          assignmentId: unsubmitted.assignmentId,
+          studentId: allocatedTo.studentId,
+          status: "PENDING",
+          createdBy: allocatedTo.studentId,
+        },
+        select: { submissionId: true },
+      });
+      try {
+        const refused = await fetch(`${API}/batches/submissions/${pending.submissionId}/grade`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${trainerToken}` },
+          /*
+           * Feedback with no number, so the ONLY rule that can refuse this is
+           * the one under test.
+           *
+           * A mark would be judged by the ceiling first, and the ceiling refused
+           * it for its own reasons — with the hand-in guard deleted the request
+           * still came back 400, from a different rule, on an assignment that
+           * happens to carry no maximum. A probe that can be saved by the wrong
+           * guard does not test the right one.
+           */
+          body: JSON.stringify({ marksAwarded: null, feedback: "Marked without being sent." }),
+        });
+        const row = await prisma.assignmentSubmission.findUniqueOrThrow({
+          where: { submissionId: pending.submissionId },
+          select: { marksAwarded: true, status: true, gradedAt: true, feedback: true },
+        });
+        // 409: the row is theirs to write and the request is well formed. What
+        // is wrong is the state of the world, which is what a conflict says.
+        if (
+          refused.status === 409 &&
+          row.status === "PENDING" &&
+          row.feedback === null &&
+          row.gradedAt === null
+        ) {
+          ok("work that was never handed in cannot be marked", `${refused.status}, still PENDING`);
+        } else {
+          bad(
+            "work that was never handed in cannot be marked",
+            `status ${refused.status} (want 409), ${row.status}, feedback ${JSON.stringify(row.feedback)}`,
+          );
+        }
+      } finally {
+        await prisma.assignmentSubmission.delete({ where: { submissionId: pending.submissionId } });
+      }
+    }
+  }
+
+  // ── Somebody else's cohort's work ───────────────────────────────────────
+  /*
+   * The read leak, and the write refusal, on one manufactured row.
+   *
+   * `listSubmissions` applied no trainer scope at all: the endpoint answered a
+   * trainer with every submission in the estate — the work, the student's name
+   * and the mark, for cohorts they have never taught. It was found by
+   * manufacturing exactly this row and watching the total go from 2 to 3.
+   */
+  if (trainerToken === undefined) return;
+
+  /*
+   * Manufactured whole — the cohort, the work and the hand-in.
+   *
+   * Only four assignments exist in the estate and every one of them hangs off a
+   * session of this trainer's, so a check that looked for a foreign submission
+   * lying about would skip on every run and report nothing. The session is a
+   * COMPLETED one because invariant 10 says work is set against a class that
+   * happened, and a probe row the product could not have produced proves nothing
+   * about the product.
+   */
+  const foreignSession = await prisma.batchSession.findFirst({
+    where: {
+      deletedAt: null,
+      status: "COMPLETED",
+      /*
+       * Spelled as an OR, because `{ not: id }` on a nullable column drops the
+       * NULLs: `trainer_id <> id` is NULL rather than true for a session nobody
+       * is named on. Forty of the forty-one delivered sessions in the estate
+       * carry no trainer, so the first version of this query matched none of
+       * them — and the check skipped on every run while reporting that as a
+       * fact about the data rather than about the query.
+       */
+      OR: [{ trainerId: null }, { trainerId: { not: trainer.trainerId } }],
+      batch: {
+        deletedAt: null,
+        AND: [
+          { OR: [{ primaryTrainerId: null }, { primaryTrainerId: { not: trainer.trainerId } }] },
+          { trainerAssignments: { none: { trainerId: trainer.trainerId, deletedAt: null } } },
+          { studentMappings: { some: { deletedAt: null, isActive: true } } },
+        ],
+      },
+    },
+    select: { sessionId: true, batchId: true, sessionCode: true, trainerId: true },
+  });
+  if (foreignSession === null) {
+    console.log("  \x1b[90m· no delivered session of another cohort — the read leak is not exercised\x1b[0m");
+    return;
+  }
+
+  const stranger = await prisma.studentBatchMapping.findFirst({
+    where: { batchId: foreignSession.batchId, deletedAt: null, isActive: true },
+    select: { studentId: true },
+  });
+  if (stranger === null) {
+    console.log("  \x1b[90m· nobody on the other cohort's roster — not exercised\x1b[0m");
+    return;
+  }
+
+  const foreignAssignment = await prisma.assignment.create({
+    data: {
+      assignmentCode: `ASG-PROBE-${Date.now()}`,
+      batchId: foreignSession.batchId,
+      sessionId: foreignSession.sessionId,
+      title: "Another cohort's work",
+      maxMarks: 10,
+      status: "OPEN",
+      publishedAt: new Date(),
+    },
+    select: { assignmentId: true },
+  });
+  const foreign = await prisma.assignmentSubmission.create({
+    data: {
+      assignmentId: foreignAssignment.assignmentId,
+      studentId: stranger.studentId,
+      status: "SUBMITTED",
+      submittedAt: new Date(),
+      contentText: "Another cohort's answer, which is none of their business.",
+      createdBy: stranger.studentId,
+    },
+    select: { submissionId: true },
+  });
+
+  try {
+    const listed = (await (
+      await fetch(`${API}/batches/submissions?pageSize=200`, {
+        headers: { Authorization: `Bearer ${trainerToken}` },
+      })
+    ).json()) as { rows?: { submissionId?: string }[] };
+    const reached = (listed.rows ?? []).some((row) => row.submissionId === foreign.submissionId);
+
+    const refused = await fetch(`${API}/batches/submissions/${foreign.submissionId}/grade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${trainerToken}` },
+      body: JSON.stringify({ marksAwarded: 1 }),
+    });
+    const unmoved = await prisma.assignmentSubmission.findUniqueOrThrow({
+      where: { submissionId: foreign.submissionId },
+      select: { marksAwarded: true, gradedAt: true },
+    });
+
+    /*
+     * Two checks, not one.
+     *
+     * The read and the write are two rules in two functions — `listSubmissions`
+     * scopes the query, `gradeSubmission` asserts the session is theirs — and a
+     * single assertion over both reports one failure whichever broke. Injecting
+     * each in turn is what showed it: both faults printed the same line.
+     */
+    if (!reached) {
+      ok("another cohort's submission is not listed", "the trainer axis, not city or college scope");
+    } else {
+      bad("another cohort's submission is not listed", "their work and their names came back");
+    }
+
+    // 404, never 403: a refusal would confirm that this cohort's submission
+    // exists, which is the same leak said out loud.
+    if (refused.status === 404 && unmoved.marksAwarded === null && unmoved.gradedAt === null) {
+      ok("…nor is it theirs to mark", `grade reads as not found, ${refused.status}`);
+    } else {
+      bad(
+        "…nor is it theirs to mark",
+        `grade ${refused.status} (want 404), marks ${unmoved.marksAwarded ?? "null"}`,
+      );
+    }
+    /*
+     * ── The substitute, on the same row ──────────────────────────────────
+     *
+     * Two answers from one submission, and the only thing that changes between
+     * them is who this trainer is to the cohort.
+     *
+     * Being named on the day is NOT enough on its own, and that is deliberate:
+     * `trainer_id` on a session they delivered is exactly what a RELEASED
+     * trainer still has, so a rule that read the day alone would hand their old
+     * cohorts back. Covering a class means both — the operator names them on the
+     * day and gives them a confirmed assignment to the batch — which is the
+     * relationship `batchIsTheirsNow` asks about.
+     *
+     * It is also what makes the attribution assertion above mean anything. On
+     * their own cohort the batch's primary trainer IS them, so a build that
+     * stamped `graded_by` with the primary trainer instead of the caller passed
+     * every check; injecting that fault is what found this gap. Here the two are
+     * different people, so only one of them can be right.
+     */
+    await prisma.batchSession.update({
+      where: { sessionId: foreignSession.sessionId },
+      data: { trainerId: trainer.trainerId },
+    });
+    const dayOnly = await fetch(`${API}/batches/submissions/${foreign.submissionId}/grade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${trainerToken}` },
+      body: JSON.stringify({ marksAwarded: 3 }),
+    });
+    const afterDayOnly = await prisma.assignmentSubmission.findUniqueOrThrow({
+      where: { submissionId: foreign.submissionId },
+      select: { marksAwarded: true },
+    });
+    if (dayOnly.status === 404 && afterDayOnly.marksAwarded === null) {
+      ok("being named on the day is not enough by itself", "or a released trainer would get their cohorts back");
+    } else {
+      bad(
+        "being named on the day is not enough by itself",
+        `status ${dayOnly.status} (want 404), marks ${afterDayOnly.marksAwarded ?? "null"}`,
+      );
+    }
+
+    // Now the cohort relationship as well, which is what covering a class is.
+    const cover = await prisma.batchTrainerAssignment.create({
+      data: {
+        batchId: foreignSession.batchId,
+        trainerId: trainer.trainerId,
+        status: "CONFIRMED",
+        respondedAt: new Date(),
+        autoConfirmed: true,
+      },
+      select: { assignmentId: true },
+    });
+    const covered = await fetch(`${API}/batches/submissions/${foreign.submissionId}/grade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${trainerToken}` },
+      body: JSON.stringify({ marksAwarded: 4 }),
+    });
+    const holder = await prisma.batch.findUniqueOrThrow({
+      where: { batchId: foreignSession.batchId },
+      select: { primaryTrainerId: true },
+    });
+    const substituted = await prisma.assignmentSubmission.findUniqueOrThrow({
+      where: { submissionId: foreign.submissionId },
+      select: { marksAwarded: true, gradedBy: true },
+    });
+    if (
+      covered.status === 200 &&
+      substituted.marksAwarded === 4 &&
+      substituted.gradedBy === trainer.trainerId &&
+      holder.primaryTrainerId !== trainer.trainerId
+    ) {
+      ok(
+        "covering a class carries the mark, attributed to whoever gave it",
+        `${foreignSession.sessionCode}, marked by the stand-in and not by the batch's own trainer`,
+      );
+    } else {
+      bad(
+        "covering a class carries the mark, attributed to whoever gave it",
+        `status ${covered.status}, marks ${substituted.marksAwarded ?? "null"}, gradedBy ${
+          substituted.gradedBy === trainer.trainerId ? "the stand-in" : (substituted.gradedBy ?? "null")
+        }, batch held by ${holder.primaryTrainerId ?? "nobody"}`,
+      );
+    }
+    await prisma.batchTrainerAssignment.delete({ where: { assignmentId: cover.assignmentId } });
+  } finally {
+    /* The column goes back whatever happened above, and both rows with it — a
+       session left pointing at a stand-in is a cohort quietly reassigned. */
+    await prisma.batchSession.update({
+      where: { sessionId: foreignSession.sessionId },
+      data: { trainerId: foreignSession.trainerId },
+    });
+    await prisma.assignmentSubmission.delete({ where: { submissionId: foreign.submissionId } });
+    await prisma.assignment.delete({ where: { assignmentId: foreignAssignment.assignmentId } });
+  }
+}
+
+/** Reads until it reads what it is waiting for, or twenty seconds pass. */
+async function poll<T>(read: () => Promise<T>, want: (value: T) => boolean, ms = 20000): Promise<T> {
+  const until = Date.now() + ms;
+  let last = await read();
+  while (!want(last) && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    last = await read();
+  }
+  return last;
 }
 
 main().catch(async (error) => {

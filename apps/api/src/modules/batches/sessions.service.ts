@@ -12,7 +12,8 @@ import { IdService } from "../ids/id.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ApiException } from "../../common/errors";
 import {
-  assertInScope, assertTrainerMayWrite, cityScope, collegeScope, isTrainer, liveOnly,
+  assertInScope, assertTrainerMayRead, assertTrainerMayWrite, cityScope, collegeScope, isTrainer, liveOnly,
+  trainerAssignmentScope,
   trainerSessionScope,
 } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
@@ -82,7 +83,7 @@ export class SessionsService {
   }
 
   async get(principal: Principal, sessionId: string) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "read");
     const assignments = await this.prisma.assignment.findMany({
       where: { sessionId, deletedAt: null },
       orderBy: { createdAt: "asc" },
@@ -169,7 +170,7 @@ export class SessionsService {
   }
 
   async update(principal: Principal, sessionId: string, input: UpdateSessionInput) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status === "COMPLETED") {
       throw ApiException.conflict(
         "This session is complete. Reopen it before editing, or reschedule if the date moved.",
@@ -231,7 +232,7 @@ export class SessionsService {
    * exists; the reason is captured now so it has something to say.
    */
   async reschedule(principal: Principal, sessionId: string, input: RescheduleSessionInput) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status === "COMPLETED") {
       throw ApiException.conflict("A completed session cannot be rescheduled.");
     }
@@ -291,7 +292,7 @@ export class SessionsService {
    * Until this happens, no assignment can be set against the session.
    */
   async markComplete(principal: Principal, sessionId: string) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status === "COMPLETED") {
       throw ApiException.conflict("That session is already complete.");
     }
@@ -309,7 +310,7 @@ export class SessionsService {
 
   /** Reopening exists because completion is a human judgement that can be wrong. */
   async reopen(principal: Principal, sessionId: string) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status !== "COMPLETED") {
       throw ApiException.conflict("That session is not complete.");
     }
@@ -333,7 +334,7 @@ export class SessionsService {
   }
 
   async cancel(principal: Principal, sessionId: string, reason: string) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status === "COMPLETED") {
       throw ApiException.conflict("A completed session cannot be cancelled.");
     }
@@ -371,7 +372,7 @@ export class SessionsService {
   }
 
   async remove(principal: Principal, sessionId: string): Promise<void> {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status === "COMPLETED") {
       throw ApiException.conflict(
         "A completed session is delivery history. Cancel a future session instead.",
@@ -742,7 +743,7 @@ export class SessionsService {
   // ── Assignments (invariants 16 and 17) ──────────────────────────────────
 
   async createAssignment(principal: Principal, sessionId: string, input: CreateAssignmentInput) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
 
     // Invariant 17. This is the whole point of marking a session complete.
     if (session.status !== "COMPLETED") {
@@ -888,7 +889,12 @@ export class SessionsService {
       assignment: {
         deletedAt: null,
         batch: { ...cityScope(principal), ...collegeScope(principal) },
+        // The trainer axis, which this list did not have: city and college scope
+        // are both null for a trainer, so without it every submission in the
+        // estate came back — another cohort's students by name, with their work.
+        ...trainerAssignmentScope(principal),
         ...(query.batchId ? { batchId: query.batchId } : {}),
+        ...(query.sessionId ? { sessionId: query.sessionId } : {}),
       },
       ...(query.studentId ? { studentId: query.studentId } : {}),
       ...(query.assignmentId ? { assignmentId: query.assignmentId } : {}),
@@ -905,8 +911,40 @@ export class SessionsService {
         }),
         this.prisma.assignmentSubmission.count({ where }),
       ]);
-      return [rows.map(toSubmission), total];
+      const markers = await this.markerNames(rows);
+      return [rows.map((row) => toSubmission(row, markers)), total];
     });
+  }
+
+  /**
+   * Who marked these, by name.
+   *
+   * `assignment_submissions.graded_by` holds an ADMIN USER id or a TRAINER id
+   * with no foreign key to either — both actors mark, and a column cannot point
+   * at two tables. So the ids are resolved in one query per table rather than
+   * with a relation, and anything that matches neither is left null: a marker
+   * whose account was removed is not a reason to fail the list.
+   */
+  private async markerNames(
+    rows: { gradedBy: string | null }[],
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(rows.map((row) => row.gradedBy).filter((id): id is string => id !== null))];
+    if (ids.length === 0) return new Map();
+
+    const [admins, trainers] = await Promise.all([
+      this.prisma.adminUser.findMany({
+        where: { adminUserId: { in: ids } },
+        select: { adminUserId: true, name: true },
+      }),
+      this.prisma.trainer.findMany({
+        where: { trainerId: { in: ids } },
+        select: { trainerId: true, name: true },
+      }),
+    ]);
+    return new Map([
+      ...admins.map((row) => [row.adminUserId, row.name] as const),
+      ...trainers.map((row) => [row.trainerId, row.name] as const),
+    ]);
   }
 
   /**
@@ -1022,7 +1060,7 @@ export class SessionsService {
       return row;
     });
 
-    return toSubmission(graded);
+    return toSubmission(graded, await this.markerNames([graded]));
   }
 
   // ── Recording ───────────────────────────────────────────────────────────
@@ -1032,7 +1070,7 @@ export class SessionsService {
    * when a session is marked complete.
    */
   async linkRecording(principal: Principal, sessionId: string, input: LinkRecordingInput) {
-    const session = await this.loadSession(principal, sessionId);
+    const session = await this.loadSession(principal, sessionId, "write");
     if (session.status !== "COMPLETED") {
       throw ApiException.invariant("Mark the session complete before linking its recording.");
     }
@@ -1085,7 +1123,7 @@ export class SessionsService {
   }
 
   async unpublishRecording(principal: Principal, sessionId: string) {
-    await this.loadSession(principal, sessionId);
+    await this.loadSession(principal, sessionId, "write");
     const existing = await this.prisma.sessionRecording.findUnique({ where: { sessionId } });
     if (!existing) throw ApiException.notFound("Recording");
 
@@ -1107,13 +1145,34 @@ export class SessionsService {
   }
 
   /**
-   * A session, checked for whoever is asking.
+   * A session, checked for whoever is asking — and for WHAT they are asking.
    *
-   * Reading is wider than writing — a trainer keeps the sessions they
-   * delivered after being released from the batch — so this asks only the READ
-   * question. `assertTrainerMayWrite` is what each write path adds on top.
+   * Reading is wider than writing: a trainer keeps the sessions they delivered
+   * after being released from the batch. Which of the two rules applies is the
+   * caller's to say, because this function cannot tell from a session id whether
+   * it is about to be rendered or cancelled.
    */
-  private async loadSession(principal: Principal, sessionId: string) {
+  private async loadSession(
+    principal: Principal,
+    sessionId: string,
+    /**
+     * Which rule this caller needs, and there is no default.
+     *
+     * Every session mutation used to call `loadSession(principal, sessionId)`
+     * and take the answer as authorisation — and the answer was the READ rule.
+     * Since a trainer's matrix carries `batches: edit`, that meant a trainer
+     * released from a batch could still cancel, reschedule, reopen, re-venue and
+     * set work against the days they had delivered: the history they are
+     * entitled to SEE was writable. Only `gradeSubmission` asked the write
+     * question, and the comment here claimed all of them did.
+     *
+     * Making the intent a required argument is the point. A rule that must be
+     * remembered at each new call site is a rule that will be forgotten at one
+     * of them, so the compiler asks instead — the same reason
+     * `assertOursToDecide(principal, act)` takes the act.
+     */
+    intent: "read" | "write",
+  ) {
     const session = await this.prisma.batchSession.findFirst({
       where: { sessionId, deletedAt: null },
       include: SESSION_INCLUDE,
@@ -1122,19 +1181,15 @@ export class SessionsService {
     // Scope reads through the batch — a session has no city of its own.
     assertInScope(principal, session.batch);
 
-    if (isTrainer(principal)) {
-      const me = principal.trainerScope;
-      // Theirs to READ if they taught it, or if the batch is currently theirs.
-      // The first half is what keeps history after a release; the write paths
-      // add `assertTrainerMayWrite` on top, which does not.
-      const mine =
-        session.trainerId === me ||
-        session.batch.primaryTrainerId === me ||
-        (session.batch.trainerAssignments ?? []).some(
-          (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
-        );
-      if (!mine) throw ApiException.outOfScope();
-    }
+    /*
+     * Both rules come from `common/scope/scope.ts`, neither is spelled out here.
+     * This function held its own copy of the read rule, which made two
+     * implementations of one sentence — exactly what extracting `trainerMayRead`
+     * was supposed to end.
+     */
+    if (intent === "write") assertTrainerMayWrite(principal, session);
+    else assertTrainerMayRead(principal, session);
+
     return session;
   }
 
@@ -1255,6 +1310,7 @@ const SUBMISSION_INCLUDE = {
 
 function toSubmission(
   row: Prisma.AssignmentSubmissionGetPayload<{ include: typeof SUBMISSION_INCLUDE }>,
+  markers?: Map<string, string>,
 ): AssignmentSubmission {
   const name = [row.student?.firstName, row.student?.lastName].filter(Boolean).join(" ");
   return {
@@ -1274,10 +1330,21 @@ function toSubmission(
     status: row.status,
     submittedAt: row.submittedAt?.toISOString() ?? null,
     fileUrl: row.fileUrl,
-    // Null, never 0 — nothing writes these yet, and a zero would read as a mark.
+    /*
+     * The work itself.
+     *
+     * Stored since the student portal shipped and carried nowhere but the
+     * student's own card, so whoever marked it could not read it. Most answers
+     * arrive here rather than in `fileUrl`, because there is no file storage yet.
+     */
+    contentText: row.contentText,
+    // Null, never 0 — a zero is a mark somebody gave.
     marksAwarded: row.marksAwarded,
     feedback: row.feedback,
     gradedAt: row.gradedAt?.toISOString() ?? null,
+    // Resolved by the caller: `graded_by` holds an admin id OR a trainer id and
+    // carries no foreign key, so there is no relation to include.
+    gradedByName: markers?.get(row.gradedBy ?? "") ?? null,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
   };

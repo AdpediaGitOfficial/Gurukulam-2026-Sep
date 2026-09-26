@@ -224,6 +224,39 @@ export function trainerMayRead(principal: Principal, session: TrainerSessionShap
 }
 
 /**
+ * The ASSIGNMENTS, and therefore the submissions, a trainer may read.
+ *
+ * ── Why this needed its own name ───────────────────────────────────────
+ *
+ * `GET /batches/submissions` applied city and college scope and nothing else.
+ * Both are null for a trainer, so both fragments were `{}` and the list returned
+ * every submission in the estate — another cohort's students, by name, with the
+ * work they handed in. The WRITE was guarded: `gradeSubmission` calls
+ * `assertTrainerMayWrite` and refuses a foreign submission with a 404. The read
+ * filter was simply never added, which is the same shape as the three acts the
+ * college audit found open — the dangerous half of a rule is the half nobody
+ * had to write to make the feature work.
+ *
+ * ── Why the OR sits on the ASSIGNMENT ──────────────────────────────────
+ *
+ * An assignment may hang off a session or off the batch alone (invariant 16), so
+ * a filter that reached through `session` would silently drop every
+ * batch-level assignment — a leak's opposite, and just as wrong. The session
+ * branch is what keeps history readable: work set against a day they taught
+ * stays theirs to read after they are released, exactly as the attendance they
+ * wrote does.
+ */
+export function trainerAssignmentScope(principal: Principal): Record<string, unknown> {
+  if (!isTrainer(principal)) return {};
+  return {
+    OR: [
+      { session: { trainerId: principal.trainerScope } },
+      { batch: trainerBatchScope(principal) },
+    ],
+  };
+}
+
+/**
  * Whether this trainer may WRITE against a session — mark it delivered, take
  * attendance, set work, attach a recording.
  *

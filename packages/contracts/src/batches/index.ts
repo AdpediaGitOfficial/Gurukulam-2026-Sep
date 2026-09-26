@@ -453,10 +453,34 @@ export const assignmentSubmissionSchema = z.object({
   status: assignmentSubmissionStatusSchema,
   submittedAt: z.string().nullable(),
   fileUrl: z.string().nullable(),
-  /** Null until grading exists. Not zero — nobody has marked it. */
+  /**
+   * What the student actually wrote.
+   *
+   * ── Why this was missing, and why that mattered ────────────────────────
+   *
+   * `assignment_submissions.content_text` has been written since the student
+   * portal shipped — the hand-in form is a link field and a text box, and most
+   * answers arrive in the box because there is no file storage yet. It reached
+   * the student's own card and NOTHING else: not this contract, not the mapper,
+   * not the screen of whoever marks it. So the work was being graded by somebody
+   * who could not read it.
+   *
+   * Carried in full rather than truncated: a marker needs the answer, and a
+   * preview is a reason to open something that does not exist.
+   */
+  contentText: z.string().nullable(),
+  /** Null, never 0 — a zero is a mark somebody gave. */
   marksAwarded: z.number().int().nullable(),
   feedback: z.string().nullable(),
   gradedAt: z.string().nullable(),
+  /**
+   * Who marked it, by name.
+   *
+   * Both a trainer and an operator can grade the same submission, and the second
+   * one needs to know a mark is already there and whose it is before overwriting
+   * it. `graded_by` has always been stored; nothing ever read it.
+   */
+  gradedByName: z.string().nullable(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
 });
@@ -467,6 +491,14 @@ export const assignmentSubmissionQuerySchema = pageQuerySchema.extend({
   studentId: z.string().optional(),
   assignmentId: z.string().optional(),
   batchId: z.string().optional(),
+  /**
+   * Every submission on a SESSION's assignments, in one call.
+   *
+   * A session may carry several assignments, and the screen that marks them is
+   * the session's own — so without this the page fetches once per assignment and
+   * its cost grows with the teaching, for a filter the database can apply.
+   */
+  sessionId: z.string().optional(),
   status: assignmentSubmissionStatusSchema.optional(),
 });
 

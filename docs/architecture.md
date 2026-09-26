@@ -480,7 +480,8 @@ rather than deleted because the re-entry point holding is the claim this section
 | Deferred | Re-entry point |
 | --- | --- |
 | ~~Attendance~~ | **Built.** `POST /batches/sessions/:id/attendance`, written by the trainer portal and by the console. The whole register posts at once, and the gate is the calendar rather than completion |
-| ~~Trainer portal~~ | **Built** at `/teach/*`, on a third scope axis — `trainerScope` is a relationship rather than a column, and reading and writing are deliberately different sets |
+| ~~Grading~~ | **Built.** `POST /batches/submissions/:id/grade`, from the trainer's session screen and from the console's assignment screen. The student's notice is emitted inside the same transaction, so nobody is told about a mark that did not land |
+| ~~Trainer portal~~ | **Built** at `/teach/*`, on a third scope axis — `trainerScope` is a relationship rather than a column, and reading and writing are deliberately different sets. Which of the two a session loader applies is now an argument it demands, because eight mutations took the read answer as authorisation |
 | ~~Student portal~~ | **Built** at `/portal/*`, as its own `/me/*` surface because a student has no scope to narrow. BOTH segments sign in: a college student's differs by Fees (absent) and the certificate download (their college's) |
 | ~~College portal~~ | **Built** at `/campus/*`, by narrowing these endpoints with `collegeScope` exactly as this section anticipated. What scope could not answer was which ACTS are theirs — see `assertOursToDecide` |
 | Naukri feed | `job_postings.source` / `external_ref` / `external_url` already carried |

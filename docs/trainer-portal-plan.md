@@ -159,6 +159,25 @@ path built from scratch, not a screen over an existing one.
 writes them. A student's "18 / 20 — clear work, look at broadcasting again" has
 nowhere to come from yet.
 
+> **Built.** `POST /batches/submissions/:id/grade` writes all four and emits the
+> student's notice inside the same transaction. Three things were only found by
+> driving it:
+>
+> · **The work reached nobody who marks it.** `content_text` was in no contract
+>   but `/me`'s own, so both marking screens would have asked somebody to grade
+>   an answer they could not read. It is on `AssignmentSubmission` now, with
+>   `graded_by` resolved to a name — the column holds an admin id OR a trainer id
+>   and carries no foreign key, so it is looked up per table.
+> · **The submissions list had no trainer scope at all.** City and college scope
+>   are both null for a trainer, so `GET /batches/submissions` answered one with
+>   every submission in the estate: other cohorts' students, by name, with their
+>   work. `trainerAssignmentScope` is the filter; the write had been guarded
+>   since the endpoint was written, which is the usual shape — the dangerous half
+>   of a rule is the half nobody had to write to make the feature work.
+> · **Nothing is marked that was never handed in.** A PENDING row with no
+>   `submitted_at` is work allocated to a student rather than work they did, and
+>   grading one would tell them what they got for something they never sent.
+
 Both should be built as ordinary module endpoints authorised for both actors —
 admin and trainer — rather than as trainer-portal features. The admin console
 performs every action the deferred portals will, permanently, and these are two
@@ -226,6 +245,15 @@ session screen shows them closed rather than hidden.
 belongs to the session. The dashboard carries the backlog count and links
 straight to it; a top-level Work entry would be the sessions list with a second
 purpose.
+
+> **Built, on the session screen beside the register.** They are the two things a
+> session leaves behind and a trainer does both on the day. The dashboard had
+> counted "waiting to be marked" since it was built and linked here — to a screen
+> with no way to mark: `gradeSubmission` existed as a server action that nothing
+> called, and there was nothing to put on the screen anyway (see §2.4). A mark
+> already there is shown before it is replaced, because an operator and a trainer
+> can both mark one submission and whoever is doing it should see whose mark they
+> are overwriting.
 
 **Why attendance is not an entry.** Attendance belongs to a session, not to the
 trainer. It is reached from the session, in the moment it is taken. A top-level

@@ -295,10 +295,424 @@ async function main(): Promise<void> {
     }
   }
 
+  await registerChecks(page);
+  await markingChecks(page);
+
   await browser.close();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exitCode = failed === 0 ? 0 : 1;
 }
+
+/**
+ * Marking a submission from the CONSOLE.
+ *
+ * ── Why this belongs in the forms suite ────────────────────────────────
+ *
+ * It is a console form that writes, which is what this file exercises — and it
+ * is the form that did not exist. `POST /batches/submissions/:id/grade` was
+ * reachable only from the trainer portal: an operator could not mark, could not
+ * see a submission at all, and the assignment row offered Edit and Delete. That
+ * breaks the rule the product is arranged around, on the one act a student
+ * chases.
+ *
+ * ── What is MANUFACTURED, and why ──────────────────────────────────────
+ *
+ * Both real submissions in the seed carry no `content_text`, so "the marker can
+ * read the answer" would pass on an empty string — the same vacuous shape as a
+ * certificate check run with every `pdf_url` null. The text is written for the
+ * length of the check and put back.
+ */
+async function markingChecks(page: Page): Promise<void> {
+  const WORK = "SELECT a.id FROM a JOIN b ON b.a_id = a.id\n-- a second line, kept as written";
+  const since = new Date();
+
+  const held = await prisma.assignmentSubmission.findFirst({
+    where: { deletedAt: null, submittedAt: { not: null }, assignment: { maxMarks: { not: null } } },
+    include: {
+      assignment: { select: { assignmentId: true, maxMarks: true } },
+      student: { select: { studentId: true } },
+    },
+  });
+
+  /*
+   * Written if there is none, because the seed creates no submissions at all and
+   * `verify:portal` deletes the one it hands in. A check that waits for a real
+   * row to be lying about passes or skips depending on what the last run left
+   * behind, which is not a check — and on a freshly seeded database this one
+   * failed for want of data rather than for want of a feature.
+   */
+  const invented =
+    held !== null
+      ? null
+      : await manufactureSubmission(WORK);
+  const submission = held ?? invented;
+  if (submission === null || submission.assignment.maxMarks === null) {
+    bad("an operator can mark a submission", "no assignment with a ceiling has anybody on its roster");
+    return;
+  }
+
+  const ceiling = submission.assignment.maxMarks;
+  const before = {
+    marksAwarded: submission.marksAwarded,
+    feedback: submission.feedback,
+    gradedBy: submission.gradedBy,
+    gradedAt: submission.gradedAt,
+    status: submission.status,
+    contentText: submission.contentText,
+  };
+  // A mark that is legal, different from whatever is there, and inside the
+  // ceiling — so a pass cannot be the value that was already stored.
+  const target = before.marksAwarded === 7 ? 6 : 7;
+
+  try {
+    await prisma.assignmentSubmission.update({
+      where: { submissionId: submission.submissionId },
+      data: { contentText: WORK },
+    });
+
+    await page.goto(`${BASE}/batches/assignments/${submission.assignment.assignmentId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForLoadState("load");
+    /*
+     * Waited on THIS form, not on the first one on the page.
+     *
+     * `querySelector("form")` is the top bar's search, which hydrates early — so
+     * a wait on it passed while the mark form was still bare, the click did
+     * nothing, and the probe then read a database nothing had written. The same
+     * island-by-island race `verify:actions` had, found three times in one day.
+     */
+    await page
+      .waitForFunction(() => {
+        const form = document.querySelector('input[name="marksAwarded"]')?.closest("form") ?? null;
+        return form !== null && Object.keys(form).some((k) => k.startsWith("__reactProps$"));
+      }, undefined, { timeout: 15000 })
+      .catch(() => undefined);
+
+    const shown = await page.locator("body").innerText();
+    if (shown.includes("a second line, kept as written")) {
+      ok("the work is on the screen of whoever marks it", "line breaks and all");
+    } else {
+      // `content_text` reached no contract but the student's own until this
+      // screen was built, so a trainer was asked to mark work they could not read.
+      bad("the work is on the screen of whoever marks it", "the submitted text is not rendered");
+    }
+
+    // ── The ceiling, enforced where it is typed ──────────────────────────
+    const field = page.locator('input[name="marksAwarded"]').first();
+    await field.fill(String(ceiling + 5));
+    const verdict = await field.evaluate((element: HTMLInputElement) => ({
+      max: element.max,
+      valid: element.checkValidity(),
+    }));
+    if (verdict.max === String(ceiling) && !verdict.valid) {
+      ok("a mark above the ceiling cannot even be submitted", `max=${verdict.max}, the browser refuses it`);
+    } else {
+      bad(
+        "a mark above the ceiling cannot even be submitted",
+        `max=${verdict.max || "(none)"}, valid=${verdict.valid}`,
+      );
+    }
+
+    // And independently at the API, because another client can post anything.
+    const token = await apiToken();
+    const refused = await fetch(
+      `${API}/batches/submissions/${submission.submissionId}/grade`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ marksAwarded: ceiling + 5 }),
+      },
+    );
+    const body = (await refused.json()) as { error?: { fields?: Record<string, string> } };
+    const unmoved = await prisma.assignmentSubmission.findUniqueOrThrow({
+      where: { submissionId: submission.submissionId },
+      select: { marksAwarded: true },
+    });
+    if (
+      refused.status === 400 &&
+      (body.error?.fields?.["marksAwarded"] ?? "").includes(String(ceiling)) &&
+      unmoved.marksAwarded === before.marksAwarded
+    ) {
+      ok("…and the API refuses it too, by name", `"${body.error?.fields?.["marksAwarded"] ?? ""}"`);
+    } else {
+      bad(
+        "…and the API refuses it too, by name",
+        `status ${refused.status}, fields ${JSON.stringify(body.error?.fields)}, marks now ${unmoved.marksAwarded}`,
+      );
+    }
+
+    // ── A legal mark, through the form ──────────────────────────────────
+    await field.fill(String(target));
+    await page.locator('textarea[name="feedback"]').first().fill("Clear work — look at the joins again.");
+    await page.getByRole("button", { name: /save the mark|replace the mark/i }).first().click();
+
+    /*
+     * Polled from the DATABASE rather than waited for on screen.
+     *
+     * A server action posts and revalidates without navigating, so neither
+     * `networkidle` nor the success alert proved reliable to wait on — one probe
+     * read 18 from the database while the student's own notice already said 7.
+     * The row changing is the thing that has to happen, so that is what is
+     * waited for.
+     */
+    const graded = await poll(
+      () =>
+        prisma.assignmentSubmission.findUniqueOrThrow({
+          where: { submissionId: submission.submissionId },
+          select: { marksAwarded: true, feedback: true, gradedBy: true, status: true },
+        }),
+      (row) => row.marksAwarded === target,
+    );
+    const marker = await prisma.adminUser.findFirst({
+      where: { adminUserId: graded.gradedBy ?? "" },
+      select: { name: true },
+    });
+
+    if (graded.marksAwarded === target && graded.status === "GRADED" && marker !== null) {
+      ok(
+        "an operator can mark a submission",
+        `${target} of ${ceiling}, attributed to ${marker.name}`,
+      );
+    } else {
+      bad(
+        "an operator can mark a submission",
+        `marks ${graded.marksAwarded}, status ${graded.status}, gradedBy ${graded.gradedBy ?? "null"}`,
+      );
+    }
+
+    // The student is told, from inside the same transaction as the mark.
+    const notice = await poll(
+      () =>
+        prisma.notification.findFirst({
+          where: { recipientType: "STUDENT", recipientId: submission.student.studentId },
+          orderBy: { createdAt: "desc" },
+          select: { body: true, createdAt: true },
+        }),
+      (row) => (row?.body ?? "").includes(`${target} out of ${ceiling}`),
+    );
+    if ((notice?.body ?? "").includes(`${target} out of ${ceiling}`)) {
+      ok("…and the student is told what they got", notice?.body ?? "");
+    } else {
+      bad("…and the student is told what they got", `latest notice: ${notice?.body ?? "none"}`);
+    }
+  } finally {
+    /* Put back in a `finally`: a failed assertion above would otherwise leave a
+       mark this suite invented on a real student's work, and the next run would
+       measure that. A row this run WROTE goes away entirely. */
+    if (invented !== null) {
+      await prisma.assignmentSubmission.delete({ where: { submissionId: submission.submissionId } });
+    } else {
+      await prisma.assignmentSubmission.update({
+        where: { submissionId: submission.submissionId },
+        data: before,
+      });
+    }
+    /* And the notice the mark emitted. It is real news about a grade that no
+       longer exists, and a student's bell is not a scratch pad. */
+    await prisma.notification.deleteMany({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: submission.student.studentId,
+        type: "assignment.graded",
+        createdAt: { gte: since },
+      },
+    });
+  }
+}
+
+/**
+ * A hand-in to mark, written straight at the table.
+ *
+ * The allocation and submit paths have their own suites; what this file needs is
+ * a row in the state a marker meets, on an assignment that carries a ceiling and
+ * a student who is really on that batch's roster.
+ */
+async function manufactureSubmission(work: string) {
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      deletedAt: null,
+      maxMarks: { not: null },
+      status: { in: ["OPEN", "CLOSED"] },
+      batch: { studentMappings: { some: { deletedAt: null, isActive: true } } },
+    },
+    select: { assignmentId: true, maxMarks: true, batchId: true },
+  });
+  if (assignment === null) return null;
+
+  const onRoster = await prisma.studentBatchMapping.findFirst({
+    where: {
+      batchId: assignment.batchId,
+      deletedAt: null,
+      isActive: true,
+      student: { submissions: { none: { assignmentId: assignment.assignmentId, deletedAt: null } } },
+    },
+    select: { studentId: true },
+  });
+  if (onRoster === null) return null;
+
+  const row = await prisma.assignmentSubmission.create({
+    data: {
+      assignmentId: assignment.assignmentId,
+      studentId: onRoster.studentId,
+      status: "SUBMITTED",
+      submittedAt: new Date(),
+      contentText: work,
+      createdBy: onRoster.studentId,
+    },
+    include: {
+      assignment: { select: { assignmentId: true, maxMarks: true } },
+      student: { select: { studentId: true } },
+    },
+  });
+  return row;
+}
+
+/**
+ * Taking a register from the CONSOLE.
+ *
+ * ── Why this check exists ──────────────────────────────────────────────
+ *
+ * `verify:coverage`, once it could tell the console from a portal, found that
+ * `POST /batches/sessions/:id/attendance` had exactly one caller and it was in
+ * `/teach`. An operations team could not take or correct a register at all —
+ * and attendance is what the certificate floor is judged on, so a cohort whose
+ * trainer forgot had no way to be given one.
+ *
+ * ── Why it asserts on the whole roster, and on the marker ───────────────
+ *
+ * The register is written whole, because a half-taken one is indistinguishable
+ * from one where everybody else was absent. And `marked_by` holds an ADMIN id
+ * here where the trainer suite sees a trainer id — the same column, two actors,
+ * which is exactly the thing a single-actor check cannot see.
+ */
+async function registerChecks(page: Page): Promise<void> {
+  const session = await prisma.batchSession.findFirst({
+    where: {
+      deletedAt: null,
+      status: { not: "CANCELLED" },
+      scheduledDate: { lte: new Date() },
+      batch: { studentMappings: { some: { deletedAt: null, isActive: true } } },
+    },
+    select: { sessionId: true, sessionCode: true, batchId: true },
+    orderBy: { scheduledDate: "desc" },
+  });
+  if (session === null) {
+    bad("an operator can take a register", "no past session with a roster to take one on");
+    return;
+  }
+
+  const roster = await prisma.studentBatchMapping.findMany({
+    where: { batchId: session.batchId, deletedAt: null, isActive: true },
+    select: { studentId: true },
+  });
+  const rosterIds = new Set(roster.map((row) => row.studentId));
+  const before = await prisma.studentAttendance.findMany({
+    where: { sessionId: session.sessionId },
+    select: { attendanceId: true, status: true },
+  });
+  const known = new Set(before.map((row) => row.attendanceId));
+
+  try {
+    await page.goto(`${BASE}/batches/sessions/${session.sessionId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForLoadState("load");
+    // This form's own island, for the reason recorded on the marking check.
+    const control = 'select[name^="status:"]';
+    await page
+      .waitForFunction(
+        (selector: string) => {
+          const form = document.querySelector(selector)?.closest("form") ?? null;
+          return form !== null && Object.keys(form).some((k) => k.startsWith("__reactProps$"));
+        },
+        control,
+        { timeout: 15000 },
+      )
+      .catch(() => undefined);
+
+    if ((await page.locator(control).count()) === 0) {
+      bad("an operator can take a register", "no register control on the console's session screen");
+      return;
+    }
+
+    // One exception, the rest left at their default — which is the shape of the
+    // job, and the only way to tell "the whole register was written" from "the
+    // row somebody touched was written".
+    await page.locator(control).first().selectOption("LATE");
+    await page.getByRole("button", { name: /save the register|correct the register/i }).click();
+
+    const after = await poll(
+      () =>
+        prisma.studentAttendance.findMany({
+          where: { sessionId: session.sessionId, deletedAt: null },
+          select: { studentId: true, status: true, markedBy: true, markedAt: true },
+        }),
+      (rows) =>
+        rows.filter((row) => rosterIds.has(row.studentId)).length === rosterIds.size &&
+        rows.some((row) => row.status === "LATE"),
+    );
+    const mine = after.filter((row) => rosterIds.has(row.studentId));
+    const marker = await prisma.adminUser.findFirst({
+      where: { adminUserId: mine[0]?.markedBy ?? "" },
+      select: { name: true },
+    });
+
+    if (
+      mine.length === rosterIds.size &&
+      mine.filter((row) => row.status === "LATE").length === 1 &&
+      marker !== null &&
+      mine.every((row) => row.markedAt !== null)
+    ) {
+      ok(
+        "an operator can take a register",
+        `${session.sessionCode} → ${mine.length} of ${rosterIds.size} marked by ${marker.name}, one LATE`,
+      );
+    } else {
+      bad(
+        "an operator can take a register",
+        `${mine.length} of ${rosterIds.size} rows, ${mine.filter((r) => r.status === "LATE").length} LATE, marker ${marker?.name ?? mine[0]?.markedBy ?? "none"}`,
+      );
+    }
+  } finally {
+    /* Deleted, not just restored: the rows this run CREATED have to go, or the
+       next run measures the leftovers. That mistake cost the trainer suite two
+       false failures. */
+    await prisma.studentAttendance.deleteMany({
+      where: { sessionId: session.sessionId, attendanceId: { notIn: [...known] } },
+    });
+    for (const row of before) {
+      await prisma.studentAttendance.update({
+        where: { attendanceId: row.attendanceId },
+        data: { status: row.status },
+      });
+    }
+  }
+}
+
+/** The API, for the checks a browser cannot make. */
+const API = process.env["API_INTERNAL_URL"] ?? "http://127.0.0.1:4000/api/v1";
+
+async function apiToken(): Promise<string> {
+  const response = await fetch(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: EMAIL, password: PASSWORD, actor: "ADMIN_USER" }),
+  });
+  return ((await response.json()) as { tokens?: { accessToken?: string } }).tokens?.accessToken ?? "";
+}
+
+/** Reads until it reads what it is waiting for, or twenty seconds pass. */
+async function poll<T>(read: () => Promise<T>, want: (value: T) => boolean, ms = 20000): Promise<T> {
+  const until = Date.now() + ms;
+  let last = await read();
+  while (!want(last) && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    last = await read();
+  }
+  return last;
+}
+
 
 main()
   .catch((error: unknown) => {

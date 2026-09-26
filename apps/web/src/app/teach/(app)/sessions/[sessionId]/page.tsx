@@ -3,10 +3,11 @@ import Link from "next/link";
 
 import { Icon } from "@/components/ui/icon";
 import { StatusPill } from "@/components/ui/status-pill";
+import { MarkForm } from "@/features/teach/components/mark-form";
 import { RegisterForm } from "@/features/teach/components/register-form";
 import { TeachCard, TeachPage } from "@/features/teach/components/teach-page";
 import { teachDay } from "@/features/teach/format";
-import { getAttendance } from "@/features/teach/server/teach-service";
+import { getAttendance, listSessionSubmissions } from "@/features/teach/server/teach-service";
 import { requireTrainer } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Session — Gurukulam" };
@@ -19,6 +20,15 @@ export const metadata: Metadata = { title: "Session — Gurukulam" };
  * Attendance belongs to a session, not to a trainer. It is reached in the
  * moment it is taken — standing in the room — and a top-level Attendance entry
  * would be the sessions list with a second purpose.
+ *
+ * ── Why marking is on this screen too ──────────────────────────────────
+ *
+ * The register and the work handed in are the two things a session leaves
+ * behind, and a trainer does both on the day. The dashboard has counted
+ * "waiting to be marked" since it was built and linked here — to a screen with
+ * no way to mark: `gradeSubmission` was a server action nothing called, and the
+ * work itself (`content_text`) reached no contract but the student's own, so
+ * there was nothing to put on the screen even if it had existed.
  *
  * ── Why a read-only register still renders ─────────────────────────────
  *
@@ -36,8 +46,16 @@ export default async function TrainerSessionPage({
   await requireTrainer();
 
   const { sessionId } = await params;
-  const attendance = await getAttendance(sessionId);
+  /* Both in parallel: the page needs the register and the work before it can
+     render either, so serialising them costs a request of latency for nothing. */
+  const [attendance, submissions] = await Promise.all([
+    getAttendance(sessionId),
+    listSessionSubmissions(sessionId),
+  ]);
   const cancelled = attendance.sessionStatus === "CANCELLED";
+  // Handed in and not yet marked. `gradedAt` rather than the status, because the
+  // status is what the grade WRITES and this is the question before it.
+  const toMark = submissions.filter((submission) => submission.gradedAt === null).length;
 
   return (
     <TeachPage
@@ -97,6 +115,39 @@ export default async function TrainerSessionPage({
           )}
         </TeachCard>
       </section>
+
+      {/* ── Marking ──────────────────────────────────────────────────────────
+          Beside the register, because they are the two things a session leaves
+          behind and a trainer does both on the day. The dashboard has counted
+          "waiting to be marked" since it was built and linked to a screen with
+          no way to mark: `gradeSubmission` existed as a server action that
+          nothing called. */}
+      {submissions.length === 0 ? null : (
+        <section aria-labelledby="marking" className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="marking" className="text-h2 text-ink">
+              Handed in
+            </h2>
+            <p className="text-body-sm text-ink-muted">
+              {toMark === 0
+                ? `${submissions.length} marked`
+                : `${toMark} of ${submissions.length} still to mark`}
+            </p>
+          </div>
+
+          <TeachCard>
+            <ul className="flex min-w-0 flex-col">
+              {submissions.map((submission) => (
+                <MarkForm
+                  key={submission.submissionId}
+                  submission={submission}
+                  editable={attendance.editable}
+                />
+              ))}
+            </ul>
+          </TeachCard>
+        </section>
+      )}
     </TeachPage>
   );
 }

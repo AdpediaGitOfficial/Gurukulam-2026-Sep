@@ -3,15 +3,19 @@ import "server-only";
 import { z } from "zod";
 import {
   assignmentSchema,
+  assignmentSubmissionSchema,
   batchDetailSchema,
   batchSchema,
   batchSessionSchema,
+  sessionAttendanceSchema,
   sessionDetailSchema,
   trainerCandidateSchema,
   type Assignment,
+  type AssignmentSubmission,
   type Batch,
   type BatchDetail,
   type BatchSession,
+  type SessionAttendance,
   type SessionDetail,
   type TrainerCandidate,
   type Page,
@@ -19,7 +23,7 @@ import {
   sessionQuerySchema,
 } from "@gurukulam/contracts";
 
-import { apiFetch } from "@/server/api";
+import { apiFetch, checkShape } from "@/server/api";
 import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
 export const BATCH_FILTERS = [
@@ -95,4 +99,50 @@ export async function getSession(sessionId: string): Promise<SessionDetail> {
  */
 export async function getAssignment(assignmentId: string): Promise<Assignment> {
   return assignmentSchema.parse(await apiFetch(`/batches/assignments/${assignmentId}`));
+}
+
+/**
+ * Everything handed in against one assignment.
+ *
+ * ── Why the console needs this at all ──────────────────────────────────
+ *
+ * The console could set an assignment, edit it and delete it, and could not see
+ * a single thing handed in against it. An operator could not answer "has anybody
+ * submitted this yet" — and grading was reachable only from the trainer portal,
+ * which contradicts the rule this product is built on: the console performs
+ * every action the portals do, permanently, because a trainer released mid-cohort
+ * otherwise leaves work nobody can mark.
+ */
+export async function listAssignmentSubmissions(
+  assignmentId: string,
+): Promise<AssignmentSubmission[]> {
+  const page = await apiFetch<Page<AssignmentSubmission>>(
+    `/batches/submissions?assignmentId=${encodeURIComponent(assignmentId)}&pageSize=200&sort=createdAt&order=asc`,
+  );
+  checkShape(z.array(assignmentSubmissionSchema), page.rows, "GET /batches/submissions");
+  return page.rows;
+}
+
+/**
+ * The register for one session.
+ *
+ * ── Why the console needs this too ─────────────────────────────────────
+ *
+ * `verify:coverage` found it: `POST /batches/sessions/:id/attendance` was called
+ * from `/teach` and from nowhere else, so an operations team could not take or
+ * correct a register at all. That is not a missing convenience — attendance is
+ * what the certificate floor is judged on, so a class taught by a stand-in who
+ * was never put on the batch, or a trainer who forgot, left a cohort with no
+ * register and no way to give it one.
+ *
+ * The endpoint is the same one the trainer calls. `editable` comes back true for
+ * an administrator on any session that has happened, because `trainerMayWrite`
+ * only narrows a trainer.
+ */
+export async function getSessionAttendance(sessionId: string): Promise<SessionAttendance> {
+  const attendance = await apiFetch<SessionAttendance>(
+    `/batches/sessions/${encodeURIComponent(sessionId)}/attendance`,
+  );
+  checkShape(sessionAttendanceSchema, attendance, "GET attendance");
+  return attendance;
 }

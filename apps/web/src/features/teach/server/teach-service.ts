@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import {
+  assignmentSubmissionSchema,
   availabilitySchema,
   batchSchema,
   batchSessionSchema,
@@ -9,6 +10,7 @@ import {
   meTrainerDashboardSchema,
   meTrainerSchema,
   sessionAttendanceSchema,
+  type AssignmentSubmission,
   type Availability,
   type Batch,
   type BatchSession,
@@ -95,6 +97,29 @@ export async function getAttendance(sessionId: string): Promise<SessionAttendanc
  * only read and write their own diary, and that rule lives in one place rather
  * than being re-stated by a second surface.
  */
+/**
+ * What has been handed in against this session's work.
+ *
+ * ── Why the SESSION and not the batch ──────────────────────────────────
+ *
+ * A trainer marks on the day's screen, beside the register — the two things a
+ * session leaves behind. Fetched in one call rather than one per assignment,
+ * because a session can carry several and a page whose cost grows with the
+ * teaching is a page that gets slower the more somebody does.
+ *
+ * Scoped by the API on the trainer axis. That filter was MISSING until this
+ * screen was built: city and college scope are both null for a trainer, so the
+ * list returned every submission in the estate — another cohort's students, by
+ * name, with their work. `trainerAssignmentScope` is what narrows it now.
+ */
+export async function listSessionSubmissions(sessionId: string): Promise<AssignmentSubmission[]> {
+  const page = await apiFetch<Page<AssignmentSubmission>>(
+    `/batches/submissions?sessionId=${encodeURIComponent(sessionId)}&pageSize=200&sort=createdAt&order=asc`,
+  );
+  checkShape(z.array(assignmentSubmissionSchema), page.rows, "GET /batches/submissions");
+  return page.rows;
+}
+
 export async function listMyLeave(): Promise<Availability[]> {
   const trainer = await getTrainer();
   const leave = await apiFetch<Availability[]>(

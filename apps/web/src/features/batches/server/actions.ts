@@ -12,6 +12,8 @@ import {
   createBatchSchema,
   createSessionSchema,
   linkRecordingSchema,
+  markAttendanceSchema,
+  type AttendanceStatus,
   updateSessionSchema,
   releaseTrainerSchema,
   respondToProposalSchema,
@@ -571,4 +573,118 @@ export async function unpublishRecording(
 
   revalidatePath(`/batches/sessions/${sessionId}`);
   redirect(`/batches/sessions/${sessionId}?unpublished=1`);
+}
+
+/**
+ * Marking one submission, from the console.
+ *
+ * ── Why this is not the trainer portal's action ─────────────────────────
+ *
+ * `features/teach/server/actions.ts` has one that posts to the same endpoint,
+ * and importing it here would be a feature reaching into another feature — the
+ * bug the dependency rule exists to stop. What the two share is the ENDPOINT,
+ * which is where the rules live: the ceiling, the "nothing has been handed in
+ * yet" conflict, and the notice to the student from inside the same transaction.
+ * Two thin callers of one guarded write is the shape this product wants; one
+ * caller imported across a slice boundary is not.
+ *
+ * ── Why an operator may overwrite a trainer's mark ──────────────────────
+ *
+ * Deliberately. A disputed mark is re-decided by somebody else, and that is the
+ * whole reason the console keeps every action a portal has. The screen shows
+ * whose mark is being replaced before it is replaced.
+ */
+export async function gradeSubmission(
+  submissionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const raw = formData.get("marksAwarded");
+  const marks = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : null;
+  if (marks !== null && !Number.isInteger(marks)) {
+    return formError("Check the mark.", { marksAwarded: "Enter a whole number, or leave it empty" });
+  }
+
+  const feedback = formData.get("feedback");
+
+  try {
+    await apiFetch(`/batches/submissions/${encodeURIComponent(submissionId)}/grade`, {
+      method: "POST",
+      body: {
+        // Null, not zero. A blank field means "feedback only" — a zero would
+        // tell a student their work was marked and found worthless.
+        marksAwarded: marks,
+        ...(typeof feedback === "string" && feedback.trim() !== ""
+          ? { feedback: feedback.trim() }
+          : {}),
+      },
+    });
+  } catch (error) {
+    // The API's own sentence: a mark above the ceiling, an assignment with no
+    // maximum, and nothing handed in are three different refusals.
+    return apiFormError(error);
+  }
+
+  const assignmentId = formData.get("assignmentId");
+  if (typeof assignmentId === "string" && assignmentId !== "") {
+    revalidatePath(`/batches/assignments/${assignmentId}`);
+  }
+  return { status: "idle", message: "Marked." };
+}
+
+/**
+ * Taking the register, from the console.
+ *
+ * ── Why an operator takes registers at all ──────────────────────────────
+ *
+ * `verify:coverage` found that nobody but a trainer could: the attendance
+ * endpoint had exactly one caller, in `/teach`. Attendance is what the
+ * certificate floor is judged on, so the cohort whose trainer forgot — or whose
+ * class was covered by somebody never put on the batch — had a register nobody
+ * could take and an eligibility check that would say NOT_EVALUATED for ever.
+ *
+ * ── Why the whole register posts at once ────────────────────────────────
+ *
+ * Because a half-taken register is indistinguishable from one where everybody
+ * else was absent, and that distinction decides a certificate. The form carries
+ * every student on the roster and this reads them all back out of it; a student
+ * the form did not name is one the API refuses rather than guesses at.
+ */
+export async function markAttendance(
+  sessionId: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const entries: { studentId: string; status: AttendanceStatus; remarks?: string }[] = [];
+
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("status:")) continue;
+    const studentId = key.slice("status:".length);
+    const remarks = formData.get(`remarks:${studentId}`);
+    entries.push({
+      studentId,
+      status: String(value) as AttendanceStatus,
+      ...(typeof remarks === "string" && remarks.trim() !== "" ? { remarks: remarks.trim() } : {}),
+    });
+  }
+
+  const parsed = markAttendanceSchema.safeParse({ entries });
+  if (!parsed.success) {
+    return formError("That register could not be read. Reload the page and try again.");
+  }
+
+  try {
+    await apiFetch(`/batches/sessions/${encodeURIComponent(sessionId)}/attendance`, {
+      method: "POST",
+      body: parsed.data,
+    });
+  } catch (error) {
+    // A cancelled session, a class that has not happened yet, and a student who
+    // is not on the roster are three different facts. The API's own sentence
+    // says which.
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/batches/sessions/${sessionId}`);
+  return { status: "idle", message: "Register saved." };
 }

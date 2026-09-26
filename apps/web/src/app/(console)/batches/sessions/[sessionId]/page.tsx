@@ -13,6 +13,7 @@ import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { RecordingForm } from "@/features/batches/components/recording-form";
+import { TakeRegister } from "@/features/batches/components/take-register";
 import { RescheduleForm } from "@/features/batches/components/reschedule-form";
 import {
   cancelSession,
@@ -20,7 +21,7 @@ import {
   reopenSession,
   unpublishRecording,
 } from "@/features/batches/server/actions";
-import { getSession } from "@/features/batches/server/batches-service";
+import { getSession, getSessionAttendance } from "@/features/batches/server/batches-service";
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
 import type { SearchParams } from "@/server/list";
@@ -40,7 +41,12 @@ export default async function SessionDetailPage({
   const mayDelete = can(principal, "batches", "delete");
   const { sessionId } = await params;
   const query = await searchParams;
-  const session = await getSession(sessionId);
+  /* Both at once: the page needs the session and its register before it can
+     render either, so serialising them costs a request of latency for nothing. */
+  const [session, attendance] = await Promise.all([
+    getSession(sessionId),
+    getSessionAttendance(sessionId),
+  ]);
 
   const delivered = session.status === "COMPLETED";
 
@@ -238,6 +244,70 @@ export default async function SessionDetailPage({
             </PageSection>
           ) : null}
 
+          {/* ── The register ──────────────────────────────────────────────
+              Here because attendance belongs to a session, and in the console
+              because the console performs every action a portal does. It had no
+              caller outside `/teach` at all — so a cohort whose trainer forgot,
+              or whose class was covered by somebody never put on the batch, had a
+              register nobody could take and a certificate floor that could never
+              be evaluated. */}
+          <PageSection
+            title="Register"
+            description="Taken whole, and corrected here when it has to be. Attendance is what the course's floor is judged on, so an untaken register is not the same fact as an empty one."
+          >
+            {session.status === "CANCELLED" ? (
+              <Card>
+                <EmptyState
+                  title="There is no register"
+                  description="This session was cancelled, so nobody attended. A row saying absent would count against the cohort at the attendance floor."
+                />
+              </Card>
+            ) : attendance.rows.length === 0 ? (
+              <Card>
+                <EmptyState
+                  title="Nobody is on this roster"
+                  description="Allocate students to the batch and the register will list them."
+                />
+              </Card>
+            ) : !attendance.editable ? (
+              /* The gate is the CALENDAR, not completion: a register is taken on
+                 the day, and a class still to happen has none to take. */
+              <Card>
+                <EmptyState
+                  title="That class has not happened yet"
+                  description="A register can be taken on the day, not before it. Nothing is recorded until then, which is why eligibility reads NOT_EVALUATED rather than 0%."
+                />
+              </Card>
+            ) : mayEdit ? (
+              <Card>
+                <TakeRegister attendance={attendance} />
+              </Card>
+            ) : (
+              <Card padding="none" className="overflow-hidden">
+                <ul className="flex flex-col divide-y divide-hairline">
+                  {attendance.rows.map((row) => (
+                    <li
+                      key={row.studentId}
+                      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-body break-words text-ink">
+                          {row.studentName}
+                        </span>
+                        <span className="block font-mono text-caption text-ink-subtle">
+                          {row.studentCode}
+                        </span>
+                      </span>
+                      <span className="text-body-sm text-ink-muted">
+                        {row.status === null ? "not marked" : row.status.toLowerCase()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </PageSection>
+
           <PageSection
             title="Recording"
             description="One per delivered session. A student who missed it catches up from here."
@@ -335,6 +405,18 @@ export default async function SessionDetailPage({
                       <StatusPill intent={assignment.status === "OPEN" ? "success" : "neutral"}>
                         {assignment.status.toLowerCase()}
                       </StatusPill>
+                      {/* Submissions first: "who handed in, and mark it" is what
+                          somebody opens an assignment for, and editing the
+                          wording of one is the rarer act. Before this screen
+                          existed the row offered Edit and Delete only, so an
+                          operator could not see a single thing handed in — and
+                          marking was reachable from the trainer portal alone. */}
+                      <Link
+                        href={`/batches/assignments/${assignment.assignmentId}`}
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                      >
+                        Submissions
+                      </Link>
                       {mayEdit ? (
                         <Link
                           href={`/batches/assignments/${assignment.assignmentId}/edit`}
