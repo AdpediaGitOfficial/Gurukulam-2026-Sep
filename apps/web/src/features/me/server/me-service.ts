@@ -1,0 +1,160 @@
+import "server-only";
+
+import {
+  meAssignmentsSchema,
+  meAttendanceSchema,
+  meBatchSchema,
+  meCertificatesSchema,
+  meJobSchema,
+  meNotificationsSchema,
+  meHomeSchema,
+  meProfileSchema,
+  meScheduleSchema,
+  type MeAttendance,
+  type MeBatch,
+  type MeHome,
+  type MeProfile,
+  accountSchema,
+  meFeesSchema,
+  type Account,
+  type MeAssignments,
+  type MeCertificates,
+  type MeFees,
+  type MeJob,
+  type MeNotifications,
+  type MeSchedule,
+} from "@gurukulam/contracts";
+import { z } from "zod";
+
+import { apiFetch, checkShape } from "@/server/api";
+
+/**
+ * The student portal's only seam onto data.
+ *
+ * Deliberately thin: `/me/*` already returns student-shaped contracts, so
+ * there is nothing to project or filter here. That is the point of the API
+ * having its own surface rather than the console's with a narrower scope — the
+ * BFF has no opportunity to forget a field, because no field it should not
+ * have ever arrives.
+ *
+ * Every response is checked against its contract for the same reason the
+ * console checks its own: a server that started answering a different shape
+ * should say so here, loudly, rather than render as a page of blanks.
+ */
+
+export async function getHome(): Promise<MeHome> {
+  const home = await apiFetch<MeHome>("/me/home");
+  checkShape(meHomeSchema, home, "GET /me/home");
+  return home;
+}
+
+export async function getProfile(): Promise<MeProfile> {
+  const profile = await apiFetch<MeProfile>("/me");
+  checkShape(meProfileSchema, profile, "GET /me");
+  return profile;
+}
+
+export async function listBatches(): Promise<MeBatch[]> {
+  const batches = await apiFetch<MeBatch[]>("/me/batches");
+  checkShape(z.array(meBatchSchema), batches, "GET /me/batches");
+  return batches;
+}
+
+export async function getSchedule(): Promise<MeSchedule> {
+  const schedule = await apiFetch<MeSchedule>("/me/schedule");
+  checkShape(meScheduleSchema, schedule, "GET /me/schedule");
+  return schedule;
+}
+
+/**
+ * What is owed, and what has been paid.
+ *
+ * Answers for a college student too — `billedToCollege` rather than a refusal,
+ * because the screen's honest answer is "your institution is billed for this"
+ * and a refusal would render as an error.
+ */
+/**
+ * The register, per batch.
+ *
+ * Its figures come from the same `EligibilityService` the certificate is judged
+ * on — asked on the API, not recounted here. This function exists to fetch, not
+ * to decide.
+ */
+export async function getAttendance(): Promise<MeAttendance> {
+  const attendance = await apiFetch<MeAttendance>("/me/attendance");
+  checkShape(meAttendanceSchema, attendance, "GET /me/attendance");
+  return attendance;
+}
+
+export async function getFees(): Promise<MeFees> {
+  const fees = await apiFetch<MeFees>("/me/fees");
+  checkShape(meFeesSchema, fees, "GET /me/fees");
+  return fees;
+}
+
+/**
+ * The signed-in account, as `/account` answers it for a student.
+ *
+ * Read here rather than through the settings feature's copy: a portal page
+ * importing an admin module's service is the dependency rule running the wrong
+ * way, and it is how the console's shapes end up on a student's screen. Same
+ * endpoint, this portal's seam.
+ */
+export async function getMeAccount(): Promise<Account> {
+  const account = await apiFetch<Account>("/account");
+  checkShape(accountSchema, account, "GET /account");
+  return account;
+}
+
+/**
+ * The work set against this student's batches, split three ways.
+ *
+ * The split is the API's, not this file's, and deliberately so: "handed in"
+ * has one definition in one place, rather than a filter per screen that the
+ * home card and the assignments page could drift apart on.
+ */
+export async function getAssignments(): Promise<MeAssignments> {
+  const assignments = await apiFetch<MeAssignments>("/me/assignments");
+  checkShape(meAssignmentsSchema, assignments, "GET /me/assignments");
+  return assignments;
+}
+
+/**
+ * What they have earned, and the batches still to produce one.
+ *
+ * The download decision arrives already made — `downloadUrl` is null unless a
+ * PDF exists and invariant 7 allows this reader to fetch it. This file does not
+ * know what a segment is, which is the point.
+ */
+export async function getCertificates(): Promise<MeCertificates> {
+  const certificates = await apiFetch<MeCertificates>("/me/certificates");
+  checkShape(meCertificatesSchema, certificates, "GET /me/certificates");
+  return certificates;
+}
+
+/**
+ * The postings this student matches.
+ *
+ * The matching happened in the API, against the operator's own audience rules,
+ * at the moment of the request. Nothing here filters — a BFF that narrowed a
+ * feed would be a second place the audience is decided, and the whole point of
+ * evaluating at read time is that there is only one.
+ */
+export async function getJobs(): Promise<MeJob[]> {
+  const jobs = await apiFetch<MeJob[]>("/me/jobs");
+  checkShape(z.array(meJobSchema), jobs, "GET /me/jobs");
+  return jobs;
+}
+
+/**
+ * What has changed, for this student.
+ *
+ * `/me/notifications`, never the console's `/notifications` — that one's
+ * audience includes every row addressed to nobody in particular, which is the
+ * whole operator work queue. See the API service.
+ */
+export async function getNotifications(): Promise<MeNotifications> {
+  const notifications = await apiFetch<MeNotifications>("/me/notifications");
+  checkShape(meNotificationsSchema, notifications, "GET /me/notifications");
+  return notifications;
+}

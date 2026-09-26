@@ -1,0 +1,290 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { changePasswordSchema, loginSchema, sessionSchema } from "@gurukulam/contracts";
+
+import { apiFetch, ApiRequestError } from "@/server/api";
+import { clearSession, readRefreshToken, writeSession } from "@/server/session";
+import { requirePrincipal } from "@/server/principal";
+import { formError, type FormState } from "@/lib/form";
+import { safePath } from "@/lib/safe-path";
+
+/**
+ * Signs in and stores the token pair in httpOnly cookies.
+ *
+ * A Server Action, not a Route Handler, because it is the only kind of thing
+ * that can both write a cookie and hand field-keyed errors back to the form
+ * that submitted.
+ */
+export async function login(_previous: FormState, formData: FormData): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: formData.get("actor") ?? undefined,
+    deviceLabel: "Admin console",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      // Wrong password and unknown address return the same code and the same
+      // message, deliberately: distinguishing them turns the login form into a
+      // way to enumerate who has an account here.
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+
+  // `redirect` throws, so it must sit outside the try — caught, it would be
+  // reported to the user as a failed login.
+  redirect(session.mustResetPassword ? "/account/password?reason=first-login" : safeNext(formData));
+}
+
+/**
+ * Signs a student in.
+ *
+ * ── Why this is its own action and not a flag on `login` ────────────────
+ *
+ * The actor kind is part of the credential, not a preference: the same address
+ * can exist as an administrator and as a college user, so the API asks which
+ * surface is signing in and defaults to `ADMIN_USER`. A student therefore has
+ * to declare themselves, and the honest way to do that is a separate sign-in
+ * screen rather than a dropdown on the console's — a student should never see
+ * a form that offers to log them into an operations console.
+ *
+ * It also fixes where they land. `login` sends people to `/dashboard`, which a
+ * student has no permission to read; this sends them to their portal.
+ */
+export async function studentLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "STUDENT",
+    deviceLabel: "Student portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      // Same refusal for a wrong password and an unknown address, for the same
+      // reason as the console: telling them apart turns the form into a way to
+      // find out who has an account here.
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+
+  // Credentials are issued at allocation with `mustReset` set, so a first
+  // sign-in lands on the change-password screen rather than the portal.
+  redirect(session.mustResetPassword ? "/portal/account/password?reason=first-login" : "/portal");
+}
+
+/**
+ * Sign-in for a trainer.
+ *
+ * A third door, for the same reason the student has a second: the actor is
+ * part of the credential, so a trainer typing the right password at the
+ * console's form would be told it does not match. Fixed here rather than
+ * posted, so nothing the browser sends can change which surface it opens.
+ */
+export async function trainerLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "TRAINER",
+    deviceLabel: "Trainer portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+  redirect(session.mustResetPassword ? "/teach/account/password?reason=first-login" : "/teach");
+}
+
+/**
+ * Sign-in for a college.
+ *
+ * The fourth door, and the one where the login identity is least guessable: it
+ * is derived from the college's immutable CODE (`snc@gurukulam.com`), not from
+ * the POC's own address, so that several people at one institution can hold
+ * separate accounts and a change of contact does not change the login. The hint
+ * on the field says so, because the alternative is a TPO typing their work
+ * address and concluding the portal is broken.
+ */
+export async function collegeLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "COLLEGE_USER",
+    deviceLabel: "College portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      // A revoked account and a wrong password answer identically here, which
+      // is deliberate: the principal builder refuses anything but GRANTED, and
+      // saying which of the two it was would tell an outsider that the account
+      // exists.
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+  redirect(session.mustResetPassword ? "/campus/account/password?reason=first-login" : "/campus");
+}
+
+export async function logout(): Promise<void> {
+  const refreshToken = await readRefreshToken();
+
+  // Clear locally first. If the API call fails the session is still gone from
+  // this browser, which is the part the person in front of it cares about.
+  await clearSession();
+
+  if (refreshToken !== undefined) {
+    try {
+      await apiFetch("/auth/logout", { method: "POST", body: { refreshToken }, anonymous: true });
+    } catch {
+      // Already expired or revoked — nothing left to revoke.
+    }
+  }
+
+  redirect("/login");
+}
+
+/** Where to go after signing in. `lib/safe-path` decides what is ours. */
+function safeNext(formData: FormData): string {
+  const value = formData.get("next");
+  return safePath(typeof value === "string" ? value : null);
+}
+
+/**
+ * Changes your own password.
+ *
+ * The only credential field an operator may set for themselves. Everything else
+ * — name, role, scope — is a Super Admin's to change, because letting someone
+ * edit their own scope would make the permission model advisory.
+ */
+export async function changePassword(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get("currentPassword"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path.join(".");
+      if (key !== "" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  try {
+    await apiFetch("/auth/change-password", { method: "POST", body: parsed.data });
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      return formError(
+        error.message,
+        Object.keys(error.fields).length > 0 ? error.fields : undefined,
+      );
+    }
+    throw error;
+  }
+
+  revalidatePath("/account");
+  // Where they land follows WHO they are. A student has no permission to read
+  // the dashboard, so sending everyone there turned a successful password
+  // change into an access refusal — on the one screen every new student is
+  // forced through before they can reach anything else.
+  const principal = await requirePrincipal();
+  // Each actor lands back on the surface they came from. Sending everybody to
+  // `/dashboard` would drop a student or a trainer on a console they cannot
+  // read, having just successfully changed their password.
+  redirect(
+    principal.actor === "STUDENT"
+      ? "/portal?password=changed"
+      : principal.actor === "TRAINER"
+        ? "/teach?password=changed"
+        : principal.actor === "COLLEGE_USER"
+          ? "/campus?password=changed"
+          : "/dashboard?password=changed",
+  );
+}

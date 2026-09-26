@@ -1,0 +1,289 @@
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from "@nestjs/common";
+import { z } from "zod";
+import {
+  batchQuerySchema, createAssignmentSchema, createBatchSchema, createSessionSchema,
+  linkRecordingSchema, proposeTrainerSchema, releaseTrainerSchema, rescheduleSessionSchema,
+  respondToProposalSchema,
+  assignmentSubmissionQuerySchema,
+  sessionQuerySchema, sessionUploadSchema, updateAssignmentSchema, updateBatchSchema,
+  updateSessionSchema,
+  type BatchQuery, type CreateAssignmentInput, type CreateBatchInput, type CreateSessionInput,
+  type LinkRecordingInput, type Principal, type ProposeTrainerInput, type ReleaseTrainerInput,
+  type RescheduleSessionInput,
+  type AssignmentSubmissionQuery,
+  type RespondToProposalInput, type SessionQuery, type SessionUploadInput,
+  type UpdateAssignmentInput, type UpdateBatchInput,
+  type UpdateSessionInput,
+  markAttendanceSchema,
+  gradeSubmissionSchema,
+  type MarkAttendanceInput,
+  type GradeSubmissionInput,
+} from "@gurukulam/contracts";
+import { BatchesService } from "./batches.service";
+import { SessionsService } from "./sessions.service";
+import { AttendanceService } from "./attendance.service";
+import { zodBody } from "../../common/pipes/zod-validation.pipe";
+import { CurrentPrincipal, RequirePermission } from "../../common/decorators/principal.decorator";
+
+const cancelSchema = z.object({ reason: z.string().trim().min(1, "Say why it was cancelled").max(500) });
+
+@Controller("batches")
+export class BatchesController {
+  constructor(
+    private readonly batches: BatchesService,
+    private readonly sessions: SessionsService,
+    private readonly attendance: AttendanceService,
+  ) {}
+
+  // ── Sessions first: static segments must be declared before ":id" so a
+  //    session route is never read as a batch id.
+  @Get("sessions")
+  @RequirePermission("batches", "read")
+  listSessions(@CurrentPrincipal() p: Principal, @Query(zodBody(sessionQuerySchema)) q: SessionQuery) {
+    return this.sessions.list(p, q);
+  }
+
+  @Post("sessions")
+  @RequirePermission("batches", "edit")
+  createSession(@CurrentPrincipal() p: Principal, @Body(zodBody(createSessionSchema)) body: CreateSessionInput) {
+    return this.sessions.create(p, body);
+  }
+
+  /**
+   * A file of sessions, loaded into one batch. It ADDS and never replaces.
+   *
+   * `dryRun` returns the plan and writes nothing; the console always asks for
+   * the plan first. The batch is in the path rather than in the file, so a
+   * spreadsheet cannot reach across a scope boundary the caller does not hold.
+   */
+  @Post("sessions/upload/:batchId")
+  @RequirePermission("batches", "edit")
+  uploadSessions(
+    @CurrentPrincipal() p: Principal,
+    @Param("batchId") batchId: string,
+    @Body(zodBody(sessionUploadSchema)) body: SessionUploadInput,
+  ) {
+    return this.sessions.bulkUpload(p, batchId, body);
+  }
+
+  /**
+   * What students have handed in. Read-only — nothing grades yet.
+   * Declared before ":sessionId" so it is never read as a session id.
+   */
+  @Get("submissions")
+  @RequirePermission("batches", "read")
+  listSubmissions(
+    @CurrentPrincipal() p: Principal,
+    @Query(zodBody(assignmentSubmissionQuerySchema)) q: AssignmentSubmissionQuery,
+  ) {
+    return this.sessions.listSubmissions(p, q);
+  }
+
+  @Get("sessions/:sessionId")
+  @RequirePermission("batches", "read")
+  getSession(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.sessions.get(p, id);
+  }
+
+  @Patch("sessions/:sessionId")
+  @RequirePermission("batches", "edit")
+  updateSession(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(updateSessionSchema)) body: UpdateSessionInput) {
+    return this.sessions.update(p, id, body);
+  }
+
+  /** Moves a session in place, so attendance and the recording stay attached. */
+  @Post("sessions/:sessionId/reschedule")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  reschedule(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(rescheduleSessionSchema)) body: RescheduleSessionInput) {
+    return this.sessions.reschedule(p, id, body);
+  }
+
+  /** The deliberate act that releases assignments (invariant 17). */
+  @Post("sessions/:sessionId/complete")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  markComplete(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.sessions.markComplete(p, id);
+  }
+
+  @Post("sessions/:sessionId/reopen")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  reopen(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.sessions.reopen(p, id);
+  }
+
+  @Post("sessions/:sessionId/cancel")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  cancelSession(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(cancelSchema)) body: { reason: string }) {
+    return this.sessions.cancel(p, id, body.reason);
+  }
+
+  @Delete("sessions/:sessionId")
+  @RequirePermission("batches", "delete")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeSession(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string): Promise<void> {
+    await this.sessions.remove(p, id);
+  }
+
+  @Post("sessions/:sessionId/assignments")
+  @RequirePermission("batches", "edit")
+  createAssignment(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(createAssignmentSchema)) body: CreateAssignmentInput) {
+    return this.sessions.createAssignment(p, id, body);
+  }
+
+  /**
+   * The register for a session.
+   *
+   * Both actors: the admin console cannot take one today either, and an
+   * operations team needs the override permanently — a trainer who did not
+   * mark the class is an ordinary Tuesday.
+   */
+  @Get("sessions/:sessionId/attendance")
+  @RequirePermission("batches", "read")
+  sessionAttendance(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.attendance.get(p, id);
+  }
+
+  /** The whole register at once — see the contract for why not one student. */
+  @Post("sessions/:sessionId/attendance")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  markAttendance(
+    @CurrentPrincipal() p: Principal,
+    @Param("sessionId") id: string,
+    @Body(zodBody(markAttendanceSchema)) body: MarkAttendanceInput,
+  ) {
+    return this.attendance.mark(p, id, body);
+  }
+
+  /**
+   * Marking one submission. Both actors — see the service.
+   *
+   * The student is told, from inside the same transaction, so nobody is
+   * notified about a mark that did not land.
+   */
+  @Post("submissions/:submissionId/grade")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  gradeSubmission(
+    @CurrentPrincipal() p: Principal,
+    @Param("submissionId") id: string,
+    @Body(zodBody(gradeSubmissionSchema)) body: GradeSubmissionInput,
+  ) {
+    return this.sessions.gradeSubmission(p, id, body);
+  }
+
+  /** Reached on its own, so the edit screen needs no query string. */
+  @Get("assignments/:assignmentId")
+  @RequirePermission("batches", "read")
+  getAssignment(@CurrentPrincipal() p: Principal, @Param("assignmentId") id: string) {
+    return this.sessions.getAssignment(p, id);
+  }
+
+  @Patch("assignments/:assignmentId")
+  @RequirePermission("batches", "edit")
+  updateAssignment(@CurrentPrincipal() p: Principal, @Param("assignmentId") id: string, @Body(zodBody(updateAssignmentSchema)) body: UpdateAssignmentInput) {
+    return this.sessions.updateAssignment(p, id, body);
+  }
+
+  @Delete("assignments/:assignmentId")
+  @RequirePermission("batches", "delete")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeAssignment(@CurrentPrincipal() p: Principal, @Param("assignmentId") id: string): Promise<void> {
+    await this.sessions.removeAssignment(p, id);
+  }
+
+  @Post("sessions/:sessionId/recording")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  linkRecording(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string, @Body(zodBody(linkRecordingSchema)) body: LinkRecordingInput) {
+    return this.sessions.linkRecording(p, id, body);
+  }
+
+  @Post("sessions/:sessionId/recording/unpublish")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  unpublishRecording(@CurrentPrincipal() p: Principal, @Param("sessionId") id: string) {
+    return this.sessions.unpublishRecording(p, id);
+  }
+
+  // ── Batches ─────────────────────────────────────────────────────────────
+
+  @Get()
+  @RequirePermission("batches", "read")
+  list(@CurrentPrincipal() p: Principal, @Query(zodBody(batchQuerySchema)) q: BatchQuery) {
+    return this.batches.list(p, q);
+  }
+
+  @Post()
+  @RequirePermission("batches", "edit")
+  create(@CurrentPrincipal() p: Principal, @Body(zodBody(createBatchSchema)) body: CreateBatchInput) {
+    return this.batches.create(p, body);
+  }
+
+  @Get(":id")
+  @RequirePermission("batches", "read")
+  get(@CurrentPrincipal() p: Principal, @Param("id") id: string) {
+    return this.batches.get(p, id);
+  }
+
+  @Patch(":id")
+  @RequirePermission("batches", "edit")
+  update(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(updateBatchSchema)) body: UpdateBatchInput) {
+    return this.batches.update(p, id, body);
+  }
+
+  /** Step one of the handshake — a proposal is not committed delivery. */
+  /**
+   * Who may be proposed, and who would be refused — the picker's own question,
+   * answered by the same rule the proposal applies.
+   */
+  @Get(":id/trainer/candidates")
+  @RequirePermission("batches", "read")
+  trainerCandidates(@CurrentPrincipal() p: Principal, @Param("id") id: string) {
+    return this.batches.trainerCandidates(p, id);
+  }
+
+  @Post(":id/trainer/propose")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  proposeTrainer(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(proposeTrainerSchema)) body: ProposeTrainerInput) {
+    return this.batches.proposeTrainer(p, id, body);
+  }
+
+  /** Step two. Recorded by an admin on the trainer's behalf until that portal exists. */
+  @Post(":id/trainer/respond")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission("batches", "edit")
+  respond(@CurrentPrincipal() p: Principal, @Param("id") id: string, @Body(zodBody(respondToProposalSchema)) body: RespondToProposalInput) {
+    return this.batches.respondToProposal(p, id, body);
+  }
+
+  /**
+   * Releases the batch's trainer — an open proposal, or a confirmed one.
+   *
+   * DELETE rather than POST because it takes the assignment off the batch, and
+   * it carries a body: the reason is required, as it is everywhere else a
+   * record stops being in force.
+   */
+  @Delete(":id/trainer/propose")
+  @RequirePermission("batches", "edit")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async withdraw(
+    @CurrentPrincipal() p: Principal,
+    @Param("id") id: string,
+    @Body(zodBody(releaseTrainerSchema)) body: ReleaseTrainerInput,
+  ): Promise<void> {
+    await this.batches.withdrawProposal(p, id, body);
+  }
+
+  @Delete(":id")
+  @RequirePermission("batches", "delete")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@CurrentPrincipal() p: Principal, @Param("id") id: string): Promise<void> {
+    await this.batches.remove(p, id);
+  }
+}

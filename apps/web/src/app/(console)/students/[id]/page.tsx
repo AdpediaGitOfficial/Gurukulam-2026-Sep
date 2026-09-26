@@ -1,0 +1,450 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { can, formatRupees, fromWire, type StudentDetail } from "@gurukulam/contracts";
+
+import { DetailRow } from "@/components/patterns/detail-row";
+import { PageHeader } from "@/components/patterns/page-header";
+import { PageBody, PageSection } from "@/components/patterns/page-section";
+import { SegmentTag } from "@/components/patterns/segment-tag";
+import { ConfirmAction, ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
+import { DeleteRecord } from "@/components/patterns/delete-record";
+import { Alert } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusPill } from "@/components/ui/status-pill";
+import { getStudent, listStudentSubmissions } from "@/features/students/server/students-service";
+import {
+  deallocateStudent,
+  reinstateStudent,
+  suspendStudent,
+} from "@/features/students/server/actions";
+import { RosterOutcomeForm } from "@/features/students/components/roster-outcome-form";
+import { requireModule } from "@/server/principal";
+import type { SearchParams } from "@/server/list";
+import { formatCount } from "@/lib/format";
+
+export const metadata: Metadata = { title: "Student" };
+
+const fullName = (s: StudentDetail) =>
+  s.lastName === null ? s.firstName : `${s.firstName} ${s.lastName}`;
+
+const money = (minor: string) => formatRupees(fromWire(minor), { paise: false });
+
+export default async function StudentDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
+  const principal = await requireModule("students");
+  // The outcome is a write, so the control only appears for somebody who may
+  // make one — a disabled control is a promise the screen cannot keep.
+  const mayEdit = can(principal, "students", "edit");
+  /* Not rendered at all without the permission — a button that answers 403
+     teaches people the console is broken rather than that they lack the
+     right. */
+  const mayDelete = can(principal, "students", "delete");
+  const { id } = await params;
+  const query = await searchParams;
+  const student = await getStudent(id);
+  const submissions = await listStudentSubmissions(id);
+
+  const retail = student.enrolmentChannel === "RETAIL";
+
+  return (
+    <PageBody>
+      <PageHeader
+        eyebrow="Students"
+        title={fullName(student)}
+        description={`${student.studentCode} · ${student.email}`}
+        breadcrumbs={[
+          { label: "Students", href: "/students" },
+          { label: fullName(student) },
+        ]}
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Link
+              href={`/students/${student.studentId}/edit`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Edit
+            </Link>
+            {/* Only once they are on a roster: a certificate names the
+                delivery it certifies, so there is nothing to issue against an
+                unallocated student. */}
+            {student.isAllocated === true ? (
+              <Link
+                href={`/students/${student.studentId}/certificate`}
+                className={buttonVariants({ variant: "secondary" })}
+              >
+                Issue a certificate
+              </Link>
+            ) : (
+              <Link
+                href={`/students/${student.studentId}/allocate`}
+                className={buttonVariants({ variant: "primary" })}
+              >
+                Allocate to a batch
+              </Link>
+            )}
+          </div>
+        }
+      />
+
+      {query["suspended"] === "1" ? (
+        <Alert intent="warning" title="Account suspended">
+          They can no longer sign in. Their enrolment, ledger and history are untouched — this is
+          access only.
+        </Alert>
+      ) : query["reinstated"] === "1" ? (
+        <Alert intent="success" title="Account reinstated">
+          They can sign in again, and the suspension reason has been cleared.
+        </Alert>
+      ) : query["allocated"] === "1" ? (
+        <Alert intent="success" title="Allocated">
+          Batch mapping, session access, ledger and credentials were written together.
+        </Alert>
+      ) : query["deallocated"] === "1" ? (
+        <Alert intent="info" title="Taken off the roster">
+          The enrolment is removed with its reason kept. Their ledger is not — a student who paid
+          still has one, and closing it is a separate, deliberate act.
+        </Alert>
+      ) : query["saved"] === "1" ? (
+        <Alert intent="success" title="Saved">
+          Student updated.
+        </Alert>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentTag segment={student.enrolmentChannel} />
+        <StatusPill
+          intent={
+            student.accountStatus === "ACTIVE"
+              ? "success"
+              : student.accountStatus === "SUSPENDED"
+                ? "danger"
+                : "neutral"
+          }
+        >
+          {student.accountStatus.toLowerCase()}
+        </StatusPill>
+        {student.isAllocated === false ? (
+          <StatusPill intent="warning">Unallocated</StatusPill>
+        ) : null}
+
+        {/* The reason sits beside the status it explains, not in a tab
+            somewhere — whoever finds a suspended account is asking why. */}
+        {student.accountStatus === "SUSPENDED" ? (
+          <span className="text-body-sm text-ink-muted">
+            {student.suspendedAt === null
+              ? null
+              : `Suspended ${student.suspendedAt.slice(0, 10)}`}
+            {student.suspendedReason === null ? null : (
+              <span className="text-ink-subtle"> · &ldquo;{student.suspendedReason}&rdquo;</span>
+            )}
+          </span>
+        ) : null}
+
+        <span className="ml-auto">
+          {student.accountStatus === "SUSPENDED" ? (
+            <ConfirmAction
+              action={reinstateStudent.bind(null, student.studentId)}
+              label="Reinstate"
+              pending="Reinstating…"
+              subject={fullName(student)}
+            />
+          ) : (
+            <ConfirmWithReason
+              id={student.studentId}
+              subject={fullName(student)}
+              action={suspendStudent.bind(null, student.studentId)}
+              trigger="Suspend"
+              confirm="Suspend account"
+              pending="Suspending…"
+              required
+              reasonPlaceholder="Fees outstanding since August"
+              description={
+                <>
+                  Suspending stops {fullName(student)} signing in. Their enrolment, ledger and
+                  history are untouched — reinstating restores access and clears this reason.
+                </>
+              }
+            />
+          )}
+        </span>
+
+        {/* Removing the record sits beside suspending it, because an operator
+            reaching for one has usually just weighed the other — and the two
+            are genuinely different: suspending stops a real student signing
+            in, removing says the record should not have existed.
+
+            The API decides whether it may happen, and it refuses a student
+            with a recorded payment in its own words: a receipt is a financial
+            record and the collection register has to stay able to reconcile.
+            The refusal is shown verbatim rather than translated into
+            "could not delete". */}
+        {mayDelete ? (
+          <DeleteRecord target="student" id={student.studentId} label={fullName(student)} />
+        ) : null}
+      </div>
+
+      <div className="grid gap-8 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader as="h2" title="Profile" />
+          <dl>
+            <DetailRow label="Student code" value={student.studentCode} variant="code" />
+            <DetailRow label="Email" value={student.email} />
+            <DetailRow label="Phone" value={student.phone ?? "—"} />
+            <DetailRow label="Segment" value={retail ? "Retail — walk-in" : "College — institutional"} />
+            {/* A retail student has no college and never will (invariant 1). */}
+            <DetailRow
+              label="College"
+              value={student.collegeName ?? <span className="text-ink-subtle">None</span>}
+            />
+            <DetailRow label="City" value={student.cityName ?? "—"} />
+            <DetailRow label="Discipline" value={student.discipline ?? "—"} />
+            <DetailRow label="Passout year" value={student.passoutYear === null ? "—" : String(student.passoutYear)} />
+          </dl>
+        </Card>
+
+        <Card>
+          <CardHeader
+            as="h2"
+            title="Provenance"
+            description="Who created this record, and when."
+          />
+          <dl>
+            {/*
+              Every record carries its author. A college-created student shows
+              the college user, which is what makes institutional intake
+              auditable rather than merely recorded.
+            */}
+            <DetailRow
+              label="Created by"
+              value={student.createdByType.replace(/_/g, " ").toLowerCase()}
+            />
+            <DetailRow label="Created" value={new Date(student.createdAt).toLocaleString("en-IN")} />
+            <DetailRow
+              label="Credentials"
+              value={
+                student.credentialsIssuedAt === null
+                  ? "Not issued"
+                  : new Date(student.credentialsIssuedAt).toLocaleDateString("en-IN")
+              }
+            />
+            <DetailRow
+              label="Last signed in"
+              value={
+                student.lastLoginAt === null
+                  ? "Never"
+                  : new Date(student.lastLoginAt).toLocaleString("en-IN")
+              }
+            />
+          </dl>
+        </Card>
+      </div>
+
+      <PageSection title="Enrolments" description="The batches this student sits on.">
+        <Card padding="none" className="overflow-hidden">
+          {student.batches.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="Not in a batch yet"
+                description="Allocation is what turns a student record into an enrolment — course, batch, price, schedule and credentials, in one transaction."
+              />
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {student.batches.map((batch) => (
+                <li
+                  key={batch.batchId}
+                  className="flex flex-wrap items-center gap-4 border-b border-hairline p-4 last:border-b-0"
+                >
+                  <Link
+                    href={`/batches/${batch.batchId}`}
+                    className="min-w-0 flex-1 hover:underline"
+                  >
+                    <span className="block text-body font-semibold text-ink">{batch.name}</span>
+                    <span className="block font-mono text-caption text-ink-subtle">
+                      {batch.batchCode} · {batch.courseName ?? "—"}
+                    </span>
+                  </Link>
+                  <SegmentTag segment={batch.segment} />
+                  <span className="text-body-sm text-ink-muted">
+                    enrolled {new Date(batch.enrolledAt).toLocaleDateString("en-IN")}
+                  </span>
+                  <StatusPill intent={batch.status === "COMPLETED" ? "success" : "info"}>
+                    {batch.status.replace(/_/g, " ").toLowerCase()}
+                  </StatusPill>
+                  {/* The BATCH's status is above; this is the STUDENT's outcome
+                      on it. A batch can finish with somebody who left halfway
+                      still on its roster, and the completion rate has to be
+                      able to tell those two apart. */}
+                  {mayEdit ? (
+                    <RosterOutcomeForm studentId={student.studentId} batch={batch} />
+                  ) : null}
+                  {/* NOT the same verb as the one above, and the difference
+                      matters to every rate the dashboard computes. "Record"
+                      says a real enrolment ended — finished, or left — and
+                      keeps the row, because both are facts about somebody who
+                      genuinely attended. This says they should never have been
+                      on this roster: allocated to the wrong cohort, usually.
+                      The mapping is soft-deleted, so the history survives and
+                      the completion rate stops counting a person who was not
+                      there. */}
+                  {mayEdit ? (
+                    <ConfirmWithReason
+                      id={`deallocate-${batch.batchId}`}
+                      subject={`${fullName(student)} — ${batch.name}`}
+                      action={deallocateStudent.bind(null, student.studentId, batch.batchId)}
+                      trigger="Remove"
+                      confirm="Remove from roster"
+                      pending="Removing…"
+                      required
+                      reasonLabel="Why they are coming off"
+                      reasonPlaceholder="Allocated to the wrong batch — moved to GKB-2026-014"
+                      reasonHint="Kept on the record, which is what can answer this six months from now."
+                      description="Takes the student off this batch's roster. Use this when they should not have been on it at all — if they enrolled and then left, record that above instead, so the drop-out rate still counts them."
+                    />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </PageSection>
+
+      {/* What they have handed in. Read-only: nothing in the API grades yet, so
+          a mark reads "not marked" rather than a zero — those are different
+          answers and a zero is the one that looks like a decision. */}
+      <PageSection
+        title="Assignments"
+        description="Work set against the sessions of this student's batches, and what they have submitted."
+      >
+        <Card padding="none" className="overflow-hidden">
+          {submissions.rows.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="Nothing submitted yet"
+                description="An assignment can only be set against a session already marked delivered, so a batch early in its schedule will have none."
+              />
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {submissions.rows.map((submission) => (
+                <li
+                  key={submission.submissionId}
+                  className="flex flex-wrap items-center gap-6 border-b border-hairline p-4 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-[2]">
+                    <span className="block text-body font-semibold text-ink">
+                      {submission.assignmentTitle ?? "—"}
+                    </span>
+                    <span className="block text-caption text-ink-subtle">
+                      {[submission.batchCode, submission.sessionTitle].filter(Boolean).join(" · ") ||
+                        "—"}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Submitted</span>
+                    <span className="block text-body-sm text-ink">
+                      {submission.submittedAt === null
+                        ? "—"
+                        : new Date(submission.submittedAt).toLocaleDateString("en-IN")}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Mark</span>
+                    <span className="block text-body-sm text-ink tabular-nums">
+                      {submission.marksAwarded === null
+                        ? "Not marked"
+                        : `${submission.marksAwarded}${
+                            submission.maxMarks === null ? "" : ` / ${submission.maxMarks}`
+                          }`}
+                    </span>
+                  </span>
+                  <StatusPill
+                    intent={
+                      submission.status === "GRADED"
+                        ? "success"
+                        : submission.status === "SUBMITTED"
+                          ? "info"
+                          : submission.status === "LATE"
+                            ? "danger"
+                            : "warning"
+                    }
+                  >
+                    {submission.status.charAt(0) + submission.status.slice(1).toLowerCase()}
+                  </StatusPill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </PageSection>
+
+      <PageSection
+        title="Fees"
+        description={
+          retail
+            ? "What this student owes, and what has been collected."
+            : "A college student has no individual ledger — the institution is billed under a contract instead."
+        }
+      >
+        <Card padding="none" className="overflow-hidden">
+          {student.ledgers.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title={retail ? "No ledger yet" : "Billed through the institution"}
+                description={
+                  retail
+                    ? "A ledger is created at allocation, along with its installment schedule."
+                    : "Billing follows segment: college students carry no individual ledger."
+                }
+              />
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {student.ledgers.map((ledger) => (
+                <li
+                  key={ledger.ledgerId}
+                  className="flex flex-wrap items-center gap-6 border-b border-hairline p-4 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body-sm text-ink-subtle">Enrolment value</span>
+                    <span className="block font-mono text-h3 text-ink tabular-nums">
+                      {money(ledger.enrolmentValueMinor)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Paid</span>
+                    <span className="block font-mono text-body font-semibold text-success-strong tabular-nums">
+                      {money(ledger.totalPaidMinor)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Balance</span>
+                    <span className="block font-mono text-body font-semibold text-warning-strong tabular-nums">
+                      {money(ledger.balancePendingMinor)}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-body-sm text-ink-subtle">Installments</span>
+                    <span className="block text-body tabular-nums">
+                      {formatCount(ledger.installmentCount)}
+                    </span>
+                  </span>
+                  <StatusPill intent={ledger.status === "PAID_FULL" ? "success" : "warning"}>
+                    {ledger.status.replace(/_/g, " ").toLowerCase()}
+                  </StatusPill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </PageSection>
+    </PageBody>
+  );
+}
