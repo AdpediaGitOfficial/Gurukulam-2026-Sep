@@ -7,6 +7,9 @@ import type {
   MeCertificate,
   MeCertificates,
   MeJob,
+  MeNotice,
+  MeNotifications,
+  MarkNoticesReadInput,
   MeFees,
   MeHome,
   MeInstallment,
@@ -801,6 +804,76 @@ export class MeService {
     }));
   }
 
+  // ── My notifications ────────────────────────────────────────────────────
+
+  /**
+   * What has changed, for this student and nobody else.
+   *
+   * ── Why this is not `notifications.list` ───────────────────────────────
+   *
+   * That method's audience rule starts with `{ recipientId: null,
+   * recipientType: null }` — rows addressed to nobody in particular, which is
+   * every operator situation in the system. It is right for an operator and
+   * catastrophic for a student, and the only thing standing between the two
+   * today is a permission a student happens not to hold.
+   *
+   * Here the query names `recipientType: "STUDENT"` and `recipientId:
+   * principal.id`, with no branch to fall through. A student cannot be handed
+   * somebody else's row because no query here can return one.
+   *
+   * RESOLVED rows are omitted: a condition that cleared — work handed in, a
+   * session that is no longer tomorrow — has nothing left to say.
+   */
+  async notifications(principal: Principal): Promise<MeNotifications> {
+    const rows = await this.prisma.notification.findMany({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: principal.id,
+        status: { not: "RESOLVED" },
+      },
+      // Action first, then what happened to them, then the rest — and newest
+      // within each. The same order the console works in.
+      orderBy: [{ class: "asc" }, { createdAt: "desc" }],
+      take: 100,
+    });
+
+    const items: MeNotice[] = rows.map(toNotice);
+
+    return {
+      items,
+      // FYI never contributes. Most of what a student is told is FYI, and a
+      // badge that is permanently lit is one nobody reads.
+      badge: items.filter((n) => !n.read && n.class !== "FYI").length,
+      unread: items.filter((n) => !n.read).length,
+    };
+  }
+
+  /**
+   * Marks notices read.
+   *
+   * ACTION_REQUIRED is untouched, exactly as in the console: those clear when
+   * their condition does. A student who could dismiss "work due tomorrow"
+   * would have dismissed the one thing on the screen asking them to act — and
+   * the sweep would raise it again tonight anyway, which is worse than not
+   * offering.
+   */
+  async markNoticesRead(
+    principal: Principal,
+    input: MarkNoticesReadInput,
+  ): Promise<{ marked: number }> {
+    const result = await this.prisma.notification.updateMany({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: principal.id,
+        status: "OPEN",
+        class: { in: ["FYI", "ALERT"] },
+        ...(input.all ? {} : { notificationId: { in: input.notificationIds ?? [] } }),
+      },
+      data: { status: "READ", readAt: new Date() },
+    });
+    return { marked: result.count };
+  }
+
   /**
    * The landing page.
    *
@@ -1028,6 +1101,34 @@ function reasons(
   // posting and these rules. Said rather than assumed, because an empty list
   // would render as a card claiming no reason at all.
   return unique.length > 0 ? unique : ["a course you are enrolled on"];
+}
+
+function toNotice(row: {
+  notificationId: string;
+  type: string;
+  class: string;
+  title: string;
+  body: string | null;
+  ctaLabel: string | null;
+  ctaHref: string | null;
+  status: string;
+  readAt: Date | null;
+  createdAt: Date;
+}): MeNotice {
+  return {
+    notificationId: row.notificationId,
+    type: row.type,
+    class: row.class as MeNotice["class"],
+    title: row.title,
+    body: row.body,
+    ctaLabel: row.ctaLabel,
+    // Only a portal path is handed to a student screen. An operator CTA that
+    // somehow reached this row would render as a link into a console they
+    // cannot open, which reads as a broken product rather than a refusal.
+    ctaHref: row.ctaHref !== null && row.ctaHref.startsWith("/portal") ? row.ctaHref : null,
+    read: row.status !== "OPEN" || row.readAt !== null,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 /** An empty string is a cleared field, not a value. */

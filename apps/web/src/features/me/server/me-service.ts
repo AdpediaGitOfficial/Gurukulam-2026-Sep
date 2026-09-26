@@ -5,6 +5,7 @@ import {
   meBatchSchema,
   meCertificatesSchema,
   meJobSchema,
+  meNotificationsSchema,
   meHomeSchema,
   meProfileSchema,
   meScheduleSchema,
@@ -18,6 +19,7 @@ import {
   type MeCertificates,
   type MeFees,
   type MeJob,
+  type MeNotifications,
   type MeSchedule,
 } from "@gurukulam/contracts";
 import { z } from "zod";
@@ -127,4 +129,17 @@ export async function getJobs(): Promise<MeJob[]> {
   const jobs = await apiFetch<MeJob[]>("/me/jobs");
   checkShape(z.array(meJobSchema), jobs, "GET /me/jobs");
   return jobs;
+}
+
+/**
+ * What has changed, for this student.
+ *
+ * `/me/notifications`, never the console's `/notifications` — that one's
+ * audience includes every row addressed to nobody in particular, which is the
+ * whole operator work queue. See the API service.
+ */
+export async function getNotifications(): Promise<MeNotifications> {
+  const notifications = await apiFetch<MeNotifications>("/me/notifications");
+  checkShape(meNotificationsSchema, notifications, "GET /me/notifications");
+  return notifications;
 }

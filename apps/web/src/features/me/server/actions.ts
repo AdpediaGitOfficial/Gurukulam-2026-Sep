@@ -94,3 +94,27 @@ export async function submitAssignment(
   revalidatePath("/portal");
   redirect(`/portal/assignments?handed-in=${encodeURIComponent(assignmentId)}`);
 }
+
+/**
+ * Marking notices read.
+ *
+ * ── Why there is no "dismiss" ───────────────────────────────────────────
+ *
+ * The API refuses to touch ACTION_REQUIRED rows, and this does not offer to.
+ * Those clear when their condition does — the work is handed in, the
+ * instalment is paid — and a student who could dismiss "work due tomorrow"
+ * would have dismissed the one thing on the screen asking them to act. The
+ * nightly sweep would raise it again anyway, so the control would be a lie
+ * with a delay on it.
+ */
+export async function markNoticesRead(): Promise<void> {
+  try {
+    await apiFetch("/me/notifications/read", { method: "POST", body: { all: true } });
+  } catch {
+    // A failure here loses nothing a reload does not fix, and there is no
+    // sensible screen for "we could not mark your notices read".
+  }
+  revalidatePath("/portal/notifications");
+  revalidatePath("/portal", "layout");
+  redirect("/portal/notifications");
+}

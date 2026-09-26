@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from "@nestjs/common";
 import {
+  markNoticesReadSchema,
   submitAssignmentSchema,
   updateMeSchema,
+  type MarkNoticesReadInput,
   type Principal,
   type SubmitAssignmentInput,
   type UpdateMeInput,
@@ -66,6 +68,27 @@ export class MeController {
   @Get("schedule")
   schedule(@CurrentPrincipal() p: Principal) {
     return this.me.schedule(p);
+  }
+
+  /**
+   * What has changed, for this student and nobody else.
+   *
+   * Deliberately not the console's `/notifications`, whose audience rule
+   * includes every row addressed to nobody in particular — see the service.
+   */
+  @Get("notifications")
+  notifications(@CurrentPrincipal() p: Principal) {
+    return this.me.notifications(p);
+  }
+
+  /** FYI and ALERT only. Action-required rows clear when their condition does. */
+  @Post("notifications/read")
+  @HttpCode(HttpStatus.OK)
+  markNoticesRead(
+    @CurrentPrincipal() p: Principal,
+    @Body(zodBody(markNoticesReadSchema)) body: MarkNoticesReadInput,
+  ) {
+    return this.me.markNoticesRead(p, body);
   }
 
   /**

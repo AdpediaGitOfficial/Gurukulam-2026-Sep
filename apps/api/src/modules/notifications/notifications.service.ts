@@ -28,6 +28,98 @@ export class NotificationsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── Emitted ─────────────────────────────────────────────────────────────
+
+  /**
+   * One event, for one person, at the moment it happened.
+   *
+   * ── Why this is not the sweep ──────────────────────────────────────────
+   *
+   * `sweep()` evaluates SITUATIONS — "how many students are unallocated" — and
+   * its design goal is to reach zero. "Your Tuesday session was cancelled" is
+   * not a situation. It cannot be swept for, because by the time the nightly
+   * run happens the row simply says CANCELLED and nothing records that it
+   * CHANGED, or that this person has not been told. And it must never
+   * auto-resolve: there is no condition to clear, and a cancellation notice
+   * that vanished on its own would be the worst behaviour available.
+   *
+   * ── Why the input has no `groupKey` ────────────────────────────────────
+   *
+   * Because the sweep resolves rows BY group key. An emitted row that borrowed
+   * one would be silently resolved by the next nightly run — the notice would
+   * disappear and nobody would ever know it had. Leaving the field off the
+   * input type is what makes that unwritable rather than merely discouraged.
+   *
+   * ── Why it takes a transaction ─────────────────────────────────────────
+   *
+   * The event and the change are one fact. Emitting after the transaction
+   * commits means a crash in between leaves a cancelled session nobody was
+   * told about; emitting inside it means the notice exists if and only if the
+   * change does.
+   */
+  async emit(tx: Prisma.TransactionClient, event: EmittedEvent): Promise<void> {
+    await tx.notification.create({
+      data: {
+        type: event.type,
+        class: event.class,
+        title: event.title,
+        body: event.body ?? null,
+        ctaLabel: event.ctaLabel ?? null,
+        ctaHref: event.ctaHref ?? null,
+        recipientType: event.recipientType,
+        recipientId: event.recipientId,
+        subjectType: event.subjectType ?? null,
+        subjectId: event.subjectId ?? null,
+        // Never a group key. See above.
+        groupKey: null,
+        status: "OPEN",
+      },
+    });
+  }
+
+  /**
+   * The same event to every student on a batch's live roster.
+   *
+   * ── Who counts as on the roster ────────────────────────────────────────
+   *
+   * A live mapping that is still active. Someone who left the batch is not
+   * told that next Tuesday moved — they are not coming — and a deallocated
+   * mapping is the admin saying they were never on it.
+   *
+   * Written as one `createMany` rather than a loop of creates: a roster of
+   * forty students is forty rows, and forty round trips inside a transaction
+   * is how a session edit starts timing out.
+   */
+  async emitToRoster(
+    tx: Prisma.TransactionClient,
+    batchId: string,
+    event: Omit<EmittedEvent, "recipientType" | "recipientId">,
+  ): Promise<number> {
+    const roster = await tx.studentBatchMapping.findMany({
+      where: { batchId, deletedAt: null, isActive: true },
+      select: { studentId: true },
+    });
+    if (roster.length === 0) return 0;
+
+    await tx.notification.createMany({
+      data: roster.map((row) => ({
+        type: event.type,
+        class: event.class,
+        title: event.title,
+        body: event.body ?? null,
+        ctaLabel: event.ctaLabel ?? null,
+        ctaHref: event.ctaHref ?? null,
+        recipientType: "STUDENT" as const,
+        recipientId: row.studentId,
+        subjectType: event.subjectType ?? null,
+        subjectId: event.subjectId ?? null,
+        groupKey: null,
+        status: "OPEN" as const,
+      })),
+    });
+    return roster.length;
+  }
+
   async list(principal: Principal, query: NotificationQuery): Promise<Page<Notification>> {
     const where: Prisma.NotificationWhereInput = {
       ...this.audienceOf(principal),
@@ -159,6 +251,185 @@ export class NotificationsService {
   }
 
   /**
+   * The two things a student is told about that are CONDITIONS, not events.
+   *
+   * ── Why these two are swept and the rest are emitted ───────────────────
+   *
+   * "Your session was cancelled" is a fact about a moment and must never
+   * auto-resolve. "You have work due tomorrow and have not handed it in" is
+   * the opposite: handing it in is exactly what should make it go away, and
+   * that is the work-queue behaviour the sweep already implements. The same
+   * holds for "your session is tomorrow" — once tomorrow is today, the row has
+   * nothing left to say.
+   *
+   * ── Why these rows DO carry a group key ────────────────────────────────
+   *
+   * Because that is how the sweep finds and resolves them. It is keyed per
+   * student per subject — `student:<id>:assignment:<id>:due` — so one student
+   * handing their work in resolves their row and nobody else's. An emitted row
+   * must never borrow a key like this; see `emit`.
+   *
+   * Idempotent: running it twice in a day updates rather than duplicates, and
+   * a condition that has cleared is resolved rather than left behind.
+   */
+  async sweepStudents(now = new Date()): Promise<SweepResult> {
+    const today = startOfDay(now);
+    const tomorrow = new Date(today.getTime() + 86_400_000);
+    const dayAfter = new Date(today.getTime() + 2 * 86_400_000);
+
+    const wanted = new Map<string, StudentSituation>();
+
+    // ── A session tomorrow ────────────────────────────────────────────────
+    const sessions = await this.prisma.batchSession.findMany({
+      where: {
+        deletedAt: null,
+        // Not CANCELLED, and not already delivered. A cancelled session
+        // tomorrow is the opposite of a reminder.
+        status: { in: ["SCHEDULED", "LIVE"] },
+        scheduledDate: { gte: tomorrow, lt: dayAfter },
+      },
+      select: {
+        sessionId: true,
+        title: true,
+        startTime: true,
+        batch: {
+          select: {
+            batchCode: true,
+            studentMappings: {
+              where: { deletedAt: null, isActive: true },
+              select: { studentId: true },
+            },
+          },
+        },
+      },
+    });
+
+    for (const session of sessions) {
+      for (const { studentId } of session.batch.studentMappings) {
+        const key = `student:${studentId}:session:${session.sessionId}:tomorrow`;
+        wanted.set(key, {
+          groupKey: key,
+          type: "session.tomorrow",
+          class: "FYI",
+          title: `${session.title} is tomorrow`,
+          body: `${session.batch.batchCode} at ${session.startTime.toISOString().slice(11, 16)}.`,
+          ctaLabel: "See the schedule",
+          ctaHref: "/portal/learning",
+          recipientId: studentId,
+          subjectType: "session",
+          subjectId: session.sessionId,
+        });
+      }
+    }
+
+    // ── Work due tomorrow, nothing handed in ──────────────────────────────
+    const assignments = await this.prisma.assignment.findMany({
+      where: {
+        deletedAt: null,
+        status: "OPEN",
+        dueAt: { gte: tomorrow, lt: dayAfter },
+      },
+      select: {
+        assignmentId: true,
+        title: true,
+        batch: {
+          select: {
+            batchCode: true,
+            studentMappings: {
+              where: { deletedAt: null, isActive: true },
+              select: { studentId: true },
+            },
+          },
+        },
+        submissions: {
+          where: { deletedAt: null, submittedAt: { not: null } },
+          select: { studentId: true },
+        },
+      },
+    });
+
+    for (const assignment of assignments) {
+      // `submittedAt`, not `status`: a PENDING row with no timestamp is work
+      // allocated to a student, not work they did.
+      const handedIn = new Set(assignment.submissions.map((row) => row.studentId));
+      for (const { studentId } of assignment.batch.studentMappings) {
+        if (handedIn.has(studentId)) continue;
+        const key = `student:${studentId}:assignment:${assignment.assignmentId}:due`;
+        wanted.set(key, {
+          groupKey: key,
+          type: "assignment.due_tomorrow",
+          class: "ACTION_REQUIRED",
+          title: `${assignment.title} is due tomorrow`,
+          body: `${assignment.batch.batchCode}. Nothing handed in yet.`,
+          ctaLabel: "Hand it in",
+          ctaHref: "/portal/assignments",
+          recipientId: studentId,
+          subjectType: "assignment",
+          subjectId: assignment.assignmentId,
+        });
+      }
+    }
+
+    /*
+     * Everything currently raised for a student, so a row whose condition has
+     * gone is resolved. Found by the key PREFIX rather than by re-deriving
+     * yesterday's conditions — the condition being gone is precisely why it
+     * cannot be derived a second time.
+     */
+    const existing = await this.prisma.notification.findMany({
+      where: {
+        recipientType: "STUDENT",
+        status: { not: "RESOLVED" },
+        groupKey: { startsWith: "student:" },
+      },
+      select: { notificationId: true, groupKey: true, title: true },
+    });
+
+    let raised = 0;
+    let resolved = 0;
+    let unchanged = 0;
+
+    for (const row of existing) {
+      const still = row.groupKey === null ? undefined : wanted.get(row.groupKey);
+      if (still === undefined) {
+        await this.prisma.notification.update({
+          where: { notificationId: row.notificationId },
+          data: { status: "RESOLVED", resolvedAt: new Date() },
+        });
+        resolved++;
+        continue;
+      }
+      if (still.title === row.title) unchanged++;
+      wanted.delete(row.groupKey!);
+    }
+
+    for (const situation of wanted.values()) {
+      await this.prisma.notification.create({
+        data: {
+          type: situation.type,
+          class: situation.class,
+          title: situation.title,
+          body: situation.body,
+          ctaLabel: situation.ctaLabel,
+          ctaHref: situation.ctaHref,
+          recipientType: "STUDENT",
+          recipientId: situation.recipientId,
+          subjectType: situation.subjectType,
+          subjectId: situation.subjectId,
+          groupKey: situation.groupKey,
+          status: "OPEN",
+        },
+      });
+      raised++;
+    }
+
+    this.logger.log(
+      `Student sweep: ${raised} raised, ${resolved} resolved, ${unchanged} unchanged`,
+    );
+    return { raised, resolved, unchanged };
+  }
+
+  /**
    * Every LIVE situation, counted.
    *
    * A count of zero is as meaningful as a positive one — it is what resolves
@@ -282,6 +553,41 @@ export class NotificationsService {
   }
 }
 
+/**
+ * What an emitted event carries.
+ *
+ * Deliberately WITHOUT `groupKey` and without `status`. The first would let an
+ * event be resolved by the sweep; the second would let a caller write one that
+ * arrives already read. Both are mistakes that no test would catch, so the
+ * type simply cannot express them.
+ */
+export interface EmittedEvent {
+  /** A key from the catalogue, e.g. "session.cancelled". */
+  type: string;
+  class: "ACTION_REQUIRED" | "ALERT" | "FYI";
+  title: string;
+  body?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  recipientType: "STUDENT" | "ADMIN_USER" | "COLLEGE_USER" | "TRAINER";
+  recipientId: string;
+  subjectType?: string;
+  subjectId?: string;
+}
+
+interface StudentSituation {
+  groupKey: string;
+  type: string;
+  class: "ACTION_REQUIRED" | "FYI";
+  title: string;
+  body: string;
+  ctaLabel: string;
+  ctaHref: string;
+  recipientId: string;
+  subjectType: string;
+  subjectId: string;
+}
+
 interface Situation {
   type: string;
   groupKey: string;
@@ -315,3 +621,6 @@ function toNotification(row: {
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+const startOfDay = (d: Date): Date =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));

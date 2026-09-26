@@ -45,8 +45,8 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning, assignments, certificates, jobs, fees and account; notifications are specified and
-not yet built. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
+home, my learning, assignments, certificates, jobs, fees, updates and account — every screen the
+student-portal plan specifies. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
 permanently, because an operations team needs the override regardless.
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
@@ -111,13 +111,42 @@ that reference, and every axis against its expectation. The truth table is not o
 the inverse's `completedOnly` branch left the first two green, because no seeded posting targeted an
 unfinished student's course with it.
 
+**Two mechanisms are called "a notification", and mixing them destroys one of them.** `sweep()`
+evaluates SITUATIONS — "how many students are unallocated" — groups them by `groupKey`, and RESOLVES
+a row when its count reaches zero. `emit()` writes an EVENT for one person at the moment it happened,
+from inside the transaction that made the change, and never resolves. "Your Tuesday session was
+cancelled" cannot be swept for: by the time the nightly run happens the row just says CANCELLED, and
+nothing records that it changed or that this student has not been told.
+
+**An emitted row must never carry a `groupKey`.** The sweep resolves BY group key, so a borrowed one
+means the next nightly run silently deletes the notice and nobody ever knows. `EmittedEvent` simply
+has no such field — unwritable rather than discouraged. The two student rows that ARE swept
+(`session.tomorrow`, `assignment.due_tomorrow`) do carry one, keyed per student per subject, because
+handing the work in is exactly what should clear it.
+
+**Three rules the session emissions exist to obey**, all of them found the hard way in the source
+spec: a backdated session notifies nobody, because backfilling a cohort's history would fire twenty
+notices at every student about classes they already sat; a bulk upload emits ONE notice rather than
+one per session; and an edit emits only when something a student plans around actually moved, because
+`update` is also how a venue typo is corrected and "your session was updated" is the noise that
+teaches people to stop reading the bell.
+
+**The reminder ladder lives in `fee_installment_reminders`, not in a boolean.** A flag can only say
+that something was sent. The unique key on `(installment, offset)` is what makes the nightly run
+idempotent — running it twice cannot double-send — and it answers the question finance actually asks.
+The run climbs ONE rung, the latest reached: sending every rung an installment has passed produced
+9,968 reminders on its first run against real data, and told people "due in five days" about a bill
+due in three. Recipients resolve from the installment's parent every time (invariant 6), so a college
+student receives nothing.
+
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
 race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and
 checks this, the recording's two gates, the draft-and-scope gates on assignments, that a second
 hand-in is refused, invariant 7 from both sides, that a withdrawn certificate keeps its number and
 loses its code, that every job-audience axis decides the way the student's record says, that no
-admin-only field reaches the screen, and that every portal screen fits 390px.
+emitted notice carries a group key, that a student never sees an operator's queue, that no admin-only
+field reaches the screen, and that every portal screen fits 390px.
 
 Certificates carry no PDF yet, so two of those checks would be true for the wrong reason: with every
 `pdf_url` null, "no download offered" holds whatever the access rule says. The suite puts a URL there

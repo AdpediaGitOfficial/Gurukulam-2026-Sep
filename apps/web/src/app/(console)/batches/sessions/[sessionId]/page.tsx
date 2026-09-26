@@ -337,7 +337,7 @@ export default async function SessionDetailPage({
                       </StatusPill>
                       {mayEdit ? (
                         <Link
-                          href={`/batches/assignments/${assignment.assignmentId}/edit?sessionId=${session.sessionId}`}
+                          href={`/batches/assignments/${assignment.assignmentId}/edit`}
                           className={buttonVariants({ variant: "ghost", size: "sm" })}
                         >
                           Edit

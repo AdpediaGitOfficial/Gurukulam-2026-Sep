@@ -547,3 +547,79 @@ export const meJobSchema = z.object({
 });
 
 export type MeJob = z.infer<typeof meJobSchema>;
+
+// ── My notifications ──────────────────────────────────────────────────────
+
+/**
+ * What has changed, as a student reads it.
+ *
+ * ── Why this is not the admin's bell ────────────────────────────────────
+ *
+ * The console's bell is a WORK QUEUE whose design goal is to reach zero, and
+ * its audience rule includes every row addressed to nobody in particular —
+ * which is every operator situation in the system. A student must never be in
+ * that audience, and the safest way to guarantee it is a surface where the
+ * query is anchored to `principal.id` and has no "everyone" branch to fall
+ * through, exactly as the rest of `/me` is.
+ *
+ * ── The three classes, and what each is for ─────────────────────────────
+ *
+ * `ACTION_REQUIRED` badges and is something to do. `ALERT` is something that
+ * happened TO them — a cancelled class, a missed payment — and persists.
+ * `FYI` never badges: a count that never clears teaches people to stop looking
+ * at the count.
+ */
+export const meNoticeClassSchema = z.enum(["ACTION_REQUIRED", "ALERT", "FYI"]);
+export type MeNoticeClass = z.infer<typeof meNoticeClassSchema>;
+
+export const meNoticeSchema = z.object({
+  notificationId: z.string(),
+  /** A key from the catalogue, e.g. "session.cancelled". */
+  type: z.string(),
+  class: meNoticeClassSchema,
+  title: z.string(),
+  body: z.string().nullable(),
+  /** Where to go about it. Always inside the portal — never an admin route. */
+  ctaLabel: z.string().nullable(),
+  ctaHref: z.string().nullable(),
+  read: z.boolean(),
+  createdAt: z.string(),
+});
+
+export type MeNotice = z.infer<typeof meNoticeSchema>;
+
+/**
+ * The feed, with the one number the nav renders.
+ *
+ * `badge` deliberately excludes FYI. Most of what a student is told is FYI —
+ * a session moved, a recording went up — and a badge that is permanently lit
+ * is a badge nobody reads.
+ */
+export const meNotificationsSchema = z.object({
+  items: z.array(meNoticeSchema),
+  badge: z.number().int(),
+  unread: z.number().int(),
+});
+
+export type MeNotifications = z.infer<typeof meNotificationsSchema>;
+
+/**
+ * Marking things read.
+ *
+ * ACTION_REQUIRED is deliberately unaffected, the same way it is in the
+ * console: those clear when their condition does — the work is handed in, the
+ * instalment is paid — not when somebody looks at them. A student who could
+ * dismiss "work due tomorrow" would have dismissed the only thing on the
+ * screen that was asking them to act.
+ */
+export const markNoticesReadSchema = z
+  .object({
+    notificationIds: z.array(z.string()).max(200).optional(),
+    all: z.boolean().default(false),
+  })
+  .refine((v) => v.all || (v.notificationIds?.length ?? 0) > 0, {
+    message: "Name what to mark read, or mark everything",
+    path: ["notificationIds"],
+  });
+
+export type MarkNoticesReadInput = z.infer<typeof markNoticesReadSchema>;

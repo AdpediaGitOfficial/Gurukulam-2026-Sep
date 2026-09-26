@@ -2,11 +2,13 @@ import "server-only";
 
 import { z } from "zod";
 import {
+  assignmentSchema,
   batchDetailSchema,
   batchSchema,
   batchSessionSchema,
   sessionDetailSchema,
   trainerCandidateSchema,
+  type Assignment,
   type Batch,
   type BatchDetail,
   type BatchSession,
@@ -82,4 +84,15 @@ export async function listTrainerCandidates(batchId: string): Promise<TrainerCan
 /** One session, with its assignments and recording. */
 export async function getSession(sessionId: string): Promise<SessionDetail> {
   return sessionDetailSchema.parse(await apiFetch(`/batches/sessions/${sessionId}`));
+}
+
+/**
+ * One assignment, on its own.
+ *
+ * So the edit screen can be reloaded and bookmarked. It used to find the
+ * assignment inside its session, named in a query string, which made the URL
+ * work only when you arrived by clicking.
+ */
+export async function getAssignment(assignmentId: string): Promise<Assignment> {
+  return assignmentSchema.parse(await apiFetch(`/batches/assignments/${assignmentId}`));
 }

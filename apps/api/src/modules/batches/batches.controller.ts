@@ -128,6 +128,13 @@ export class BatchesController {
     return this.sessions.createAssignment(p, id, body);
   }
 
+  /** Reached on its own, so the edit screen needs no query string. */
+  @Get("assignments/:assignmentId")
+  @RequirePermission("batches", "read")
+  getAssignment(@CurrentPrincipal() p: Principal, @Param("assignmentId") id: string) {
+    return this.sessions.getAssignment(p, id);
+  }
+
   @Patch("assignments/:assignmentId")
   @RequirePermission("batches", "edit")
   updateAssignment(@CurrentPrincipal() p: Principal, @Param("assignmentId") id: string, @Body(zodBody(updateAssignmentSchema)) body: UpdateAssignmentInput) {

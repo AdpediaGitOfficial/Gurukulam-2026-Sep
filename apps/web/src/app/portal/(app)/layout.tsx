@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { StudentShell } from "@/components/layout/student-shell";
-import { getProfile } from "@/features/me/server/me-service";
+import { getNotifications, getProfile } from "@/features/me/server/me-service";
 import { requireStudent } from "@/server/principal";
 
 /**
@@ -17,10 +17,12 @@ export default async function StudentPortalLayout({ children }: { children: Reac
   /* The nav needs the segment, because Fees is ABSENT for a college student
      rather than empty (invariant 3). One extra read per navigation, in the one
      place that already resolves who is asking. */
-  const me = await getProfile();
+  /* Both in parallel: the shell cannot render without either, so serialising
+     them would cost a whole request of latency on every navigation. */
+  const [me, notifications] = await Promise.all([getProfile(), getNotifications()]);
 
   return (
-    <StudentShell principal={principal} segment={me.segment}>
+    <StudentShell principal={principal} segment={me.segment} badge={notifications.badge}>
       {children}
     </StudentShell>
   );

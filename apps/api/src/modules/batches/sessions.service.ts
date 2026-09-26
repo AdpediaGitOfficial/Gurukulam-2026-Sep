@@ -8,6 +8,7 @@ import type {
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { ApiException } from "../../common/errors";
 import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
@@ -30,6 +31,7 @@ export class SessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ids: IdService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(principal: Principal, query: SessionQuery): Promise<Page<BatchSession>> {
@@ -133,6 +135,28 @@ export class SessionsService {
         },
         include: SESSION_INCLUDE,
       });
+
+      /*
+       * Told only when the class has not happened yet.
+       *
+       * Backdating is deliberate — it is how a cohort that started two months
+       * ago gets its history recorded — and a backfill of twenty historical
+       * sessions would otherwise fire twenty notices at every student on the
+       * roster, about classes they already attended.
+       */
+      if (scheduledDate >= startOfToday()) {
+        await this.notifications.emitToRoster(tx, input.batchId, {
+          type: "session.added",
+          class: "FYI",
+          title: `${session.title} was added to your schedule`,
+          body: `${batch.batchCode} on ${dayOf(scheduledDate)}.`,
+          ctaLabel: "See the schedule",
+          ctaHref: "/portal/learning",
+          subjectType: "session",
+          subjectId: session.sessionId,
+        });
+      }
+
       return toSession(session);
     });
   }
@@ -145,19 +169,49 @@ export class SessionsService {
       );
     }
 
-    const updated = await this.prisma.batchSession.update({
-      where: { sessionId },
-      data: {
-        ...(input.topicId !== undefined ? { topicId: input.topicId || null } : {}),
-        ...(input.trainerId !== undefined ? { trainerId: input.trainerId || null } : {}),
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.mode !== undefined ? { mode: input.mode } : {}),
-        ...(input.venue !== undefined ? { venue: input.venue || null } : {}),
-        ...(input.meetingLink !== undefined ? { meetingLink: input.meetingLink || null } : {}),
-      },
-      include: SESSION_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.batchSession.update({
+        where: { sessionId },
+        data: {
+          ...(input.topicId !== undefined ? { topicId: input.topicId || null } : {}),
+          ...(input.trainerId !== undefined ? { trainerId: input.trainerId || null } : {}),
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.mode !== undefined ? { mode: input.mode } : {}),
+          ...(input.venue !== undefined ? { venue: input.venue || null } : {}),
+          ...(input.meetingLink !== undefined ? { meetingLink: input.meetingLink || null } : {}),
+        },
+        include: SESSION_INCLUDE,
+      });
+
+      /*
+       * Compared, never assumed.
+       *
+       * `update` is also how a venue TYPO gets corrected, and "your session was
+       * updated" is noise — the kind that teaches people to stop reading the
+       * bell. Only the facts a student plans around count: where it is and how
+       * it is delivered. A changed title or trainer is not one of them.
+       */
+      const moved: string[] = [];
+      if (updated.mode !== session.mode) moved.push(`now ${MODE_WORD[updated.mode]}`);
+      if ((updated.venue ?? "") !== (session.venue ?? "")) {
+        moved.push(updated.venue === null ? "no venue set" : `now at ${updated.venue}`);
+      }
+
+      if (moved.length > 0 && updated.scheduledDate >= startOfToday()) {
+        await this.notifications.emitToRoster(tx, session.batchId, {
+          type: "session.updated",
+          class: "FYI",
+          title: `${updated.title} has changed`,
+          body: `${dayOf(updated.scheduledDate)} — ${moved.join(", ")}.`,
+          ctaLabel: "See the schedule",
+          ctaHref: "/portal/learning",
+          subjectType: "session",
+          subjectId: sessionId,
+        });
+      }
+
+      return toSession(updated);
     });
-    return toSession(updated);
   }
 
   /**
@@ -175,22 +229,54 @@ export class SessionsService {
       throw ApiException.conflict("A completed session cannot be rescheduled.");
     }
 
-    const updated = await this.prisma.batchSession.update({
-      where: { sessionId },
-      data: {
-        scheduledDate: parseDate(input.scheduledDate, "scheduledDate"),
-        startTime: parseTime(input.startTime),
-        endTime: parseTime(input.endTime),
-        ...(input.venue !== undefined ? { venue: input.venue || null } : {}),
-        ...(input.meetingLink !== undefined ? { meetingLink: input.meetingLink || null } : {}),
-        // Records where it moved FROM, so the change is legible afterwards.
-        rescheduledFrom: session.scheduledDate,
-        rescheduleReason: input.reason,
-        status: "SCHEDULED",
-      },
-      include: SESSION_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.batchSession.update({
+        where: { sessionId },
+        data: {
+          scheduledDate: parseDate(input.scheduledDate, "scheduledDate"),
+          startTime: parseTime(input.startTime),
+          endTime: parseTime(input.endTime),
+          ...(input.venue !== undefined ? { venue: input.venue || null } : {}),
+          ...(input.meetingLink !== undefined ? { meetingLink: input.meetingLink || null } : {}),
+          // Records where it moved FROM, so the change is legible afterwards.
+          rescheduledFrom: session.scheduledDate,
+          rescheduleReason: input.reason,
+          status: "SCHEDULED",
+        },
+        include: SESSION_INCLUDE,
+      });
+
+      /*
+       * Says what it moved FROM.
+       *
+       * "Moved from Tue 14 Oct to Thu 16 Oct" is the message. "Your session was
+       * rescheduled" makes every reader open the schedule to find out whether
+       * they need to care — which is the work the notice was supposed to save.
+       *
+       * Emitted even when only the TIME moved, because a student planning their
+       * day around 10:00 is as affected as one planning around Tuesday.
+       */
+      const sameDay = updated.scheduledDate.getTime() === session.scheduledDate.getTime();
+      const from = sameDay
+        ? `${hhmm(session.startTime)}`
+        : `${dayOf(session.scheduledDate)}`;
+      const to = sameDay
+        ? `${hhmm(updated.startTime)}`
+        : `${dayOf(updated.scheduledDate)} at ${hhmm(updated.startTime)}`;
+
+      await this.notifications.emitToRoster(tx, session.batchId, {
+        type: "session.rescheduled",
+        class: "FYI",
+        title: `${updated.title} moved from ${from} to ${to}`,
+        body: input.reason,
+        ctaLabel: "See the schedule",
+        ctaHref: "/portal/learning",
+        subjectType: "session",
+        subjectId: sessionId,
+      });
+
+      return toSession(updated);
     });
-    return toSession(updated);
   }
 
   /**
@@ -244,12 +330,37 @@ export class SessionsService {
     if (session.status === "COMPLETED") {
       throw ApiException.conflict("A completed session cannot be cancelled.");
     }
-    const updated = await this.prisma.batchSession.update({
-      where: { sessionId },
-      data: { status: "CANCELLED", cancelReason: reason },
-      include: SESSION_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.batchSession.update({
+        where: { sessionId },
+        data: { status: "CANCELLED", cancelReason: reason },
+        include: SESSION_INCLUDE,
+      });
+
+      /*
+       * ALERT, not FYI — it REMOVES something a student had planned around,
+       * and someone who does not read it turns up to an empty room. The reason
+       * carries the weight: "the trainer is unwell" is what they need, and a
+       * gap with no explanation is what generates the call to the office.
+       *
+       * Emitted for a past session too. Cancelling one that has already been
+       * and gone is rare, but when it happens the roster has just been told
+       * something about a class they may have attended, and silence would be
+       * the wrong answer.
+       */
+      await this.notifications.emitToRoster(tx, session.batchId, {
+        type: "session.cancelled",
+        class: "ALERT",
+        title: `${updated.title} on ${dayOf(updated.scheduledDate)} is cancelled`,
+        body: reason,
+        ctaLabel: "See the schedule",
+        ctaHref: "/portal/learning",
+        subjectType: "session",
+        subjectId: sessionId,
+      });
+
+      return toSession(updated);
     });
-    return toSession(updated);
   }
 
   async remove(principal: Principal, sessionId: string): Promise<void> {
@@ -572,6 +683,39 @@ export class SessionsService {
           if (!update) continue;
           await tx.batchSession.update({ where: { sessionId: update.sessionId }, data: update.data });
         }
+
+        /*
+         * ONE notice, however many sessions the file held.
+         *
+         * A fortnight's schedule is a single act of planning from the roster's
+         * point of view, and fifteen "a session was added" notices is how a
+         * student learns to stop reading the bell. Their schedule is the thing
+         * to look at; this says it changed and points at it.
+         *
+         * Counted on FUTURE sessions only, for the same reason `create` is:
+         * an upload of a cohort's history is a backfill, and a backfill that
+         * told forty students about twenty classes they already sat through
+         * would be the single loudest thing this product ever did.
+         */
+        const ahead = toCreate.filter(
+          (item) => item.create !== undefined && item.create.scheduledDate >= startOfToday(),
+        ).length;
+
+        if (ahead > 0) {
+          await this.notifications.emitToRoster(tx, batchId, {
+            type: "session.added",
+            class: "FYI",
+            title:
+              ahead === 1
+                ? "A session was added to your schedule"
+                : `${ahead} sessions were added to your schedule`,
+            body: `${batch.batchCode}. Open My learning to see the dates.`,
+            ctaLabel: "See the schedule",
+            ctaHref: "/portal/learning",
+            subjectType: "batch",
+            subjectId: batchId,
+          });
+        }
       });
     } catch (error) {
       // The partial unique index firing means somebody else took one of these
@@ -621,9 +765,37 @@ export class SessionsService {
     });
   }
 
+  /**
+   * One assignment, on its own.
+   *
+   * ── Why this exists ────────────────────────────────────────────────────
+   *
+   * The edit screen used to reach an assignment through its SESSION, named in
+   * a query string, because there was no endpoint for one on its own. That
+   * made `/batches/assignments/<id>/edit` a URL that 404s when reloaded or
+   * pasted without its query — which is how the link audit found it, and which
+   * is a real fragility rather than an artefact of the audit: a page that only
+   * works when you arrive by clicking is a page nobody can bookmark.
+   */
+  async getAssignment(principal: Principal, assignmentId: string) {
+    const assignment = await this.loadAssignment(principal, assignmentId);
+    return toAssignment(assignment);
+  }
+
+  /**
+   * The one assignment write a student hears about.
+   *
+   * Publishing is what turns a draft into work that has been SET — which is why
+   * the notice hangs off the DRAFT → OPEN transition rather than off `create`.
+   * `createAssignment` cannot produce an OPEN assignment; the column defaults
+   * to DRAFT and there is no status on its input.
+   */
   async updateAssignment(principal: Principal, assignmentId: string, input: UpdateAssignmentInput) {
     const assignment = await this.loadAssignment(principal, assignmentId);
-    const updated = await this.prisma.assignment.update({
+    const published = input.status === "OPEN" && assignment.status !== "OPEN";
+
+    return this.prisma.$transaction(async (tx) => {
+    const updated = await tx.assignment.update({
       where: { assignmentId: assignment.assignmentId },
       data: {
         ...(input.title !== undefined ? { title: input.title } : {}),
@@ -641,7 +813,31 @@ export class SessionsService {
           : {}),
       },
     });
-    return toAssignment(updated);
+
+      /*
+       * ACTION_REQUIRED, because there is something to do. It is the only
+       * class that badges, and setting work is exactly the case that earns one
+       * — it clears when the student hands in, via the swept row the nightly
+       * run raises the day before it is due.
+       */
+      if (published) {
+        await this.notifications.emitToRoster(tx, assignment.batchId, {
+          type: "assignment.published",
+          class: "ACTION_REQUIRED",
+          title: `New work: ${updated.title}`,
+          body:
+            updated.dueAt === null
+              ? "No due date set."
+              : `Due ${dayOf(updated.dueAt)}.`,
+          ctaLabel: "Open it",
+          ctaHref: "/portal/assignments",
+          subjectType: "assignment",
+          subjectId: updated.assignmentId,
+        });
+      }
+
+      return toAssignment(updated);
+    });
   }
 
   async removeAssignment(principal: Principal, assignmentId: string): Promise<void> {
@@ -728,16 +924,41 @@ export class SessionsService {
       publishedAt: input.isPublished ? new Date() : null,
     };
 
-    const recording = existing
-      ? await this.prisma.sessionRecording.update({
-          where: { sessionId },
-          data: { ...data, deletedAt: null, deletedBy: null },
-        })
-      : await this.prisma.sessionRecording.create({
-          data: { sessionId, ...data, createdBy: principal.id },
-        });
+    return this.prisma.$transaction(async (tx) => {
+      const recording = existing
+        ? await tx.sessionRecording.update({
+            where: { sessionId },
+            data: { ...data, deletedAt: null, deletedBy: null },
+          })
+        : await tx.sessionRecording.create({
+            data: { sessionId, ...data, createdBy: principal.id },
+          });
 
-    return toRecording(recording);
+      /*
+       * Only when it becomes PUBLISHED, and only on the transition.
+       *
+       * Both gates that govern whether a student can watch it are already
+       * satisfied here — the session is COMPLETED (checked above) and the
+       * recording is published — so the notice and the link appear together. A
+       * notice for an unpublished recording would point at nothing; one sent
+       * again on every subsequent edit would tell the roster about a corrected
+       * title.
+       */
+      if (recording.isPublished && existing?.isPublished !== true) {
+        await this.notifications.emitToRoster(tx, session.batchId, {
+          type: "session.recording_published",
+          class: "FYI",
+          title: `The recording for ${session.title} is up`,
+          body: `${dayOf(session.scheduledDate)}. Watch it from My learning.`,
+          ctaLabel: "Watch it",
+          ctaHref: "/portal/learning",
+          subjectType: "session",
+          subjectId: sessionId,
+        });
+      }
+
+      return toRecording(recording);
+    });
   }
 
   async unpublishRecording(principal: Principal, sessionId: string) {
@@ -914,3 +1135,23 @@ function toSubmission(
     deletedAt: row.deletedAt?.toISOString() ?? null,
   };
 }
+
+const MODE_WORD: Record<string, string> = {
+  ONLINE: "online",
+  OFFLINE: "in person",
+  HYBRID: "hybrid",
+};
+
+/** "Tue 14 Oct". Named, because 14/10 and 10/14 are different days to different readers. */
+const dayOf = (d: Date): string =>
+  d.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+
+const startOfToday = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+};

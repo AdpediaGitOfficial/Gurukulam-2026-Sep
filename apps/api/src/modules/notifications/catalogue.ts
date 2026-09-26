@@ -11,6 +11,14 @@ import type { NotificationType } from "@gurukulam/contracts";
  * LIVE entries are raised and resolved by the sweep. SPECIFIED ones are
  * catalogued with their clearing condition so building them is wiring a query
  * rather than inventing a rule.
+ *
+ * ── Two mechanisms, catalogued together ────────────────────────────────
+ *
+ * Most entries here are SITUATIONS, swept and resolved by their condition. The
+ * student entries at the foot are mostly EVENTS — emitted by the service that
+ * made the change, never grouped, and never auto-resolved, because there is no
+ * condition to clear. Their `clearsWhen` says "read, or not read" for exactly
+ * that reason. The two that are swept say so.
  */
 export const NOTIFICATION_CATALOGUE: NotificationType[] = [
   // ── Action required: raised by the sweep, cleared by the condition ──────
@@ -51,4 +59,21 @@ export const NOTIFICATION_CATALOGUE: NotificationType[] = [
   { type: "sessions.rescheduled", class: "FYI", title: "A session moved", description: "The roster, trainer and institution were told.", status: "SPECIFIED", clearsWhen: "Read automatically" },
   { type: "jobs.published", class: "FYI", title: "A posting went live", description: "Now visible to its audience.", status: "SPECIFIED", clearsWhen: "Read automatically" },
   { type: "access.granted", class: "FYI", title: "Portal access granted", description: "A college contact received their credentials.", status: "SPECIFIED", clearsWhen: "Read automatically" },
+
+  // ── Emitted to a student, at the moment it happened ────────────────────
+  // Never grouped and never auto-resolved: there is no condition to clear, and
+  // a cancellation notice that vanished on its own would be the worst possible
+  // behaviour. See `NotificationsService.emit`.
+  { type: "session.added", class: "FYI", title: "A session was added to your schedule", description: "Emitted to the roster when a future session is created. A backfill of past dates emits nothing, and a bulk upload emits one notice rather than one per session.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "session.rescheduled", class: "FYI", title: "A session moved", description: "Says what it moved FROM. Emitted on reschedule, which is the only path that asks for a reason.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "session.updated", class: "FYI", title: "A session changed", description: "Only when the mode or venue actually moved — an edit is also how a typo is corrected, and 'your session was updated' is noise.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "session.cancelled", class: "ALERT", title: "A session was cancelled", description: "ALERT because it removes something the student planned around. The reason carries the weight.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "session.recording_published", class: "FYI", title: "A recording went up", description: "Emitted on the transition to published, so the notice and the link appear together.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "assignment.published", class: "ACTION_REQUIRED", title: "New work was set", description: "The DRAFT → OPEN transition. Badges, because there is something to do.", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "installment.due", class: "FYI", title: "An installment falls due", description: "Rungs 5, 3, 1 and 0 of the ladder. ACTION_REQUIRED from one day out. Retail only — a college's reminder resolves to the institution (invariant 6).", status: "LIVE", clearsWhen: "Read, or not read" },
+  { type: "installment.overdue", class: "ALERT", title: "An installment is overdue", description: "Rungs 3 and 7 days past, then weekly. Retail only, for the same reason.", status: "LIVE", clearsWhen: "Read, or not read" },
+
+  // ── Swept for a student, and cleared by what the student does ──────────
+  { type: "session.tomorrow", class: "FYI", title: "A session is tomorrow", description: "A condition, not an event — swept nightly, and gone once tomorrow is today.", status: "LIVE", clearsWhen: "The session is no longer tomorrow" },
+  { type: "assignment.due_tomorrow", class: "ACTION_REQUIRED", title: "Work is due tomorrow", description: "The one student row that SHOULD auto-resolve: handing the work in is exactly what clears it, which is the work-queue behaviour the sweep already implements.", status: "LIVE", clearsWhen: "The work is handed in, or the date passes" },
 ];

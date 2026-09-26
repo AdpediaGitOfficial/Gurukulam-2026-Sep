@@ -32,10 +32,13 @@ export function StudentNavLink({
   href,
   label,
   icon,
+  badge = 0,
 }: {
   href: string;
   label: string;
   icon: IconName;
+  /** Only Updates carries one. Zero renders nothing rather than a "0". */
+  badge?: number;
 }) {
   const active = useIsActive(href);
   return (
@@ -54,6 +57,20 @@ export function StudentNavLink({
     >
       <Icon name={icon} size={20} />
       {label}
+      {badge === 0 ? null : (
+        <span
+          className={cn(
+            "ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-overline",
+            // On the amber active entry the danger red would fight the ground
+            // it sits on, so the badge borrows the entry's own ink instead.
+            // Everywhere else it is the console's red badge, white on danger —
+            // `on-accent` is the DARK ink amber needs and is unreadable on red.
+            active ? "bg-on-accent/20 text-on-accent" : "bg-danger text-white",
+          )}
+        >
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </Link>
   );
 }

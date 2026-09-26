@@ -1192,7 +1192,9 @@ model FeeInstallment {
   dueDate             DateTime          @map("due_date") @db.Date
   status              InstallmentStatus @default(PENDING)
   paidAt              DateTime?         @map("paid_at")
-  /// Set by the nightly cron when the 3-day reminder goes out.
+  /// Set on the FIRST rung of the ladder, and kept only so anything already
+  /// reading it keeps working. It records that SOMETHING was sent, never which
+  /// rung — which is why fee_installment_reminders exists.
   reminderSentFlag    Boolean           @default(false) @map("reminder_sent_flag")
   reminderSentAt      DateTime?         @map("reminder_sent_at")
   overdueNoticeSentAt DateTime?         @map("overdue_notice_sent_at")
@@ -1203,15 +1205,50 @@ model FeeInstallment {
   deletedAt           DateTime?         @map("deleted_at")
   deletedBy           String?           @map("deleted_by") @db.VarChar(36)
 
-  ledger       StudentFeeLedger?    @relation(fields: [ledgerId], references: [ledgerId])
-  contract     CollegeContract?     @relation(fields: [contractId], references: [contractId])
+  ledger       StudentFeeLedger?        @relation(fields: [ledgerId], references: [ledgerId])
+  contract     CollegeContract?         @relation(fields: [contractId], references: [contractId])
   transactions PaymentTransaction[]
+  reminders    FeeInstallmentReminder[]
 
   @@index([ledgerId, deletedAt])
   @@index([contractId, deletedAt])
   @@index([dueDate, status])
   @@index([status, deletedAt])
   @@map("fee_installments")
+}
+
+/// One rung of the reminder ladder, recorded as it is sent.
+///
+/// A boolean could only ever say that SOMETHING went out. A ladder needs to
+/// know which rungs have been climbed, and finance needs to answer "did we
+/// remind them, and when" — neither of which a flag can do.
+///
+/// The unique key on (installment, offset) is what makes the nightly run
+/// idempotent: running it twice in a day cannot double-send. A stage counter
+/// would not guarantee that, because two runs could each read the same stage
+/// and each advance it.
+///
+/// `offsetDays` is signed and counts from the due date: 5 means five days
+/// before, 0 means the day itself, -7 means a week overdue. The recipient is
+/// stored as SENT rather than as a lookup, because invariant 6 resolves it
+/// from the installment's parent at send time and the record has to say who
+/// was actually told.
+model FeeInstallmentReminder {
+  reminderId    String     @id @default(uuid()) @map("fee_installment_reminder_id") @db.VarChar(36)
+  installmentId String     @map("installment_id") @db.VarChar(36)
+  offsetDays    Int        @map("offset_days")
+  sentAt        DateTime   @default(now()) @map("sent_at")
+  recipientType ActorType  @map("recipient_type")
+  recipientId   String     @map("recipient_id") @db.VarChar(36)
+  /// IN_PORTAL today. Email, WhatsApp and SMS are not integrated.
+  channel       String     @default("IN_PORTAL") @db.VarChar(20)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  installment FeeInstallment @relation(fields: [installmentId], references: [installmentId])
+
+  @@unique([installmentId, offsetDays], map: "fee_installment_reminders_rung_key")
+  @@index([recipientType, recipientId])
+  @@map("fee_installment_reminders")
 }
 
 /// A receipt is a financial record. There is no delete — the correction is a

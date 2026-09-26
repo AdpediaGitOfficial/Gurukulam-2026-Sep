@@ -95,6 +95,7 @@ const ROUTES = [
   "/portal/assignments",
   "/portal/certificates",
   "/portal/jobs",
+  "/portal/notifications",
   "/portal/fees",
   "/portal/account",
   "/portal/account/password",
@@ -1112,6 +1113,286 @@ async function main(): Promise<void> {
   await prisma.jobPosting.deleteMany({
     where: { jobPostingId: { in: axisProbes.map((p) => p.jobPostingId) } },
   });
+
+  // ── 9f. Notifications: emitted, swept, and never the operator's ─────────
+  const collegeStudent = await prisma.student.findFirst({
+    where: { loginEmail: COLLEGE_STUDENT, deletedAt: null },
+    select: { studentId: true },
+  });
+  const theirBatch = await prisma.studentBatchMapping.findFirst({
+    where: { studentId: student.studentId, deletedAt: null, isActive: true },
+    select: { batchId: true },
+  });
+
+  if (adminToken === undefined || theirBatch === null) {
+    console.log("  \x1b[90m· no admin token or no batch — the notification checks are skipped\x1b[0m");
+  } else {
+    const noticeStamp = Date.now().toString().slice(-9);
+    const before = await prisma.notification.count({
+      where: { recipientType: "STUDENT", recipientId: student.studentId },
+    });
+
+    /*
+     * A cancelled session, driven through the admin API exactly as an operator
+     * would. Created future-dated so the "do not notify about the past" rule
+     * is not what is being measured here.
+     */
+    const probeSession = await prisma.batchSession.create({
+      data: {
+        sessionCode: `SES-NOTE-${noticeStamp}`,
+        batchId: theirBatch.batchId,
+        title: `notice-probe-${noticeStamp}`,
+        sequence: 900,
+        scheduledDate: new Date(Date.now() + 30 * 86_400_000),
+        startTime: new Date("1970-01-01T09:00:00Z"),
+        endTime: new Date("1970-01-01T11:00:00Z"),
+        mode: "ONLINE",
+      },
+      select: { sessionId: true, title: true },
+    });
+
+    await fetch(`${API}/batches/sessions/${probeSession.sessionId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ reason: `probe cancellation ${noticeStamp}` }),
+    });
+
+    const cancelled = await prisma.notification.findFirst({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: student.studentId,
+        type: "session.cancelled",
+        subjectId: probeSession.sessionId,
+      },
+      select: { class: true, groupKey: true, body: true },
+    });
+
+    if (cancelled?.class === "ALERT" && cancelled.groupKey === null) {
+      ok("a cancelled session reaches the roster", "ALERT, and carrying no group key");
+    } else {
+      bad(
+        "a cancelled session reaches the roster",
+        cancelled === null ? "no notice was emitted" : `class=${cancelled.class} groupKey=${String(cancelled.groupKey)}`,
+      );
+    }
+
+    /*
+     * The group key is the whole reason emit() and sweep() can coexist. An
+     * emitted row that borrowed one would be RESOLVED by the next nightly run
+     * — the cancellation notice would disappear and nobody would know it had.
+     * Checked across every emitted row this student holds, not just the probe.
+     */
+    const EMITTED = [
+      "session.added", "session.rescheduled", "session.updated", "session.cancelled",
+      "session.recording_published", "assignment.published",
+      "installment.due", "installment.overdue",
+    ];
+    const keyed = await prisma.notification.count({
+      where: {
+        recipientType: "STUDENT",
+        recipientId: student.studentId,
+        type: { in: EMITTED },
+        groupKey: { not: null },
+      },
+    });
+    const emittedTotal = await prisma.notification.count({
+      where: { recipientType: "STUDENT", recipientId: student.studentId, type: { in: EMITTED } },
+    });
+    if (keyed === 0) {
+      ok("no emitted notice carries a group key", `${emittedTotal} checked — the sweep cannot resolve one`);
+    } else {
+      bad("no emitted notice carries a group key", `${keyed} of ${emittedTotal} would be swept away`);
+    }
+
+    // A backdated session is a BACKFILL. Twenty of them must not be twenty
+    // notices about classes the roster already sat through.
+    const countNow = async (): Promise<number> =>
+      prisma.notification.count({
+        where: { recipientType: "STUDENT", recipientId: student.studentId },
+      });
+    const afterCancel = await countNow();
+
+    const backdated = await fetch(`${API}/batches/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({
+        batchId: theirBatch.batchId,
+        title: `backfill-probe-${noticeStamp}`,
+        scheduledDate: "2026-01-06",
+        startTime: "10:00",
+        endTime: "12:00",
+      }),
+    });
+    const backdatedRow = (await backdated.json()) as { sessionId?: string };
+
+    if (backdatedRow.sessionId === undefined) {
+      bad("a backdated session notifies nobody", "the session could not be created");
+    } else if ((await countNow()) === afterCancel) {
+      ok("a backdated session notifies nobody", "a backfill is history, not news");
+    } else {
+      bad("a backdated session notifies nobody", "the roster was told about a class already sat");
+    }
+
+    /*
+     * An edit is also how a venue typo is corrected, and "your session was
+     * updated" is the kind of noise that teaches people to stop reading the
+     * bell. A title change must be silent; a venue change must not be.
+     */
+    const afterBackfill = await countNow();
+    await fetch(`${API}/batches/sessions/${probeSession.sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ title: `notice-probe-renamed-${noticeStamp}` }),
+    });
+    const afterRename = await countNow();
+
+    await fetch(`${API}/batches/sessions/${probeSession.sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ venue: `Room ${noticeStamp}` }),
+    });
+    const afterVenue = await countNow();
+
+    if (afterRename === afterBackfill && afterVenue > afterRename) {
+      ok("an edit notifies only when something a student plans around moved", "title silent, venue not");
+    } else {
+      bad(
+        "an edit notifies only when something a student plans around moved",
+        `rename raised ${afterRename - afterBackfill} (want 0), venue raised ${afterVenue - afterRename} (want 1)`,
+      );
+    }
+
+    // ── The student surface is not the operator queue ─────────────────────
+    const studentToken = await signInAtApi(STUDENT, "STUDENT");
+    const feed =
+      studentToken === undefined
+        ? null
+        : ((await (
+            await fetch(`${API}/me/notifications`, {
+              headers: { Authorization: `Bearer ${studentToken}` },
+            })
+          ).json()) as { items: { notificationId: string; class: string; read: boolean }[]; badge: number });
+
+    const operatorRows = await prisma.notification.count({
+      where: { recipientId: null, recipientType: null, status: { not: "RESOLVED" } },
+    });
+
+    if (feed === null) {
+      bad("a student never sees an operator's queue", "could not sign in at the API");
+    } else {
+      /*
+       * Compared in TypeScript, not in SQL.
+       *
+       * An earlier version asked Prisma for `NOT: { recipientType: "STUDENT",
+       * recipientId: <them> }` — and an operator row has NULL in both columns,
+       * so `NOT (NULL = 'STUDENT' AND NULL = '…')` is NULL rather than true and
+       * the row was excluded from the count. The check passed against a build
+       * that was handing the student "140 issued credentials have never been
+       * used". Three-valued logic is not the place to ask "is this row not
+       * theirs".
+       */
+      const ids = feed.items.map((i) => i.notificationId);
+      const fetched =
+        ids.length === 0
+          ? []
+          : await prisma.notification.findMany({
+              where: { notificationId: { in: ids } },
+              select: { recipientType: true, recipientId: true },
+            });
+      const notTheirs = fetched.filter(
+        (row) => row.recipientType !== "STUDENT" || row.recipientId !== student.studentId,
+      ).length;
+      if (notTheirs === 0) {
+        ok(
+          "a student never sees an operator's queue",
+          `${operatorRows} unaddressed operator row(s) exist; none reached them`,
+        );
+      } else {
+        bad("a student never sees an operator's queue", `${notTheirs} row(s) belong to somebody else`);
+      }
+
+      // FYI never badges. Most of what a student is told is FYI, and a badge
+      // that is permanently lit is one nobody reads.
+      const expected = feed.items.filter((i) => !i.read && i.class !== "FYI").length;
+      if (feed.badge === expected) {
+        ok("the badge counts only what needs attention", `${feed.badge} of ${feed.items.length}`);
+      } else {
+        bad("the badge counts only what needs attention", `badge=${feed.badge}, expected ${expected}`);
+      }
+
+      /*
+       * Mark-all-read must not touch ACTION_REQUIRED. Those clear when their
+       * condition does — the work is handed in, the instalment is paid — and a
+       * student who could dismiss "work due tomorrow" would have dismissed the
+       * one thing asking them to act.
+       */
+      const actionBefore = await prisma.notification.count({
+        where: {
+          recipientType: "STUDENT", recipientId: student.studentId,
+          class: "ACTION_REQUIRED", status: "OPEN",
+        },
+      });
+      await fetch(`${API}/me/notifications/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${studentToken}` },
+        body: JSON.stringify({ all: true }),
+      });
+      const [actionAfter, fyiOpen] = await Promise.all([
+        prisma.notification.count({
+          where: {
+            recipientType: "STUDENT", recipientId: student.studentId,
+            class: "ACTION_REQUIRED", status: "OPEN",
+          },
+        }),
+        prisma.notification.count({
+          where: {
+            recipientType: "STUDENT", recipientId: student.studentId,
+            class: { in: ["FYI", "ALERT"] }, status: "OPEN",
+          },
+        }),
+      ]);
+      if (actionAfter === actionBefore && fyiOpen === 0) {
+        ok("marking read leaves what needs doing alone", `${actionBefore} action row(s) untouched`);
+      } else {
+        bad(
+          "marking read leaves what needs doing alone",
+          `action ${actionBefore} → ${actionAfter}, ${fyiOpen} FYI/ALERT still open`,
+        );
+      }
+    }
+
+    // ── Invariant 6: a college student is told nothing about money ────────
+    if (collegeStudent === null) {
+      console.log("  \x1b[90m· no college student — the reminder invariant is not exercised\x1b[0m");
+    } else {
+      const theirFeeNotices = await prisma.notification.count({
+        where: {
+          recipientType: "STUDENT",
+          recipientId: collegeStudent.studentId,
+          type: { in: ["installment.due", "installment.overdue"] },
+        },
+      });
+      const ladderRungs = await prisma.feeInstallmentReminder.count();
+      if (theirFeeNotices === 0) {
+        ok(
+          "invariant 6 — a college student gets no money reminder",
+          `${ladderRungs} rung(s) sent, none to them`,
+        );
+      } else {
+        bad(
+          "invariant 6 — a college student gets no money reminder",
+          `${theirFeeNotices} reminder(s) about somebody else's invoice`,
+        );
+      }
+    }
+
+    // Sweep the probes up, and the notices they raised with them.
+    const probeIds = [probeSession.sessionId, backdatedRow.sessionId].filter(
+      (id): id is string => id !== undefined,
+    );
+    await prisma.notification.deleteMany({ where: { subjectId: { in: probeIds } } });
+    await prisma.batchSession.deleteMany({ where: { sessionId: { in: probeIds } } });
+  }
 
   // ── 10. Invariant 3: absent for a college student, not empty ────────────
   const college = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
