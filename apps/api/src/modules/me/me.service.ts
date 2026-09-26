@@ -4,6 +4,8 @@ import type {
   MeAssignment,
   MeAssignments,
   MeBatch,
+  MeCertificate,
+  MeCertificates,
   MeFees,
   MeHome,
   MeInstallment,
@@ -18,6 +20,17 @@ import type {
 } from "@gurukulam/contracts";
 import { toWire } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
+/*
+ * Invariant 7's access rule, borrowed rather than restated.
+ *
+ * `certificateAccess` was extracted as a pure function for exactly this
+ * caller — its own docstring says so, written when the student portal did not
+ * exist. Eligibility is identical across segments and ACCESS is not, and a
+ * second copy of that asymmetry here is how the two drift: the admin download
+ * would keep refusing a college student while the portal quietly handed them a
+ * link, and nothing would fail.
+ */
+import { certificateAccess } from "../certificates/certificates.service";
 import { ApiException } from "../../common/errors";
 
 /**
@@ -550,6 +563,96 @@ export class MeService {
       },
     });
     return toAssignment(saved, startOfToday());
+  }
+
+  // ── My certificates ─────────────────────────────────────────────────────
+
+  /**
+   * What this student has earned, and what they may do with it.
+   *
+   * ── The access decision is not made here ────────────────────────────────
+   *
+   * It is made by `certificateAccess`, which the admin download also goes
+   * through. This method asks it per certificate and renders the verdict as
+   * fields. Nothing below re-reads `enrolmentChannel` to decide anything.
+   *
+   * ── Why `awaiting` exists ──────────────────────────────────────────────
+   *
+   * The question this screen is opened with is usually "where is mine", not
+   * "show me what I have". A page listing only what has been issued answers the
+   * question a student does not have, and leaves them to conclude the product
+   * forgot them. So the batches with nothing issued against them are returned
+   * too, carrying how far each has actually got.
+   */
+  async certificates(principal: Principal): Promise<MeCertificates> {
+    const student = await this.prisma.student.findFirst({
+      where: { studentId: principal.id, deletedAt: null },
+      select: {
+        studentId: true,
+        collegeId: true,
+        enrolmentChannel: true,
+        college: { select: { name: true } },
+      },
+    });
+    if (!student) throw ApiException.notFound("Student");
+
+    const rows = await this.prisma.certificate.findMany({
+      where: {
+        studentId: principal.id,
+        deletedAt: null,
+        // DRAFT withheld: it has not been issued, and showing one promises
+        // something nobody has granted. REVOKED is shown — see the contract.
+        status: { in: ["ISSUED", "REVOKED"] },
+      },
+      include: {
+        course: { select: { name: true } },
+        batch: { select: { batchCode: true } },
+      },
+      orderBy: [{ issuedDate: "desc" }, { createdAt: "desc" }],
+    });
+
+    const certificates: MeCertificate[] = rows.map((row) => {
+      const verdict = certificateAccess(principal, {
+        studentId: row.studentId,
+        collegeId: student.collegeId,
+        enrolmentChannel: student.enrolmentChannel,
+      });
+
+      return {
+        certificateId: row.certificateId,
+        certificateNumber: row.certificateNumber,
+        verificationCode: row.verificationCode,
+        courseName: row.course?.name ?? null,
+        batchCode: row.batch.batchCode,
+        status: row.status === "REVOKED" ? "REVOKED" : "ISSUED",
+        issuedDate: row.issuedDate?.toISOString().slice(0, 10) ?? null,
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+        // Three conditions, all of them necessary. A revoked certificate has no
+        // download even for the person who earned it, because what it would
+        // hand them is a document that now fails verification.
+        downloadUrl: verdict === "ALLOW" && row.status === "ISSUED" ? row.pdfUrl : null,
+        heldByCollege: verdict === "COLLEGE_HOLDS_IT",
+        // `revokedReason` is deliberately not mapped. It is written for the
+        // register, not for the person it is about.
+      };
+    });
+
+    /*
+     * Awaiting one.
+     *
+     * Keyed on the batch, because that is what a certificate is issued
+     * against: a student on two courses gets two. A batch already carrying a
+     * REVOKED certificate is NOT awaiting one — it is a batch with a problem,
+     * and it is already on the screen above saying so.
+     */
+    const decided = new Set(rows.map((row) => row.batchId));
+    const batches = await this.batches(principal);
+
+    return {
+      collegeName: student.college?.name ?? null,
+      certificates,
+      awaiting: batches.filter((batch) => !decided.has(batch.batchId)),
+    };
   }
 
   /**

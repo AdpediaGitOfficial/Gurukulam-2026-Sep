@@ -45,8 +45,8 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning, assignments, fees and account; certificates, jobs and notifications are specified
-and not yet built. Trainer and College come later. The admin portal performs every action they will,
+home, my learning, assignments, certificates, fees and account; jobs and notifications are specified
+and not yet built. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
 permanently, because an operations team needs the override regardless.
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
@@ -82,12 +82,34 @@ there is no authorisation step a later handler can forget. A DRAFT assignment is
 same reason; a CLOSED one is shown, because closing stops submission and does not erase what was
 asked.
 
+**Invariant 7 is a function, and the portal calls it rather than restating it.** Eligibility is
+identical across segments; ACCESS is not. `certificateAccess` in `certificates.service.ts` decides,
+and `/me/certificates` asks it per row — a second copy of that asymmetry is how the two drift, with
+the admin download still refusing a college student while the portal quietly hands them a link. The
+record, the number and the verification code are the student's in both segments; only the file is
+the college's. `heldByCollege` and `downloadUrl` are separate fields because three states are real —
+a link, "your college holds it", and "there is no file yet" — and collapsing the last two sends a
+student to argue with an office that was never given anything.
+
+**`/verify` is the one part of this product with no sign-in.** It lives in the `(public)` route
+group, which exists so that being public is a decision somebody made rather than a guard they forgot
+— every other layout here calls `requirePrincipal` or `requireStudent`. A certificate whose only
+readers are the people who issued it is not verifiable, which is the whole point of issuing one. The
+API's route was already `@Public`; a code we do not hold and one belonging to a certificate that was
+never ISSUED answer identically, because confirming that a name sits behind an unissued code
+discloses a record nobody awarded.
+
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
 race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and
 checks this, the recording's two gates, the draft-and-scope gates on assignments, that a second
-hand-in is refused, that no admin-only field reaches the screen, and that every portal screen fits
-390px.
+hand-in is refused, invariant 7 from both sides, that a withdrawn certificate keeps its number and
+loses its code, that no admin-only field reaches the screen, and that every portal screen fits 390px.
+
+Certificates carry no PDF yet, so two of those checks would be true for the wrong reason: with every
+`pdf_url` null, "no download offered" holds whatever the access rule says. The suite puts a URL there
+for the length of the check and takes it away again — otherwise the college half of invariant 7 could
+be deleted tomorrow and nothing would fail.
 
 ---
 

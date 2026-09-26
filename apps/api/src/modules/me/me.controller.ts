@@ -68,6 +68,18 @@ export class MeController {
     return this.me.schedule(p);
   }
 
+  /**
+   * What they have earned, and the batches still to produce one.
+   *
+   * Answers for a college student too — the record is theirs to see even though
+   * the download is not. Refusing would render as an error on a screen whose
+   * honest answer is "your institution holds it" (invariant 7).
+   */
+  @Get("certificates")
+  certificates(@CurrentPrincipal() p: Principal) {
+    return this.me.certificates(p);
+  }
+
   /** Split three ways: still to do, handed in, and the window closed. */
   @Get("assignments")
   assignments(@CurrentPrincipal() p: Principal) {

@@ -413,3 +413,80 @@ export const meFeesSchema = z.object({
 });
 
 export type MeFees = z.infer<typeof meFeesSchema>;
+
+// ── My certificates ───────────────────────────────────────────────────────
+
+/**
+ * What a student has earned, and what they can do with it.
+ *
+ * ── Invariant 7, as two fields rather than a rule ───────────────────────
+ *
+ * Eligibility is identical across segments; ACCESS is not. A retail student
+ * downloads their own certificate. A college student earned it on exactly the
+ * same terms and does not — their institution collects and issues it.
+ *
+ * So the shape carries `downloadUrl` and `heldByCollege` separately, and they
+ * are not opposites. Three states are real and each needs a different sentence:
+ * a link to fetch, "your college holds it", and "there is no PDF yet". A single
+ * boolean would collapse the last two, and a student told their college has
+ * something the office has never been sent is a student sent to argue with a
+ * stranger.
+ *
+ * The API decides this with `certificateAccess`, the same function the admin
+ * download goes through. Nothing here restates the rule.
+ *
+ * ── Why DRAFT is absent and REVOKED is not ──────────────────────────────
+ *
+ * A DRAFT certificate has not been issued — it is an admin's work in progress,
+ * and showing one promises something nobody has granted.
+ *
+ * A REVOKED one is shown, because the alternative is worse: a certificate that
+ * silently vanished leaves a student handing out a code that now fails
+ * verification with no idea why. The revocation's REASON is withheld — it is
+ * written for the register, not for the person it is about, and a revocation is
+ * precisely the case that wants a conversation rather than a line of text.
+ */
+export const meCertificateStatusSchema = z.enum(["ISSUED", "REVOKED"]);
+export type MeCertificateStatus = z.infer<typeof meCertificateStatusSchema>;
+
+export const meCertificateSchema = z.object({
+  certificateId: z.string(),
+  /** Printed on the certificate. GK-CERT-2026-00418. */
+  certificateNumber: z.string(),
+  /**
+   * What an employer types into the public verifier — deliberately NOT the
+   * number, which appears on the certificate itself and would let anyone
+   * holding a photograph of one enumerate the register.
+   */
+  verificationCode: z.string(),
+  courseName: z.string().nullable(),
+  batchCode: z.string(),
+  status: meCertificateStatusSchema,
+  issuedDate: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  /** A link, only when a PDF exists AND it is theirs to fetch. See above. */
+  downloadUrl: z.string().nullable(),
+  /** Invariant 7: they earned it identically, and their institution holds it. */
+  heldByCollege: z.boolean(),
+});
+
+export type MeCertificate = z.infer<typeof meCertificateSchema>;
+
+/**
+ * Where a student stands, and what they hold.
+ *
+ * `awaiting` is the batches with no certificate against them yet, carried as
+ * whole batches rather than a bespoke shape — `MeBatch` already says how far a
+ * batch has got, and a second nearly-identical type is a second thing to keep
+ * true. It exists because "why have I not got mine" is the question this screen
+ * is actually opened with, and a page listing only what a student already has
+ * cannot answer it.
+ */
+export const meCertificatesSchema = z.object({
+  /** Named so the held-by-college sentence can name the institution. */
+  collegeName: z.string().nullable(),
+  certificates: z.array(meCertificateSchema),
+  awaiting: z.array(meBatchSchema),
+});
+
+export type MeCertificates = z.infer<typeof meCertificatesSchema>;

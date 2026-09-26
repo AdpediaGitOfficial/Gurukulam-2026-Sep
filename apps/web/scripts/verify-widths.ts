@@ -70,6 +70,11 @@ async function main(): Promise<void> {
     country: (await prisma.country.findFirstOrThrow({ where: live })).countryId,
     role: (await prisma.role.findFirstOrThrow({ where: live })).roleId,
     transaction: (await prisma.paymentTransaction.findFirstOrThrow({ where: live })).transactionId,
+    // A real code, so the verifier's answering state is measured rather than
+    // just its "we do not recognise this" one — they are different layouts.
+    verificationCode: (
+      await prisma.certificate.findFirstOrThrow({ where: { ...live, status: "ISSUED" } })
+    ).verificationCode,
   };
 
   // The same walk as verify:actions. Kept as its own list rather than imported
@@ -111,6 +116,11 @@ async function main(): Promise<void> {
     "/settings/countries", "/settings/countries/new", `/settings/countries/${ids.country}/edit`,
     "/settings/roles", "/settings/roles/new", `/settings/roles/${ids.role}/edit`,
     `/receipts/${ids.transaction}`,
+    // Public, and walked here rather than in verify:portal because they belong
+    // to no portal: the reader of a verification page is an employer with no
+    // account. Being signed in as an admin does not change what they render,
+    // and this is the suite that owns "no screen drags the page sideways".
+    "/verify", `/verify/${ids.verificationCode}`, "/verify/not-a-real-code",
   ];
 
   const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});

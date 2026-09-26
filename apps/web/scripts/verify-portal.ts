@@ -29,7 +29,7 @@
  *   npm run verify:portal --workspace @gurukulam/web
  */
 import { PrismaClient } from "@gurukulam/db";
-import { chromium, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { formatRupees } from "@gurukulam/contracts";
 
 /** The screen's own formatter, so a mismatch is a real one and not a rounding difference. */
@@ -93,6 +93,7 @@ const ROUTES = [
   "/portal",
   "/portal/learning",
   "/portal/assignments",
+  "/portal/certificates",
   "/portal/fees",
   "/portal/account",
   "/portal/account/password",
@@ -547,6 +548,205 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── 9c. Certificates: the code, the withheld draft, and the withdrawal ──
+  const issued = await prisma.certificate.findMany({
+    where: { studentId: student.studentId, deletedAt: null, status: "ISSUED" },
+    select: { certificateNumber: true, verificationCode: true, pdfUrl: true },
+  });
+
+  await page.goto(`${BASE}/portal/certificates`, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("load");
+  const awards = await page.locator("body").innerText();
+
+  if (issued.length === 0) {
+    console.log("  \x1b[90m· this student holds no issued certificate — not exercised\x1b[0m");
+  } else {
+    const missing = issued.filter(
+      (c) => !awards.includes(c.certificateNumber) || !awards.includes(c.verificationCode),
+    );
+    if (missing.length === 0) {
+      ok("certificates show their number and code", `${issued.length}, code included`);
+    } else {
+      bad(
+        "certificates show their number and code",
+        `missing for ${missing.map((c) => c.certificateNumber).join(", ")}`,
+      );
+    }
+
+    /*
+     * A retail student is the one who MAY download, so their page must not
+     * carry the college sentence — and must not offer a link when there is no
+     * file behind it either. Both are the same failure: a control or a claim
+     * the product cannot honour.
+     */
+    const claimsCollege = /collects and issues|placement office/i.test(awards);
+    const offersFile = /Download the certificate/i.test(awards);
+    const anyPdf = issued.some((c) => c.pdfUrl !== null);
+    if (!claimsCollege && offersFile === anyPdf) {
+      ok(
+        "a retail student is not told their college holds it",
+        anyPdf ? "and the download is offered" : "and no download is offered with no file behind it",
+      );
+    } else {
+      bad(
+        "a retail student is not told their college holds it",
+        `collegeSentence=${claimsCollege} offersDownload=${offersFile} pdfExists=${anyPdf}`,
+      );
+    }
+
+    /*
+     * The download, with a file actually behind it.
+     *
+     * S3 is not integrated, so every `pdf_url` in the data is null — which makes
+     * "no download link" true for the wrong reason, and a check that is true for
+     * the wrong reason cannot fail when the rule breaks. So a URL is put there
+     * for the length of this check and taken away again. It is the only way to
+     * assert that a RETAIL student is offered their own file, and the only way
+     * the college half of invariant 7 below says anything at all.
+     */
+    const pdfProbe = `https://example.test/pdf/${Date.now()}`;
+    const target = await prisma.certificate.findFirst({
+      where: { studentId: student.studentId, deletedAt: null, status: "ISSUED" },
+      select: { certificateId: true, pdfUrl: true },
+    });
+    if (target !== null) {
+      await prisma.certificate.update({
+        where: { certificateId: target.certificateId },
+        data: { pdfUrl: pdfProbe },
+      });
+      await page.goto(`${BASE}/portal/certificates`, { waitUntil: "domcontentloaded" });
+      await page.waitForLoadState("load");
+      const html = await page.content();
+      if (html.includes(pdfProbe)) {
+        ok("…and is handed the file when there is one", "invariant 7's allowed half");
+      } else {
+        bad("…and is handed the file when there is one", "the link is not on the page");
+      }
+      await prisma.certificate.update({
+        where: { certificateId: target.certificateId },
+        data: { pdfUrl: target.pdfUrl },
+      });
+    }
+  }
+
+  // The batch and course to hang the two probe certificates off.
+  const probeBatch = await prisma.studentBatchMapping.findFirst({
+    where: { studentId: student.studentId, deletedAt: null },
+    select: { batchId: true, batch: { select: { courseId: true } } },
+  });
+
+  if (probeBatch === null) {
+    console.log("  \x1b[90m· no batch to issue a probe certificate against\x1b[0m");
+  } else {
+    const stamp = Date.now().toString().slice(-9);
+
+    /*
+     * A DRAFT certificate is an admin's work in progress. Showing one promises
+     * something nobody has granted — and its code must not verify either, which
+     * is the part a screen check alone would miss.
+     */
+    const draft = await prisma.certificate.create({
+      data: {
+        certificateNumber: `GK-CERT-PROBE-D${stamp}`,
+        verificationCode: `probe-draft-${stamp}`,
+        studentId: student.studentId,
+        courseId: probeBatch.batch.courseId,
+        batchId: probeBatch.batchId,
+        status: "DRAFT",
+      },
+      select: { certificateId: true, certificateNumber: true, verificationCode: true },
+    });
+
+    await page.goto(`${BASE}/portal/certificates`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const withDraft = await page.locator("body").innerText();
+    if (
+      !withDraft.includes(draft.certificateNumber) &&
+      !withDraft.includes(draft.verificationCode)
+    ) {
+      ok("a draft certificate is withheld", "neither its number nor its code");
+    } else {
+      bad("a draft certificate is withheld", "a certificate nobody issued is on the student's page");
+    }
+
+    const draftCheck = await publicVerify(browser, draft.verificationCode);
+    if (/do not recognise/i.test(draftCheck) && !draftCheck.includes(draft.certificateNumber)) {
+      ok("…and its code does not verify", "an unissued code names nobody");
+    } else {
+      bad("…and its code does not verify", draftCheck.slice(0, 160));
+    }
+
+    await prisma.certificate.delete({ where: { certificateId: draft.certificateId } });
+
+    /*
+     * A withdrawn certificate stays on the screen, because it will fail
+     * verification and the student is the one who will be standing there when it
+     * does. What must NOT be there: the sentence telling them to hand the code
+     * out, the code itself, or the reason an admin typed into the register.
+     */
+    const reason = `probe-internal-note-${stamp} — not for the student`;
+    const revoked = await prisma.certificate.create({
+      data: {
+        certificateNumber: `GK-CERT-PROBE-R${stamp}`,
+        verificationCode: `probe-revoked-${stamp}`,
+        studentId: student.studentId,
+        courseId: probeBatch.batch.courseId,
+        batchId: probeBatch.batchId,
+        status: "REVOKED",
+        issuedDate: new Date(),
+        revokedAt: new Date(),
+        revokedReason: reason,
+      },
+      select: { certificateId: true, certificateNumber: true, verificationCode: true },
+    });
+
+    await page.goto(`${BASE}/portal/certificates`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const withRevoked = await page.locator("body").innerText();
+    const shown = withRevoked.includes(revoked.certificateNumber);
+    const saysWithdrawn = /withdrawn/i.test(withRevoked);
+    const leaksReason = withRevoked.includes(reason) || withRevoked.includes(`probe-internal-note-${stamp}`);
+    const offersCode = withRevoked.includes(revoked.verificationCode);
+    if (shown && saysWithdrawn && !leaksReason && !offersCode) {
+      ok("a withdrawn certificate is shown without its code or its reason", revoked.certificateNumber);
+    } else {
+      bad(
+        "a withdrawn certificate is shown without its code or its reason",
+        `shown=${shown} saysWithdrawn=${saysWithdrawn} leaksReason=${leaksReason} offersCode=${offersCode}`,
+      );
+    }
+
+    const revokedCheck = await publicVerify(browser, revoked.verificationCode);
+    if (
+      /has been withdrawn/i.test(revokedCheck) &&
+      revokedCheck.includes(revoked.certificateNumber) &&
+      !revokedCheck.includes(reason)
+    ) {
+      ok("and the public verifier says withdrawn, not unknown", "the reader is holding a paper copy");
+    } else {
+      bad("and the public verifier says withdrawn, not unknown", revokedCheck.slice(0, 160));
+    }
+
+    await prisma.certificate.delete({ where: { certificateId: revoked.certificateId } });
+  }
+
+  // ── 9d. The verifier answers a stranger, with no session at all ─────────
+  if (issued[0] !== undefined) {
+    const genuine = await publicVerify(browser, issued[0].verificationCode);
+    if (/is genuine/i.test(genuine) && genuine.includes(issued[0].certificateNumber)) {
+      ok("the public verifier confirms a live certificate", "no sign-in, no cookies");
+    } else {
+      bad("the public verifier confirms a live certificate", genuine.slice(0, 160));
+    }
+  }
+
+  const nonsense = await publicVerify(browser, `not-a-code-${Date.now()}`);
+  if (/do not recognise/i.test(nonsense)) {
+    ok("…and refuses a code it does not hold");
+  } else {
+    bad("…and refuses a code it does not hold", nonsense.slice(0, 160));
+  }
+
   // ── 10. Invariant 3: absent for a college student, not empty ────────────
   const college = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await college.route("**fonts.g**", (r) => r.abort());
@@ -579,6 +779,85 @@ async function main(): Promise<void> {
       `explains=${explains} showsMoney=${showsMoney}`,
     );
   }
+  /*
+   * Invariant 7, from the other side of the asymmetry.
+   *
+   * A college student earned an identical certificate and cannot fetch it. The
+   * record, the number and the code are still theirs — hiding the certificate
+   * would read as a bug to somebody who knows they passed — so this checks that
+   * the page EXPLAINS rather than refuses, and that no download is offered.
+   */
+  const collegeCerts = await prisma.certificate.findMany({
+    where: { student: { loginEmail: COLLEGE_STUDENT }, deletedAt: null, status: "ISSUED" },
+    select: { certificateNumber: true, verificationCode: true },
+  });
+
+  if (collegeCerts.length === 0) {
+    console.log("  \x1b[90m· the college student holds no certificate — invariant 7 not exercised\x1b[0m");
+  } else {
+    /*
+     * A file is put behind their certificate for the length of this check, for
+     * the reason recorded on the retail half: with every `pdf_url` null, "no
+     * download offered" is true whatever the access rule says, and the check
+     * could not fail if invariant 7 were removed tomorrow.
+     */
+    const collegePdf = `https://example.test/college-pdf/${Date.now()}`;
+    const theirCert = await prisma.certificate.findFirst({
+      where: { student: { loginEmail: COLLEGE_STUDENT }, deletedAt: null, status: "ISSUED" },
+      select: { certificateId: true, pdfUrl: true },
+    });
+    if (theirCert !== null) {
+      await prisma.certificate.update({
+        where: { certificateId: theirCert.certificateId },
+        data: { pdfUrl: collegePdf },
+      });
+    }
+
+    await college.goto(`${BASE}/portal/certificates`, { waitUntil: "domcontentloaded" });
+    await college.waitForLoadState("load");
+    const theirs = await college.locator("body").innerText();
+    const theirsHtml = await college.content();
+    const record = collegeCerts.every(
+      (c) => theirs.includes(c.certificateNumber) && theirs.includes(c.verificationCode),
+    );
+    /*
+     * Two sentences, and the check wants both.
+     *
+     * The page names the arrangement once — which institution collects the
+     * certificates — and each card says where THIS copy comes from. An earlier
+     * version matched only a phrase that happened to appear in both, and when
+     * the duplicate was removed from the card it went on passing against the
+     * banner while saying it had checked the card. Naming each one separately is
+     * what stops that.
+     */
+    const namesArrangement = /collects and issues/i.test(theirs);
+    const perCertificate = /the copy comes from your placement office/i.test(theirs);
+    const explains = namesArrangement && perCertificate;
+    const offersFile = /Download the certificate/i.test(theirs);
+    // The URL itself, not just the link's words: a href the markup carries but
+    // the label hides is still a file handed over.
+    const leaksUrl = theirCert !== null && theirsHtml.includes(collegePdf);
+
+    if (record && explains && !offersFile && !leaksUrl) {
+      ok(
+        "invariant 7 — the record is theirs, the download is the college's",
+        theirCert === null ? "explained, not refused" : "explained, and the file withheld with one there",
+      );
+    } else {
+      bad(
+        "invariant 7 — the record is theirs, the download is the college's",
+        `record=${record} namesArrangement=${namesArrangement} perCertificate=${perCertificate} offersDownload=${offersFile} leaksUrl=${leaksUrl}`,
+      );
+    }
+
+    if (theirCert !== null) {
+      await prisma.certificate.update({
+        where: { certificateId: theirCert.certificateId },
+        data: { pdfUrl: theirCert.pdfUrl },
+      });
+    }
+  }
+
   await college.close();
 
   // ── 11. Every screen fits a phone, and every size is on the scale ───────
@@ -639,6 +918,28 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/**
+ * The public verifier, read the way an employer reads it.
+ *
+ * A BRAND NEW page, so it carries no cookies from any session this suite holds.
+ * That is the check as much as the text is: the point of a verifier is that the
+ * people who can use it are not the people who issued the certificate, and a
+ * page opened inside a signed-in context would prove nothing about that.
+ */
+async function publicVerify(browser: Browser, code: string): Promise<string> {
+  const stranger = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await stranger.route("**fonts.g**", (r) => r.abort());
+  try {
+    await stranger.goto(`${BASE}/verify/${encodeURIComponent(code)}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await stranger.waitForLoadState("load");
+    return (await stranger.locator("body").innerText()).replace(/\u00a0/g, " ");
+  } finally {
+    await stranger.close();
+  }
 }
 
 /**

@@ -75,6 +75,9 @@ async function main(): Promise<void> {
     contract: (await prisma.collegeContract.findFirstOrThrow({ where: live })).contractId,
     submission: (await prisma.certificateSubmission.findFirstOrThrow({ where: live })).submissionId,
     certificate: (await prisma.certificate.findFirstOrThrow({ where: {} })).certificateId,
+    verificationCode: (
+      await prisma.certificate.findFirstOrThrow({ where: { deletedAt: null, status: "ISSUED" } })
+    ).verificationCode,
     requirement: (await prisma.collegeRequirement.findFirstOrThrow({ where: live })).requirementId,
     job: (await prisma.jobPosting.findFirstOrThrow({ where: live })).jobPostingId,
     transaction: (await prisma.paymentTransaction.findFirstOrThrow({ where: live })).transactionId,
@@ -108,6 +111,8 @@ async function main(): Promise<void> {
     "/settings/countries", "/settings/roles",
     "/account", "/notifications",
     `/receipts/${ids.transaction}`,
+    // Public. One scale everywhere includes the one page a stranger reads.
+    "/verify", `/verify/${ids.verificationCode}`,
   ];
 
   const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});

@@ -185,9 +185,26 @@ export class CertificatesService {
       include: { student: true, course: { select: { name: true } } },
     });
 
-    if (!certificate || certificate.deletedAt !== null) {
-      // Deliberately indistinguishable from an unknown code — confirming that
-      // a code exists but was withdrawn tells a stranger more than they need.
+    /*
+     * Three answers, and only two of them say anything about a person.
+     *
+     * A code we do not hold, one that was soft-deleted, and one belonging to a
+     * certificate that was never ISSUED all return the same empty answer. The
+     * last is the one worth spelling out: a DRAFT certificate has not been
+     * granted, and confirming to a stranger that a name and a course sit behind
+     * an unissued code discloses a person's record for something nobody
+     * awarded. It is not a lesser version of valid — it is not a certificate.
+     *
+     * A REVOKED one does answer, with its number and the date it was withdrawn,
+     * because the reader is standing in front of a paper copy and "we have never
+     * heard of this" would be a lie that helps nobody.
+     */
+    const known =
+      certificate !== null &&
+      certificate.deletedAt === null &&
+      (certificate.status === "ISSUED" || certificate.status === "REVOKED");
+
+    if (!known || certificate === null) {
       return {
         valid: false, certificateNumber: null, studentName: null,
         courseName: null, issuedDate: null, status: null, revokedAt: null,

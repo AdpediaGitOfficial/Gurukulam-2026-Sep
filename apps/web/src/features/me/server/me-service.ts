@@ -3,6 +3,7 @@ import "server-only";
 import {
   meAssignmentsSchema,
   meBatchSchema,
+  meCertificatesSchema,
   meHomeSchema,
   meProfileSchema,
   meScheduleSchema,
@@ -13,6 +14,7 @@ import {
   meFeesSchema,
   type Account,
   type MeAssignments,
+  type MeCertificates,
   type MeFees,
   type MeSchedule,
 } from "@gurukulam/contracts";
@@ -96,4 +98,17 @@ export async function getAssignments(): Promise<MeAssignments> {
   const assignments = await apiFetch<MeAssignments>("/me/assignments");
   checkShape(meAssignmentsSchema, assignments, "GET /me/assignments");
   return assignments;
+}
+
+/**
+ * What they have earned, and the batches still to produce one.
+ *
+ * The download decision arrives already made — `downloadUrl` is null unless a
+ * PDF exists and invariant 7 allows this reader to fetch it. This file does not
+ * know what a segment is, which is the point.
+ */
+export async function getCertificates(): Promise<MeCertificates> {
+  const certificates = await apiFetch<MeCertificates>("/me/certificates");
+  checkShape(meCertificatesSchema, certificates, "GET /me/certificates");
+  return certificates;
 }

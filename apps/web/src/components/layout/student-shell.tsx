@@ -49,7 +49,7 @@ export interface StudentNavEntry {
 /**
  * The entries that exist, in the order a student needs them.
  *
- * Certificates, Jobs and Updates are specified and not yet built.
+ * Jobs and Updates are specified and not yet built.
  * An entry leading to a page that does not answer is worse than a missing one:
  * a student cannot tell "not built" from "I tapped the wrong thing", and this
  * repo's own audit fails a control that does nothing. They arrive with their
@@ -69,6 +69,7 @@ function navFor(segment: "RETAIL" | "COLLEGE"): readonly StudentNavEntry[] {
     { href: "/portal", label: "Home", icon: "dash" },
     { href: "/portal/learning", label: "Learning", icon: "book" },
     { href: "/portal/assignments", label: "Assignments", icon: "task", short: "Work" },
+    { href: "/portal/certificates", label: "Certificates", icon: "seal", short: "Awards" },
     ...(segment === "RETAIL"
       ? [{ href: "/portal/fees", label: "Fees", icon: "rupee" } as const]
       : []),
