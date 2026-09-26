@@ -44,10 +44,66 @@ contract, and **the college** downloads its students' certificates.
 topics; a topic carries one or more sessions; assignments and recordings hang off the session,
 because the session is the unit that actually happens on a given day.
 
-**Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning, assignments, certificates, jobs, fees, updates and account — every screen the
-student-portal plan specifies. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
-permanently, because an operations team needs the override regardless.
+**Four portals, three started.** Admin is complete. The **student portal** is at `/portal/*` —
+sign-in, home, my learning, assignments, certificates, jobs, fees, updates and account — every screen
+the student-portal plan specifies. The **trainer portal** is at `/teach/*` — home, batches, sessions,
+one session with its register and its marking, availability, invitations and account. The public
+certificate verifier is at `/verify`. College comes later. The admin portal performs every action all
+three do, permanently, because an operations team needs the override regardless.
+
+**The trainer is the first actor that WRITES, and its scope is a relationship rather than a
+column.** City and college scope are columns: a row is in scope when its column matches.
+`trainerScope` carries the trainer's own id and the services traverse from it — primary trainer of a
+batch, or a live CONFIRMED assignment to it. A PROPOSED one is not enough: an invitation is not a
+cohort, and a trainer who could read the roster of every batch they were ever offered would be
+reading students they never taught.
+
+**Reading and writing are deliberately different sets, and the difference is one clause.** A trainer
+released from a batch loses the roster at the moment of release — but they delivered those sessions,
+so the attendance and the marks they wrote stay theirs and stay readable. `trainerMayRead` adds one
+clause to `trainerMayWrite`: *this session's `trainer_id` is me*. Both live in `common/scope/scope.ts`
+and share `batchIsTheirsNow`, because the read gate used to be spelled out inside the attendance
+service as "not their session AND not writable" — which made reading depend on the WRITE rule.
+Breaking `trainerMayWrite` in a fault-injection run therefore opened a foreign cohort's register too.
+
+**Attendance is two hops, and the second is the one that gets left out.** "May this trainer write
+attendance for this student" is *is this session mine* AND *is this student on that session's batch
+roster*. The first passing feels like the answer: with only that, a trainer marks any student in the
+database against a day that genuinely is theirs. The session is also more precise than the batch — a
+substitute for one day is a thing the schema models, so writes authorise on `batch_sessions.trainer_id`
+and reads authorise on the batch.
+
+**A register is taken whole, and a class that has not happened has no register.** The whole roster
+posts in one call, because a half-taken register is indistinguishable from one where everybody else
+was absent — and that distinction decides a certificate, since `eligibility.service.ts` reports
+NOT_EVALUATED rather than 0% when a batch has no rows. The gate is the CALENDAR, not completion:
+a trainer marks the register while the room is still full, and requiring completion first would
+invert the order of the day.
+
+**A SUSPENDED trainer signs in, reads, and writes nothing.** Suspension withdraws them from the
+pickers without touching live delivery — pulling somebody off a running cohort as a side effect of a
+status change would strand it — so they still HOLD their confirmed batches. Refusing them at login
+left them nominally teaching sessions they could not see, which is how a class ends up with nobody in
+the room. It is expressed as `TRAINER_READ_ONLY`, the same matrix with every `edit` withdrawn, so
+every `@RequirePermission(…, "edit")` refuses them without knowing suspension exists. INACTIVE is
+still refused: that account is over, not paused.
+
+**A trainer's permissions are a fixed matrix, and `courses` is absent from it.** There is one kind of
+trainer, so storing the matrix would mean a screen to edit it and a way to get it wrong for a set
+with one correct value. `feeLedger`, `hiring`, `colleges`, `reports` and `settings` do not appear at
+all — absent is stronger than `false`, because `can()` reads a missing module as no. `courses` is
+absent too, a deliberate divergence from `trainer-portal-plan.md` §2.2: the only commercial field in
+the whole reachable surface is `courses.standardMarketValueMinor`, the course NAME already rides on
+every batch, and removing the module beats projecting it because there is then nothing to forget.
+
+**Portal access is an operator's act, and it needed a button.** A trainer record exists long before
+there is anything to sign in to — a CV goes on the bench and may never take a batch — so issuing at
+creation would give every candidate a live account. `POST /trainers/:id/access` existed for a while
+with no screen calling it, which meant all 191 trainers were unreachable by any operator;
+`verify:coverage` is what found that. The verb sits on the trainer page and disappears once access
+exists, because re-issuing invalidates the password the person is already holding. The temporary
+secret is neither returned nor logged: the login address, derived from the immutable trainer code, is
+the only thing there is to hand over.
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
 `permissions: {}` and null scopes, so it could not be built by narrowing scope the way the college
@@ -152,6 +208,30 @@ Certificates carry no PDF yet, so two of those checks would be true for the wron
 `pdf_url` null, "no download offered" holds whatever the access rule says. The suite puts a URL there
 for the length of the check and takes it away again — otherwise the college half of invariant 7 could
 be deleted tomorrow and nothing would fail.
+
+**`npm run verify:teach` holds a trainer session**, because the other suites sign in as an
+administrator or a student and a `/teach/*` route visited with either is correctly redirected — adding
+those routes to their arrays would test the redirect and nothing else. It measures the scope axis
+against the same database the admin sees whole, takes a register through the screen and reads the rows
+back, proves both attendance hops, proves a released trainer keeps their history and loses the write,
+proves a suspended one signs in and writes nothing, issues portal access from the console as an
+operator, and walks every trainer screen at 390px.
+
+Two of its checks needed the condition MANUFACTURED to mean anything, and both are the same shape as
+the certificate PDF. Every batch the seeded trainer holds carries one active student, and on a roster
+of one "the service writes the whole register" is true whatever the service does — so the suite
+borrows a second student of the same segment for the length of the check and hands them back. And the
+probe for "a student who is not on the roster is refused" picks a stranger with NO existing row, so
+"rows written" means what it says; an absolute count reported the previous run's leftovers as this
+run's failure, twice.
+
+**A restart that did not restart is worse than no restart.** `pkill -f "apps/api/dist/main.js"` never
+matched — the process is `node dist/main.js` with `apps/api` as its cwd — so the "restarted" API went
+on serving the previous build, and a fault injection and its restoration read as the same result,
+which sent an hour after a product bug that did not exist. Kill by pid, wait for the port, and confirm
+`/health` before believing anything a suite says about a change. The same goes for the web app: a
+contract field added to `trainerSchema` and an API that was rebuilt but not restarted renders as
+"something went wrong" on the one screen that reads it.
 
 ---
 
@@ -265,10 +345,8 @@ what makes institutional intake auditable.
 
 | Deferred | Where it lands |
 | --- | --- |
-| Attendance | `student_attendance` stays in the schema; admin and trainer will write the same row |
-| Trainer portal | `batch_trainer_assignments` exists; the portal writes the same rows |
-| Student portal | Credentials issued at allocation; session access already granted |
-| College portal | `college_users` + `collegeScope` on the principal |
+| College portal | `college_users` + `collegeScope` on the principal; the trainer's `/me/trainer` is the pattern for its own surface |
+| Marking a session delivered, setting work, attaching a recording, from `/teach` | The endpoints already authorise a trainer through `assertTrainerMayWrite`; the console owns the screens and `/teach` only reads |
 | Naukri feed | `job_postings.source` / `external_ref` / `external_url` already carried |
 | Payment gateway | Not used — payments are collected offline and recorded |
 

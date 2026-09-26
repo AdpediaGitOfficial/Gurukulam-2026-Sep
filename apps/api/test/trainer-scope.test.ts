@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TRAINER_PERMISSIONS, TRAINER_READ_ONLY, can, type Principal } from "@gurukulam/contracts";
-import { trainerMayWrite } from "../src/common/scope/scope";
+import { trainerMayRead, trainerMayWrite } from "../src/common/scope/scope";
 
 /**
  * The trainer axis, pinned.
@@ -78,6 +78,50 @@ describe("who may write against a session", () => {
 
   it("an admin passes — their authority is the permission plus city scope", () => {
     expect(trainerMayWrite(admin, session("t1", { confirmed: ["t1"] }))).toBe(true);
+  });
+});
+
+describe("who may read a session", () => {
+  /*
+   * The asymmetry, from the read side.
+   *
+   * These exist because the read gate used to be written as "not their session
+   * AND not writable", which made READING depend on the WRITE rule: breaking
+   * `trainerMayWrite` in a fault-injection run opened a foreign cohort's
+   * register as well. The two rules now differ by one clause, and these pin
+   * which clause.
+   */
+  it("keeps the history of a session they delivered after release", () => {
+    const released = session("t1", { released: ["t1"] });
+    expect(trainerMayRead(trainer("t1"), released)).toBe(true);
+    expect(trainerMayWrite(trainer("t1"), released)).toBe(false);
+  });
+
+  it("lets a colleague on the cohort read a day they did not teach", () => {
+    // Wider than the write on purpose: a substitute needs to see what the
+    // cohort has covered. Writing that day's register is still not theirs.
+    const theirs = session("t1", { confirmed: ["t1", "t2"] });
+    expect(trainerMayRead(trainer("t2"), theirs)).toBe(true);
+    expect(trainerMayWrite(trainer("t2"), theirs)).toBe(false);
+  });
+
+  it("refuses a trainer with no relationship to the batch", () => {
+    expect(trainerMayRead(trainer("t3"), session("t1", { confirmed: ["t1"] }))).toBe(false);
+  });
+
+  it("refuses a batch they were only PROPOSED for — an invitation is not a cohort", () => {
+    const proposed = {
+      trainerId: "t1",
+      batch: {
+        primaryTrainerId: null,
+        trainerAssignments: [{ trainerId: "t2", status: "PROPOSED", deletedAt: null }],
+      },
+    };
+    expect(trainerMayRead(trainer("t2"), proposed)).toBe(false);
+  });
+
+  it("an admin passes, as they do on the write", () => {
+    expect(trainerMayRead(admin, session("t1", { confirmed: ["t1"] }))).toBe(true);
   });
 });
 

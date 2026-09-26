@@ -7,6 +7,7 @@ import {
   createTrainerSchema,
   declareAvailabilitySchema,
   suspendTrainerSchema,
+  trainerAccessSchema,
   trainerSchema,
 } from "@gurukulam/contracts";
 
@@ -123,6 +124,43 @@ export async function suspendTrainer(
 
   revalidatePath(`/trainers/${trainerId}`);
   redirect(`/trainers/${trainerId}?suspended=1`);
+}
+
+/**
+ * Issues portal access.
+ *
+ * ── Why it is an operator's act and not a consequence of being added ────
+ *
+ * A trainer record exists long before there is anything to sign in to — a CV
+ * goes on the bench and may never take a batch. Issuing at creation would mean
+ * every candidate on file holds a live account, and the notification sweep
+ * already raises "credentials issued but never used" as an operator situation
+ * for exactly that shape of mistake.
+ *
+ * The API refuses a second issue by name, because a new temporary password
+ * invalidates the one the person is holding. Resetting is a different act and
+ * the operator should know which one they are doing.
+ *
+ * Nothing here handles a password. The temporary secret is neither returned nor
+ * logged — the login address is the only thing there is to hand over.
+ */
+export async function issueTrainerAccess(
+  trainerId: string,
+  _previous: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  try {
+    checkShape(
+      trainerAccessSchema,
+      await apiFetch(`/trainers/${trainerId}/access`, { method: "POST", body: {} }),
+      "POST /trainers/:id/access",
+    );
+  } catch (error) {
+    return apiFormError(error);
+  }
+
+  revalidatePath(`/trainers/${trainerId}`);
+  redirect(`/trainers/${trainerId}?access=issued`);
 }
 
 /** Clears the suspension and the reason with it. */

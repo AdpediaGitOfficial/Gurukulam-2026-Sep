@@ -48,6 +48,21 @@
   --color-accent-glow: #ffddb0;
   --color-gold: #805600;
 
+  /* ---- The trainer portal's rail --------------------------------------
+   *
+   * #34A853, as the plan asks. It carries DARK text, and that is measured
+   * rather than a preference: white on this green is 3.05:1, which fails AA
+   * for a 14px nav label. The deep green-black below is 5.37:1 and reads more
+   * intentional on a green ground than neutral ink would.
+   *
+   * It makes the two portals a family — the admin's rail is dark with light
+   * text, and both portal rails are light with dark text. The alternative was
+   * darkening the green to about #2E7D32 so it could carry white, which stops
+   * being the green that was asked for. */
+  --color-teach: #34a853;
+  --color-teach-soft: #e8f5ec;
+  --color-on-teach: #0d2415;
+
   /* Chart series: retail and college, the one distinction the whole product
      turns on. Kept as their own tokens rather than reusing --color-accent
      because that amber sits at 1.88:1 on a white card — fine behind a label,

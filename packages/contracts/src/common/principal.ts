@@ -132,13 +132,21 @@ export function isCollegeInScope(principal: Principal, collegeId: string | null)
  * `certificates` is read-only: a trainer needs to know whether a cohort is
  * below its attendance floor, and must not be able to issue anything.
  *
+ * `courses` is absent too, and that one is a deliberate divergence from
+ * `trainer-portal-plan.md` §2.2. It recommends a projection that strips
+ * commercial fields from every mapper a trainer reaches — which is right when
+ * the module is needed. Here the only such field in the whole reachable
+ * surface is `courses.standardMarketValueMinor`, and a trainer does not need
+ * the courses module at all: the course NAME already rides on every batch, and
+ * the attendance floor rides on their own batch shape. Removing the module is
+ * stronger than filtering it, because there is then nothing to forget.
+ *
  * Nothing carries `delete`. Removing a batch, a session or a student is an
  * operations act with consequences a trainer cannot see.
  */
 export const TRAINER_PERMISSIONS: Record<string, Permission> = {
   dashboard: { read: true, edit: false, delete: false },
   batches: { read: true, edit: true, delete: false },
-  courses: { read: true, edit: false, delete: false },
   trainers: { read: true, edit: true, delete: false },
   certificates: { read: true, edit: false, delete: false },
   notifications: { read: true, edit: true, delete: false },

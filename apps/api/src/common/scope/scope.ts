@@ -169,6 +169,61 @@ export function trainerSessionScope(principal: Principal): Record<string, unknow
 }
 
 /**
+ * The shape both trainer rules read.
+ *
+ * Named, because read and write must be answered from the SAME row shape — a
+ * read gate that loaded one relation fewer would be a second definition of
+ * "theirs" wearing the same word.
+ */
+export type TrainerSessionShape = {
+  trainerId: string | null;
+  batch: {
+    primaryTrainerId: string | null;
+    trainerAssignments: { trainerId: string; status: string; deletedAt: Date | null }[];
+  };
+};
+
+/**
+ * Is this cohort theirs NOW — primary trainer, or a live CONFIRMED assignment.
+ *
+ * One definition, shared by the read rule and the write rule below, because
+ * this is the half they agree on. A PROPOSED assignment is not enough: an
+ * invitation is not a cohort.
+ */
+function batchIsTheirsNow(me: string, batch: TrainerSessionShape["batch"]): boolean {
+  return (
+    batch.primaryTrainerId === me ||
+    batch.trainerAssignments.some(
+      (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
+    )
+  );
+}
+
+/**
+ * Whether this trainer may READ a session.
+ *
+ * Their own session — `trainer_id` records that they delivered it, and that
+ * does not stop being true when they are released — or any session of a batch
+ * that is theirs now.
+ *
+ * ── Why this is a function and not an inline test ───────────────────────
+ *
+ * It was inline, expressed as "not their session AND not writable", and that
+ * made READING depend on the WRITE rule. Breaking `trainerMayWrite` in a
+ * fault-injection run therefore opened the read as well: one wrong line and a
+ * trainer could read a cohort that was never theirs. The two rules differ by
+ * exactly one clause and that clause is now the only thing written twice.
+ */
+export function trainerMayRead(principal: Principal, session: TrainerSessionShape): boolean {
+  if (!isTrainer(principal)) return true;
+  const me = principal.trainerScope;
+  if (me === null) return false;
+  // The history clause. This is the ONLY difference from the write rule.
+  if (session.trainerId === me) return true;
+  return batchIsTheirsNow(me, session.batch);
+}
+
+/**
  * Whether this trainer may WRITE against a session — mark it delivered, take
  * attendance, set work, attach a recording.
  *
@@ -182,22 +237,12 @@ export function trainerSessionScope(principal: Principal): Record<string, unknow
  * Anyone who is not a trainer passes — an admin's authority here is their
  * module permission plus city scope, which the caller has already applied.
  */
-export function trainerMayWrite(
-  principal: Principal,
-  session: {
-    trainerId: string | null;
-    batch: { primaryTrainerId: string | null; trainerAssignments: { trainerId: string; status: string; deletedAt: Date | null }[] };
-  },
-): boolean {
+export function trainerMayWrite(principal: Principal, session: TrainerSessionShape): boolean {
   if (!isTrainer(principal)) return true;
   const me = principal.trainerScope;
+  if (me === null) return false;
   if (session.trainerId !== me) return false;
-  const stillMine =
-    session.batch.primaryTrainerId === me ||
-    session.batch.trainerAssignments.some(
-      (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
-    );
-  return stillMine;
+  return batchIsTheirsNow(me, session.batch);
 }
 
 /**
@@ -209,9 +254,22 @@ export function trainerMayWrite(
  */
 export function assertTrainerMayWrite(
   principal: Principal,
-  session: Parameters<typeof trainerMayWrite>[1],
+  session: TrainerSessionShape,
 ): void {
   if (!trainerMayWrite(principal, session)) throw ApiException.outOfScope();
+}
+
+/**
+ * The read rule, thrown — and it throws the SAME refusal as the write.
+ *
+ * A session that is not theirs reads as not found, so a refusal cannot be used
+ * to discover which cohorts exist.
+ */
+export function assertTrainerMayRead(
+  principal: Principal,
+  session: TrainerSessionShape,
+): void {
+  if (!trainerMayRead(principal, session)) throw ApiException.outOfScope();
 }
 
 /**
@@ -233,4 +291,23 @@ export function assertOnRoster(studentIds: string[], roster: Set<string>): void 
       attendance: `${strangers.length} of those students are not on this batch's roster`,
     });
   }
+}
+
+/**
+ * A trainer acting on a trainer record: it must be their own.
+ *
+ * ── Why this is not covered by scope ───────────────────────────────────
+ *
+ * `assertInScope` asks about city and college, and a trainer has neither — so
+ * every trainer record passes it. Nothing else stood between trainer A and
+ * declaring leave in trainer B's calendar, or answering B's invitation, because
+ * until now nothing but an admin ever called those paths and an admin acting on
+ * somebody's behalf is the whole point of them.
+ *
+ * Silent for every other actor, so an admin recording a trainer's answer keeps
+ * working unchanged.
+ */
+export function assertOwnTrainerRecord(principal: Principal, trainerId: string): void {
+  if (!isTrainer(principal)) return;
+  if (principal.trainerScope !== trainerId) throw ApiException.outOfScope();
 }

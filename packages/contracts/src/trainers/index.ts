@@ -34,6 +34,20 @@ export const trainerSchema = z.object({
      same shape students and college portal accounts carry. */
   suspendedAt: z.string().nullable(),
   suspendedReason: z.string().nullable(),
+  /**
+   * Portal access, as two facts rather than a boolean.
+   *
+   * `loginEmail` is what an operator reads out when a trainer says they cannot
+   * sign in — it is derived from the trainer code, not from their own address,
+   * so it is never the one they expect. `credentialsIssuedAt` is when the act
+   * happened; both null means the record exists and there is nothing to sign in
+   * with, which is the ordinary state of a trainer on the bench.
+   *
+   * The password hash is NOT here and never will be. Mapping explicitly is what
+   * keeps it that way.
+   */
+  loginEmail: z.string().nullable(),
+  credentialsIssuedAt: z.string().nullable(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
   approvedCourseCount: z.number().int().optional(),
@@ -48,6 +62,21 @@ export const trainerSchema = z.object({
 });
 
 export type Trainer = z.infer<typeof trainerSchema>;
+
+/**
+ * What issuing access answers with.
+ *
+ * The temporary password is deliberately not in this shape. It goes in the
+ * welcome pack; a secret that crossed the wire to a screen would be in a
+ * browser history, a proxy log and a screenshot before the day was out.
+ */
+export const trainerAccessSchema = z.object({
+  trainerId: z.string(),
+  loginEmail: z.string().nullable(),
+  issuedAt: z.string().nullable(),
+});
+
+export type TrainerAccess = z.infer<typeof trainerAccessSchema>;
 
 /**
  * One course this trainer is approved to take, and when that was granted.

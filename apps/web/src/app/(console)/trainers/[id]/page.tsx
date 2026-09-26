@@ -24,7 +24,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { listBatches, listSessions } from "@/features/batches/server/batches-service";
 import { getTrainer, listAvailability } from "@/features/trainers/server/trainers-service";
-import { reinstateTrainer, suspendTrainer } from "@/features/trainers/server/actions";
+import {
+  issueTrainerAccess,
+  reinstateTrainer,
+  suspendTrainer,
+} from "@/features/trainers/server/actions";
 import { DeclareAvailabilityForm } from "@/features/trainers/components/declare-availability-form";
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { requireModule } from "@/server/principal";
@@ -312,6 +316,17 @@ export default async function TrainerDetailPage({
         <Alert intent="success" title="Trainer reinstated">
           They can be proposed again, and the suspension reason has been cleared.
         </Alert>
+      ) : query["access"] === "issued" ? (
+        /* The login address is the whole message. It is derived from the
+           trainer code rather than their own email, so it is never the one they
+           would guess — an operator who is not told it here has nothing to pass
+           on, and the temporary password is not this screen's to show. */
+        <Alert intent="success" title="Portal access issued">
+          {trainer.name} signs in at{" "}
+          <span className="font-mono">{trainer.loginEmail ?? "the issued address"}</span> with the
+          temporary password from their welcome pack, and is asked to change it on the first
+          sign-in.
+        </Alert>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -361,7 +376,27 @@ export default async function TrainerDetailPage({
           <span className="font-mono text-body-sm text-ink-muted">{trainer.phone}</span>
         )}
 
-        <span className="ml-auto">
+        {/* Whether they can sign in at all, stated rather than implied. A
+            trainer who was never issued access is the ordinary case — most of
+            the bench has no reason to hold an account — so this reads as a
+            fact, not as something missing. */}
+        {trainer.credentialsIssuedAt === null || trainer.loginEmail === null ? (
+          <Chip>No portal access</Chip>
+        ) : (
+          <Chip>
+            <span className="font-mono">{trainer.loginEmail}</span>
+          </Chip>
+        )}
+
+        <span className="ml-auto flex flex-wrap items-center gap-3">
+          {mayEdit && (trainer.credentialsIssuedAt === null || trainer.loginEmail === null) ? (
+            <ConfirmAction
+              action={issueTrainerAccess.bind(null, trainer.trainerId)}
+              label="Issue portal access"
+              pending="Issuing…"
+              subject={trainer.name}
+            />
+          ) : null}
           {trainer.accountStatus === "SUSPENDED" ? (
             <ConfirmAction
               action={reinstateTrainer.bind(null, trainer.trainerId)}

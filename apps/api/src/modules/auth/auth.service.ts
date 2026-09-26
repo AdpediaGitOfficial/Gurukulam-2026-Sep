@@ -236,7 +236,28 @@ export class AuthService {
       }
       case "TRAINER": {
         const u = await this.prisma.trainer.findFirst({ where });
-        return u && { id: u.trainerId, passwordHash: u.passwordHash, mustReset: u.mustReset, active: u.accountStatus === "ACTIVE" };
+        /*
+         * SUSPENDED signs in. That is deliberate and it is the only actor
+         * here for which it is true.
+         *
+         * Suspension withdraws a trainer from the pickers WITHOUT touching
+         * live delivery — pulling somebody off a running cohort as a side
+         * effect of a status change would strand it — so a suspended trainer
+         * still holds their confirmed batches. Refusing them here left them
+         * nominally teaching sessions they could not see, which is how a class
+         * ends up with nobody in the room.
+         *
+         * They write nothing: `forTrainer` hands them the matrix with every
+         * `edit` withdrawn, so each `@RequirePermission(…, "edit")` refuses
+         * without knowing suspension exists. INACTIVE is still refused — that
+         * is an account that is over, not one that is paused.
+         */
+        return u && {
+          id: u.trainerId,
+          passwordHash: u.passwordHash,
+          mustReset: u.mustReset,
+          active: u.accountStatus === "ACTIVE" || u.accountStatus === "SUSPENDED",
+        };
       }
       case "STUDENT": {
         const u = await this.prisma.student.findFirst({ where });

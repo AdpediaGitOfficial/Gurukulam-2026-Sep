@@ -8,7 +8,10 @@ import type {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope, assertOwnTrainerRecord, cityScope, collegeScope, isTrainer, liveOnly,
+  trainerBatchScope,
+} from "../../common/scope/scope";
 import type { BatchAttention } from "@gurukulam/contracts";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
@@ -39,6 +42,9 @@ export class BatchesService {
       ...liveOnly(query.includeDeleted),
       ...cityScope(principal),
       ...collegeScope(principal),
+      // The third axis. A trainer sees the cohorts they teach and nothing
+      // else, decided by the same fragment every other trainer read uses.
+      ...trainerBatchScope(principal),
       ...(query.courseId ? { courseId: query.courseId } : {}),
       ...(query.collegeId ? { collegeId: query.collegeId } : {}),
       ...(query.cityId ? { cityId: query.cityId } : {}),
@@ -90,6 +96,24 @@ export class BatchesService {
     });
     if (!batch) throw ApiException.notFound("Batch");
     assertInScope(principal, batch);
+    /*
+     * The trainer axis, on the write-shaped path.
+     *
+     * A read filtered by a `where` fragment simply omits what is out of scope;
+     * a fetch by id already has the row, so the check has to happen after it.
+     * Same shape as `assertInScope` and the same 404 rather than a 403, for
+     * the same reason: a refusal that says "exists, not yours" is a way to
+     * enumerate what exists.
+     */
+    if (isTrainer(principal)) {
+      const me = principal.trainerScope;
+      const mine =
+        batch.primaryTrainerId === me ||
+        batch.trainerAssignments.some(
+          (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
+        );
+      if (!mine) throw ApiException.outOfScope();
+    }
 
     return {
       ...toBatch(batch),
@@ -327,6 +351,18 @@ export class BatchesService {
       include: { trainer: { select: { name: true } } },
     });
     if (!proposal) throw ApiException.notFound("Open proposal");
+    /*
+     * Whose answer is this?
+     *
+     * This path was written for an ADMIN recording the trainer's answer on
+     * their behalf, so it found the open proposal on the batch and updated it —
+     * nothing asked who was confirming, because nothing but an admin ever
+     * called it. Now a trainer does, and a trainer may only answer their own.
+     *
+     * An admin passes, because recording somebody else's answer is exactly
+     * what the admin path is for.
+     */
+    assertOwnTrainerRecord(principal, proposal.trainerId);
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.batchTrainerAssignment.update({

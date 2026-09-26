@@ -53,3 +53,16 @@ export async function requireStudent(): Promise<Principal> {
   if (principal.actor !== "STUDENT") redirect("/dashboard");
   return principal;
 }
+
+/**
+ * The same, for the trainer portal.
+ *
+ * A student who followed a trainer link is sent to their own portal rather
+ * than to a console they cannot read — sending everybody to `/dashboard` would
+ * bounce them between two screens that both refuse them.
+ */
+export async function requireTrainer(): Promise<Principal> {
+  const principal = await requirePrincipal();
+  if (principal.actor === "TRAINER") return principal;
+  redirect(principal.actor === "STUDENT" ? "/portal" : "/dashboard");
+}

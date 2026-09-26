@@ -20,6 +20,7 @@ import { AccessModule } from "./modules/access/access.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { MeModule } from "./modules/me/me.module";
+import { TrainerMeModule } from "./modules/trainer-me/trainer-me.module";
 import { AuthGuard } from "./common/guards/auth.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
@@ -67,6 +68,7 @@ import { ConfigModule } from "./config/config.module";
     /* The student's own surface. Its own contracts and its own service —
        never the admin mappers. See modules/me/me.service.ts. */
     MeModule,
+    TrainerMeModule,
   ],
   controllers: [HealthController],
   providers: [

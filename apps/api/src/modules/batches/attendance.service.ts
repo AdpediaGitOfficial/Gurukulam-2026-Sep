@@ -9,6 +9,7 @@ import { ApiException } from "../../common/errors";
 import {
   assertInScope,
   assertOnRoster,
+  assertTrainerMayRead,
   assertTrainerMayWrite,
   trainerMayWrite,
 } from "../../common/scope/scope";
@@ -218,19 +219,10 @@ export class AttendanceService {
     if (!session) throw ApiException.notFound("Session");
     assertInScope(principal, session.batch);
     // Reading is wider than writing: a trainer sees a session they delivered
-    // even after release. `trainerMayWrite` is what narrows the write.
-    if (
-      principal.actor === "TRAINER" &&
-      session.trainerId !== principal.trainerScope &&
-      !trainerMayWrite(principal, session)
-    ) {
-      const mine =
-        session.batch.primaryTrainerId === principal.trainerScope ||
-        session.batch.trainerAssignments.some(
-          (a) => a.trainerId === principal.trainerScope && a.status === "CONFIRMED",
-        );
-      if (!mine) throw ApiException.outOfScope();
-    }
+    // even after release. Both rules live in `scope.ts` and share their second
+    // half — this used to be spelled out here in terms of `trainerMayWrite`,
+    // which made a mistake in the WRITE rule widen the READ.
+    assertTrainerMayRead(principal, session);
     return session;
   }
 }

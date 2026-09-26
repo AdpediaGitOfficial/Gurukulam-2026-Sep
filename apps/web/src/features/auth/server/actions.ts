@@ -113,6 +113,50 @@ export async function studentLogin(
   redirect(session.mustResetPassword ? "/portal/account/password?reason=first-login" : "/portal");
 }
 
+/**
+ * Sign-in for a trainer.
+ *
+ * A third door, for the same reason the student has a second: the actor is
+ * part of the credential, so a trainer typing the right password at the
+ * console's form would be told it does not match. Fixed here rather than
+ * posted, so nothing the browser sends can change which surface it opens.
+ */
+export async function trainerLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "TRAINER",
+    deviceLabel: "Trainer portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+  redirect(session.mustResetPassword ? "/teach/account/password?reason=first-login" : "/teach");
+}
+
 export async function logout(): Promise<void> {
   const refreshToken = await readRefreshToken();
 
@@ -181,7 +225,14 @@ export async function changePassword(
   // change into an access refusal — on the one screen every new student is
   // forced through before they can reach anything else.
   const principal = await requirePrincipal();
+  // Each actor lands back on the surface they came from. Sending everybody to
+  // `/dashboard` would drop a student or a trainer on a console they cannot
+  // read, having just successfully changed their password.
   redirect(
-    principal.actor === "STUDENT" ? "/portal?password=changed" : "/dashboard?password=changed",
+    principal.actor === "STUDENT"
+      ? "/portal?password=changed"
+      : principal.actor === "TRAINER"
+        ? "/teach?password=changed"
+        : "/dashboard?password=changed",
   );
 }

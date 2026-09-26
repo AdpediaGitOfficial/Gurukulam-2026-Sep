@@ -17,7 +17,8 @@
     "verify:widths": "tsx scripts/verify-widths.ts",
     "verify:type": "tsx scripts/verify-type.ts",
     "verify:portal": "tsx scripts/verify-portal.ts",
-    "shoot": "tsx scripts/shoot.ts"
+    "shoot": "tsx scripts/shoot.ts",
+    "verify:teach": "tsx scripts/verify-teach.ts"
   },
   "dependencies": {
     "@gurukulam/contracts": "*",

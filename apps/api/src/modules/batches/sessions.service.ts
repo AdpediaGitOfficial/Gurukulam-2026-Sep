@@ -13,6 +13,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { ApiException } from "../../common/errors";
 import {
   assertInScope, assertTrainerMayWrite, cityScope, collegeScope, isTrainer, liveOnly,
+  trainerSessionScope,
 } from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { parseDate } from "./batches.service";
@@ -39,6 +40,9 @@ export class SessionsService {
 
   async list(principal: Principal, query: SessionQuery): Promise<Page<BatchSession>> {
     const where: Prisma.BatchSessionWhereInput = {
+      // A trainer sees their own sessions plus every session of a batch that
+      // is currently theirs — the read set, which is wider than the write set.
+      ...trainerSessionScope(principal),
       ...liveOnly(query.includeDeleted),
       // Sessions carry no city of their own, so scope reads through the batch.
       batch: { ...cityScope(principal), ...collegeScope(principal) },
@@ -1102,6 +1106,13 @@ export class SessionsService {
     return batch;
   }
 
+  /**
+   * A session, checked for whoever is asking.
+   *
+   * Reading is wider than writing — a trainer keeps the sessions they
+   * delivered after being released from the batch — so this asks only the READ
+   * question. `assertTrainerMayWrite` is what each write path adds on top.
+   */
   private async loadSession(principal: Principal, sessionId: string) {
     const session = await this.prisma.batchSession.findFirst({
       where: { sessionId, deletedAt: null },
@@ -1110,6 +1121,20 @@ export class SessionsService {
     if (!session) throw ApiException.notFound("Session");
     // Scope reads through the batch — a session has no city of its own.
     assertInScope(principal, session.batch);
+
+    if (isTrainer(principal)) {
+      const me = principal.trainerScope;
+      // Theirs to READ if they taught it, or if the batch is currently theirs.
+      // The first half is what keeps history after a release; the write paths
+      // add `assertTrainerMayWrite` on top, which does not.
+      const mine =
+        session.trainerId === me ||
+        session.batch.primaryTrainerId === me ||
+        (session.batch.trainerAssignments ?? []).some(
+          (a) => a.trainerId === me && a.status === "CONFIRMED" && a.deletedAt === null,
+        );
+      if (!mine) throw ApiException.outOfScope();
+    }
     return session;
   }
 
@@ -1125,7 +1150,10 @@ export class SessionsService {
 }
 
 const SESSION_INCLUDE = {
-  batch: true,
+  // The assignments come back so the trainer read check can ask whether the
+  // batch is STILL theirs without a second query — a released trainer keeps
+  // their history and loses the write, and that turns on one row.
+  batch: { include: { trainerAssignments: { where: { deletedAt: null } } } },
   topic: { select: { title: true } },
   trainer: { select: { name: true } },
   recording: { select: { recordingId: true } },

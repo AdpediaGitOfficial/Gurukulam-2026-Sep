@@ -505,6 +505,9 @@ function toTrainer(row: TrainerRow): Trainer {
     accountStatus: row.accountStatus,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspendedReason: row.suspendedReason,
+    // Whether they can sign in, and as what. The hash stays behind.
+    loginEmail: row.loginEmail,
+    credentialsIssuedAt: row.credentialsIssuedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     approvedCourseCount: row._count.courses,

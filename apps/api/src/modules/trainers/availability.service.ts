@@ -6,7 +6,9 @@ import type {
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope, assertOwnTrainerRecord, cityScope, collegeScope, liveOnly,
+} from "../../common/scope/scope";
 
 /**
  * Trainer availability, and the calendar built from it.
@@ -93,6 +95,11 @@ export class AvailabilityService {
     return toAvailability(created);
   }
 
+  /**
+   * Withdrawing leave is as significant as declaring it — it hands a day back
+   * to the pickers — so it is soft-deleted rather than removed, and a trainer
+   * may only withdraw their own.
+   */
   async withdraw(principal: Principal, availabilityId: string): Promise<void> {
     const entry = await this.prisma.trainerAvailability.findFirst({
       where: { availabilityId, deletedAt: null },
@@ -100,6 +107,7 @@ export class AvailabilityService {
     });
     if (!entry) throw ApiException.notFound("Availability entry");
     assertInScope(principal, entry.trainer);
+    assertOwnTrainerRecord(principal, entry.trainerId);
 
     await this.prisma.trainerAvailability.update({
       where: { availabilityId },
@@ -239,6 +247,10 @@ export class AvailabilityService {
     });
     if (!trainer) throw ApiException.notFound("Trainer");
     assertInScope(principal, trainer);
+    // A trainer has no city and no college, so every trainer record passes the
+    // scope check. This is what stops one declaring leave in another's diary —
+    // which changes what Ops may do, and would do it under the wrong name.
+    assertOwnTrainerRecord(principal, trainerId);
     void collegeScope;
     return trainer;
   }
