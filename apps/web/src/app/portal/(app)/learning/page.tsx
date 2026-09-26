@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { MeBatch } from "@gurukulam/contracts";
 
 import { Chip } from "@/components/ui/chip";
@@ -8,6 +9,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { PortalCard, PortalPage } from "@/features/me/components/portal-page";
 import { SessionCard } from "@/features/me/components/session-card";
 import { portalDate } from "@/features/me/format";
+import { cn } from "@/lib/cn";
 import { getSchedule, listBatches } from "@/features/me/server/me-service";
 import { requireStudent } from "@/server/principal";
 
@@ -113,6 +115,57 @@ export default async function MyLearningPage() {
   );
 }
 
+/**
+ * The student's own attendance on this batch, under the delivery bar.
+ *
+ * ── Why the wording changes with the verdict ────────────────────────────
+ *
+ * NOT_EVALUATED is not 0%. A register nobody has taken is not a student who
+ * attended nothing, and printing "0% attendance" against a course they sat
+ * through — on the figure their certificate turns on — is the worst sentence
+ * this card could carry. So the three verdicts read as three different facts,
+ * and only one of them is a warning.
+ */
+function Attendance({ batch }: { batch: MeBatch }) {
+  const link = (
+    <Link
+      href="/portal/learning/attendance"
+      className="font-medium text-brand underline-offset-4 hover:underline"
+    >
+      see the register
+    </Link>
+  );
+
+  if (batch.attendanceCheck === "NOT_EVALUATED") {
+    return (
+      <p className="text-body-sm text-ink-subtle">
+        No register taken yet, so there is nothing to count — {link}
+      </p>
+    );
+  }
+
+  return (
+    <p
+      className={cn(
+        "text-body-sm",
+        batch.attendanceCheck === "BELOW_FLOOR" ? "text-warning-strong" : "text-ink-muted",
+      )}
+    >
+      {batch.attendanceCheck === "BELOW_FLOOR" ? (
+        <Icon name="warn" size={15} className="mr-1 inline align-[-2px]" />
+      ) : null}
+      You attended {batch.attendedCount} of them — {batch.attendancePct}%
+      {batch.attendanceFloorPct === null
+        ? ""
+        : batch.attendanceCheck === "BELOW_FLOOR"
+          ? `, below the ${batch.attendanceFloorPct}% this course asks for`
+          : `, above the ${batch.attendanceFloorPct}% this course asks for`}
+      {" · "}
+      {link}
+    </p>
+  );
+}
+
 function BatchCard({ batch }: { batch: MeBatch }) {
   const progress =
     batch.sessionCount === 0 ? 0 : Math.round((batch.deliveredCount / batch.sessionCount) * 100);
@@ -157,8 +210,11 @@ function BatchCard({ batch }: { batch: MeBatch }) {
           <p className="text-body-sm text-ink-subtle">No sessions scheduled yet.</p>
         ) : (
           <div className="flex min-w-0 flex-col gap-1.5">
-            {/* Delivery, not attendance — this counts what the trainer has
-                marked complete, which is the only thing the portal knows. */}
+            {/* Delivery, and now attendance beside it. The bar is still
+                delivery — how far the course has got is a fact about the batch
+                — and the line under it is the student's own, because "11
+                delivered, you were at 9" is the comparison that means
+                something and neither number says it alone. */}
             <div
               className="h-2 w-full overflow-hidden rounded-full bg-surface-muted"
               role="img"
@@ -169,6 +225,7 @@ function BatchCard({ batch }: { batch: MeBatch }) {
             <p className="text-body-sm text-ink-muted">
               {batch.deliveredCount} of {batch.sessionCount} sessions delivered
             </p>
+            <Attendance batch={batch} />
           </div>
         )}
       </div>

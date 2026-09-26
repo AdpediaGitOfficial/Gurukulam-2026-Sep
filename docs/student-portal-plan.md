@@ -251,11 +251,21 @@ rather than hide the assignment — a student needs to see what they missed.
 | --- | --- |
 | Takes the register, on the session screen. The trainer portal writes the same row through the same endpoint | Per-session presence, and a percentage per batch |
 
-There is a writer now, so this screen would render real rows rather than an empty
-one — and it is the figure a certificate turns on, because the course carries an
-attendance floor. Say "attendance has not been recorded for this batch" rather
-than showing 0% when a register was never taken: `eligibility.service.ts` makes
-the same distinction, reporting NOT_EVALUATED rather than a fabricated zero.
+**Built**, at `/portal/learning/attendance`, with the summary beside delivery on
+the batch card and a warning on Home when a student is below the floor.
+
+Every figure comes from `EligibilityService` rather than from a second count:
+the denominator is sessions marked COMPLETED, PRESENT and LATE both count, and a
+batch whose register was never taken reports NOT_EVALUATED. That last one is the
+distinction this section asked for — "attendance has not been recorded for this
+batch" rather than 0% — and it is carried as `null` through the contract so the
+screen cannot render a zero by accident.
+
+The one thing it adds beyond what was specified: a row with no mark is three
+different facts, and the screen names which. You were not recorded although the
+register was taken; no register was taken that day; or the session has not been
+closed, so it counts for nobody. The first two cost the same percentage, and only
+one of them is the student's to answer for.
 
 ### 3.6 Fee ledger → **My fees** — retail only
 
@@ -447,6 +457,14 @@ Home · My learning · Assignments · Fees* · Certificates · Jobs
 
 *Fees is absent for a college student — not disabled, not empty. Absent.*
 
+**Eight is what shipped, and it is one more than a phone holds.** The bell gave
+way: a 390px tab bar fits five, each tab is a fifth of it, and "Learning"
+truncates below 48px — so Notifications lives in the sidebar and in the title bar,
+where every other product puts a bell. That is also why **attendance is a screen
+under Learning rather than a ninth entry**: it answers "how is my course going",
+which is Learning's question, and its one urgent fact — being below the floor —
+travels to Home instead of waiting to be visited.
+
 **Home** answers the three questions a student actually opens the portal with:
 when is my next session, what is due from me, and is there anything new. It is a
 landing page, not a dashboard of metrics — a student has no fleet to survey.
@@ -469,6 +487,7 @@ from the way this document proposed.
 | **Attendance has no writer** | `POST /batches/sessions/:id/attendance`, written by the trainer portal and by the console. The whole register posts at once, and the gate is the calendar rather than completion |
 | **No `emit()` beside `sweep()`** | `emit(tx, event)` and `emitToRoster(tx, batchId, event)`, called from inside the transaction that made the change. `EmittedEvent` has no `groupKey` field at all — the sweep resolves BY group key, so a borrowed one would have the next nightly run delete the notice silently |
 | **`reminder_sent_flag` is a boolean** | `fee_installment_reminders`, unique on `(installment, offset)`. The run climbs ONE rung, the latest reached: sending every rung an installment had passed produced 9,968 reminders on its first run against real data |
+| **My attendance has no screen** | `/portal/learning/attendance`, and NOT a ninth nav entry — §5's five became eight and the tab bar is full. Every figure is asked of `EligibilityService`, the rule a certificate is judged on, so the screen cannot explain a refusal with a number nobody used |
 
 ### 6.2 Still open
 
@@ -478,7 +497,6 @@ from the way this document proposed.
 | **No email integration** | Forgot-password, submission receipts, "your recording is up" | Deferred by design |
 | **No file storage** | Assignment uploads, certificate PDFs | v1 submissions are a link plus text. Every `pdf_url` is null, which is why `verify:portal` puts one there for the length of the invariant-7 check and takes it away again — otherwise "no download offered" holds whatever the access rule says |
 | **No job application record** | "Applied" state, admin visibility of interest | Schema addition. Worth deciding alongside the Naukri feed |
-| **My attendance has no screen** | A student cannot see the figure their certificate depends on | The rows exist now (above) and the course carries `attendance_floor_pct`; the portal reads neither yet. §1.2 counts this as a reason a college student needs an account, so it is the next thing this document argues for |
 
 ---
 

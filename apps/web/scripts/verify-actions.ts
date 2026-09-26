@@ -120,15 +120,43 @@ async function main(): Promise<void> {
       brokenPages.push(`${route} — HTTP ${status}`);
       continue;
     }
-    // Server Components stream, and React attaches click handlers during
-    // hydration. Asking before that lands reports every client component as
-    // inert — so wait until React has attached props to something.
+    /*
+     * Server Components stream, and React attaches click handlers during
+     * hydration. Asking before that lands reports every client component as
+     * inert — so wait for hydration.
+     *
+     * ── Why EVERY candidate, not just one ──────────────────────────────────
+     *
+     * This waited for `some` button to carry React props, and that made the
+     * whole check a race: a page hydrates island by island, so a header button
+     * satisfying the wait says nothing about the twenty-seven Delete buttons in
+     * the table below it. Measured on `/students`: at the moment `some` first
+     * passes, 27 of 27 candidates are still bare, and 200ms later none are. The
+     * suite therefore reported "Delete does nothing" on a control that works,
+     * on some runs and not others — a guard that cannot tell a fault from a
+     * frame is worse than no guard, because a real one gets waved through as
+     * the flake everybody has learned to re-run.
+     *
+     * The predicate is now the same one the assertion uses, so what it waits for
+     * and what it judges cannot disagree. A page that never finishes hydrating
+     * still falls through on the timeout and is judged as it stands — which is
+     * the honest answer for a page that takes ten seconds to wake up.
+     */
     await page.waitForLoadState("load");
     await page
       .waitForFunction(() => {
-        const buttons = [...document.querySelectorAll("button")];
-        if (buttons.length === 0) return true;
-        return buttons.some((el) => Object.keys(el).some((k) => k.startsWith("__reactProps$")));
+        const candidates = [...document.querySelectorAll("button")].filter((element) => {
+          const button = element as HTMLButtonElement;
+          return !button.disabled && button.closest("form") === null && button.closest("a") === null;
+        });
+        if (candidates.length === 0) return true;
+        return candidates.every((element) => {
+          const key = Object.keys(element).find((k) => k.startsWith("__reactProps$"));
+          const props = key === undefined
+            ? null
+            : (element as unknown as Record<string, { onClick?: unknown }>)[key];
+          return props !== null && typeof props?.onClick === "function";
+        });
       }, undefined, { timeout: 10000 })
       .catch(() => undefined);
 

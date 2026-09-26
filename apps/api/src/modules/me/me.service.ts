@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type {
+  MeAttendance,
   MeAssignment,
   MeAssignments,
   MeBatch,
@@ -35,6 +36,15 @@ import { PrismaService } from "../prisma/prisma.module";
  * link, and nothing would fail.
  */
 import { certificateAccess } from "../certificates/certificates.service";
+/*
+ * The attendance rule, borrowed for the same reason as the access rule above.
+ *
+ * `EligibilityService` owns the arithmetic a certificate is judged on: the
+ * denominator is sessions marked COMPLETED, PRESENT and LATE both count, and a
+ * batch whose register was never taken reports NOT_EVALUATED rather than 0%.
+ * The portal shows a student that verdict, so it asks for it.
+ */
+import { EligibilityService } from "../certificates/eligibility.service";
 import { ApiException } from "../../common/errors";
 
 /**
@@ -63,7 +73,10 @@ import { ApiException } from "../../common/errors";
  */
 @Injectable()
 export class MeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eligibility: EligibilityService,
+  ) {}
 
   // ── Profile ─────────────────────────────────────────────────────────────
 
@@ -163,6 +176,23 @@ export class MeService {
     });
     const deliveredBy = new Map(delivered.map((row) => [row.batchId, row._count._all]));
 
+    /*
+     * The attendance figures, asked of the rule rather than counted here.
+     *
+     * One call per batch, and a student has a handful. The alternative — a
+     * groupBy over their attendance rows — would be one query instead of five
+     * and would be a SECOND definition of the denominator, of which statuses
+     * count, and of what an untaken register means. The screen that explains a
+     * certificate must not disagree with the service that refuses one.
+     */
+    const verdicts = new Map(
+      await Promise.all(
+        batchIds.map(
+          async (batchId) => [batchId, await this.eligibility.evaluate(principal.id, batchId)] as const,
+        ),
+      ),
+    );
+
     return mappings.map((m) => ({
       batchId: m.batchId,
       batchCode: m.batch.batchCode,
@@ -180,6 +210,10 @@ export class MeService {
       completedAt: m.completedAt?.toISOString() ?? null,
       sessionCount: m.batch._count.sessions,
       deliveredCount: deliveredBy.get(m.batchId) ?? 0,
+      attendedCount: verdicts.get(m.batchId)?.sessionsAttended ?? 0,
+      attendancePct: verdicts.get(m.batchId)?.attendancePct ?? null,
+      attendanceFloorPct: verdicts.get(m.batchId)?.attendanceFloorPct ?? null,
+      attendanceCheck: verdicts.get(m.batchId)?.attendanceCheck ?? "NOT_EVALUATED",
     }));
   }
 
@@ -880,6 +914,109 @@ export class MeService {
    * Three answers, not a dashboard of metrics: a student has no fleet to
    * survey. When is my next session, what am I on, and what can I catch up on.
    */
+  /**
+   * The register, for every batch of theirs.
+   *
+   * ── What this adds that the summary cannot ──────────────────────────────
+   *
+   * `batches()` carries one number per batch, and one number cannot explain
+   * itself. "9 of 11" raises exactly one question — which two? — and the answer
+   * is not always "you were absent". Three different silences produce a row with
+   * no mark, and the shape keeps them apart:
+   *
+   *   · marked, with a status;
+   *   · the register was taken and they are not on it — it counts against them,
+   *     and nobody wrote ABSENT, so the portal will not write it either;
+   *   · no register was taken that day at all — it counts against them too, and
+   *     that is the trainer's omission rather than theirs.
+   *
+   * ── Why days that have HAPPENED, rather than days that count ────────────
+   *
+   * The denominator is sessions marked COMPLETED. A session that happened and was
+   * never closed is in nobody's figures — so it is listed with `counted: false`
+   * rather than omitted, because a student comparing their own diary against "of
+   * 11" needs to see the fourteenth day sitting there uncounted instead of
+   * concluding that the portal lost it.
+   *
+   * Cancelled sessions are the one exclusion. Nobody attended, nothing counts,
+   * and a row saying so would put a mark against a class that did not happen.
+   */
+  async attendance(principal: Principal): Promise<MeAttendance> {
+    const batches = await this.batches(principal);
+    if (batches.length === 0) return { batches: [], anyFloor: false };
+
+    const batchIds = batches.map((b) => b.batchId);
+    const today = startOfToday();
+
+    const [sessions, mine, registers] = await Promise.all([
+      this.prisma.batchSession.findMany({
+        where: {
+          batchId: { in: batchIds },
+          deletedAt: null,
+          status: { not: "CANCELLED" },
+          scheduledDate: { lte: today },
+        },
+        orderBy: [{ scheduledDate: "desc" }, { startTime: "desc" }],
+        select: {
+          sessionId: true, sessionCode: true, title: true, batchId: true,
+          scheduledDate: true, startTime: true, endTime: true, status: true,
+        },
+      }),
+      // Their own marks. Scoped by `studentId` on the query, so no row about
+      // anybody else can reach this function to be filtered out later.
+      this.prisma.studentAttendance.findMany({
+        where: { studentId: principal.id, deletedAt: null, session: { batchId: { in: batchIds } } },
+        select: { sessionId: true, status: true },
+      }),
+      /*
+       * Which sessions have a register at all — counted across the WHOLE
+       * roster, deliberately. "Nobody was marked that day" is a fact about the
+       * session rather than about them, and it is the only way to tell a
+       * trainer's omission from a student's absence. Only the count crosses
+       * into this function; no other student's name or status does.
+       */
+      this.prisma.studentAttendance.groupBy({
+        by: ["sessionId"],
+        where: { deletedAt: null, session: { batchId: { in: batchIds } } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const myStatus = new Map(mine.map((row) => [row.sessionId, row.status]));
+    const taken = new Set(registers.filter((row) => row._count._all > 0).map((row) => row.sessionId));
+
+    return {
+      batches: batches.map((batch) => ({
+        batchId: batch.batchId,
+        batchCode: batch.batchCode,
+        name: batch.name,
+        courseName: batch.courseName,
+        outcome: batch.outcome,
+        deliveredCount: batch.deliveredCount,
+        attendedCount: batch.attendedCount,
+        attendancePct: batch.attendancePct,
+        attendanceFloorPct: batch.attendanceFloorPct,
+        attendanceCheck: batch.attendanceCheck,
+        sessions: sessions
+          .filter((session) => session.batchId === batch.batchId)
+          .map((session) => ({
+            sessionId: session.sessionId,
+            sessionCode: session.sessionCode,
+            title: session.title,
+            scheduledDate: session.scheduledDate.toISOString().slice(0, 10),
+            startTime: session.startTime.toISOString().slice(11, 16),
+            endTime: session.endTime.toISOString().slice(11, 16),
+            status: myStatus.get(session.sessionId) ?? null,
+            // COMPLETED is the denominator, exactly as the eligibility rule
+            // reads it. Anything else has happened without being closed.
+            counted: session.status === "COMPLETED",
+            registerTaken: taken.has(session.sessionId),
+          })),
+      })),
+      anyFloor: batches.some((batch) => batch.attendanceFloorPct !== null),
+    };
+  }
+
   async home(principal: Principal): Promise<MeHome> {
     const [profile, batches, schedule, assignments] = await Promise.all([
       this.profile(principal),
@@ -902,6 +1039,10 @@ export class MeService {
       // an assignment whose window has closed.
       nextAssignment: assignments.outstanding[0] ?? null,
       assignmentsDue: assignments.outstanding.length,
+      // BELOW_FLOOR only. NOT_EVALUATED is not a warning — a register nobody
+      // took is not a student's problem, and telling them it might be would
+      // send them to an office that has nothing to say.
+      attendanceAtRisk: batches.filter((b) => b.attendanceCheck === "BELOW_FLOOR").length,
     };
   }
 }

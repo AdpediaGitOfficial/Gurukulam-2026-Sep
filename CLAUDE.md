@@ -45,7 +45,7 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **All four portals are built.** Admin is complete. The **student portal** is at `/portal/*` —
-sign-in, home, my learning, assignments, certificates, jobs, fees, updates and account. The **trainer
+sign-in, home, my learning, attendance, assignments, certificates, jobs, fees, updates and account. The **trainer
 portal** is at `/teach/*` — home, batches, sessions, one session with its register and its marking,
 availability, invitations and account. The **college portal** is at `/campus/*` — sign-in, overview,
 requirements (and raising one), students (and adding and placing one), schedule, certificates with
@@ -210,6 +210,41 @@ is absent from their navigation rather than present and showing zero: an empty F
 answers, with the sentence their situation needs. The nav is built per segment in `student-shell.tsx`
 and `verify:portal` signs in as both.
 
+**Attendance is the figure a certificate turns on, and the student could not see it.**
+`courses.attendance_floor_pct` has been on every course since the first migration and could not be
+evaluated, because nothing wrote attendance. The trainer portal writes it now, and the floor decides
+whether a certificate is issued — so `/portal/learning/attendance` shows the one person it is used
+against which sessions they were marked at. A student refused a certificate for a number they were
+never shown has no way to have attended more.
+
+**The portal asks `EligibilityService` for every attendance figure rather than counting the rows.**
+Three rules hide in that arithmetic and all three move the answer: the denominator is sessions marked
+COMPLETED (never the whole timetable), PRESENT **and** LATE both count, and a batch whose register was
+never taken reports NOT_EVALUATED rather than 0%. `MeModule` imports `CertificatesModule` for that one
+provider, and `verify:portal` asks both sides for the same student and batch and fails if they differ —
+breaking it so the portal recounts produced *portal 55%, eligibility 50%*, which is a screen explaining
+a refusal with a number nobody used.
+
+**NOT_EVALUATED is not 0%, and that is the most expensive sentence on this screen.** A register
+nobody took is not a student who attended nothing. Rendering it as zero would tell somebody who sat
+through the course that they attended none of it, on the figure their certificate depends on — and
+would put a warning on their home screen for their trainer's omission. So the API sends `null`, the
+screen explains instead of rendering a figure, and Home says nothing at all.
+
+**Three silences produce a row with no mark, and the register keeps them apart.** Marked, with a
+status. The register was taken and they are not on it — which costs them the percentage, and the
+screen says "not recorded for you" because nobody wrote ABSENT and the product will not invent the
+accusation. Or no register was taken that day, which costs them too and is not theirs to answer for.
+A fourth line covers a day that happened and was never closed: it is in nobody's figures, and saying
+so is what stops "of 11" looking arbitrary to the one person counting the days themselves.
+
+**The warning goes where it is read, and the screen is not a ninth nav entry.** `student-shell.tsx`
+records that eight destinations already overflow a 390px tab bar — the bell gave way to make room — so
+the register lives under Learning, the summary sits beside delivery on the batch card ("11 delivered,
+you were at 9"), and Home carries a warning ONLY when a student is below the floor. A floor matters to
+one person and only when they are near it; by the time somebody thinks to visit a screen about it, the
+sessions that would have fixed it have happened.
+
 **Money never leaves `bigint` until it is words.** Every amount crosses the wire as a decimal string
 of paise. `features/me/money.ts` is the portal's only conversion, and nothing in the portal adds,
 subtracts or compares money — the API sums in `bigint`, the screen formats.
@@ -340,6 +375,15 @@ other college fixed them.
 trusts the posted college id did NOT put a student at another institution: the `assertInScope` that
 follows refuses it. Two independent enforcement points, so the check asserts the PROPERTY — no
 student ever lands at another college — and passes whichever of the two answers.
+
+**A guard that cannot tell a fault from a frame is worse than no guard.** `verify:actions` waited
+for SOME button to carry React props and then judged every button on the page — and a page hydrates
+island by island, so a header button satisfying the wait said nothing about the twenty-seven Delete
+buttons in the table below it. Measured on `/students`: when `some` first passes, 27 of 27 candidates
+are still bare, and 200ms later none are. It reported "Delete does nothing" on a working control on
+some runs and not others, which is how a real finding gets waved through as the flake everybody
+re-runs. The wait is now the same predicate as the assertion, so what it waits for and what it judges
+cannot disagree.
 
 **A restart that did not restart is worse than no restart.** `pkill -f "apps/api/dist/main.js"` never
 matched — the process is `node dist/main.js` with `apps/api` as its cwd — so the "restarted" API went

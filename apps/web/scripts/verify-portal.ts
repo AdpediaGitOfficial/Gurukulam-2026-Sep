@@ -92,6 +92,7 @@ const SCALE = [36, 30, 25, 20, 18, 16, 14, 12, 10];
 const ROUTES = [
   "/portal",
   "/portal/learning",
+  "/portal/learning/attendance",
   "/portal/assignments",
   "/portal/certificates",
   "/portal/jobs",
@@ -1507,6 +1508,8 @@ async function main(): Promise<void> {
 
   await college.close();
 
+  await attendanceChecks(page, student.studentId);
+
   // ── 11. Every screen fits a phone, and every size is on the scale ───────
   const phone = await browser.newPage({ viewport: { width: NARROW, height: 844 } });
   await phone.route("**fonts.g**", (r) => r.abort());
@@ -1565,6 +1568,351 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/**
+ * Attendance: the figure a certificate turns on, from the student's side.
+ *
+ * ── Why every case here is MANUFACTURED ─────────────────────────────────
+ *
+ * The seed gives this student one completed session and one PRESENT row, which
+ * exercises exactly one of five behaviours. Everything that matters — LATE
+ * counting as attendance, an untaken register reading as NOT_EVALUATED rather
+ * than 0%, a student who is simply not on a register that was taken, and the
+ * BELOW_FLOOR verdict that refuses a certificate — does not exist in the data
+ * and would silently never be tested. So the register is built to a known shape,
+ * asserted, and put back exactly as it was found.
+ *
+ * The same shape as the trainer suite's borrowed second student and the
+ * certificate suite's temporary `pdf_url`: a check whose condition is absent is
+ * a check that passes for the wrong reason.
+ */
+async function attendanceChecks(page: Page, studentId: string): Promise<void> {
+  const mapping = await prisma.studentBatchMapping.findFirst({
+    where: { studentId, deletedAt: null, isActive: true },
+    select: { batchId: true },
+  });
+  if (mapping === null) {
+    bad("attendance is measured against the certificate rule", "the student is on no live batch");
+    return;
+  }
+
+  const batch = await prisma.batch.findUniqueOrThrow({
+    where: { batchId: mapping.batchId },
+    select: { batchId: true, batchCode: true, courseId: true },
+  });
+
+  /* Everything this function touches, read BEFORE it touches any of it. The
+     restore at the end writes these values back rather than assuming what they
+     were — a suite that guesses the previous state is a suite that corrupts it
+     on the first surprise. */
+  const sessionsBefore = await prisma.batchSession.findMany({
+    where: { batchId: batch.batchId, deletedAt: null },
+    select: { sessionId: true, sessionCode: true, status: true, completedAt: true, scheduledDate: true },
+    orderBy: { scheduledDate: "asc" },
+  });
+  const attendanceBefore = await prisma.studentAttendance.findMany({
+    where: { session: { batchId: batch.batchId } },
+    select: { attendanceId: true, sessionId: true, studentId: true, status: true },
+  });
+  const courseBefore = await prisma.course.findUniqueOrThrow({
+    where: { courseId: batch.courseId },
+    select: { attendanceFloorPct: true },
+  });
+
+  /*
+   * Four days that have already happened, so the register applies to them.
+   * `hasHappened` on the API is a calendar test, and a session in the future
+   * would be excluded from the screen for a reason that has nothing to do with
+   * what is being measured here.
+   */
+  const past = sessionsBefore.filter((session) => session.scheduledDate <= startOfToday());
+  if (past.length < 4) {
+    bad(
+      "attendance is measured against the certificate rule",
+      `only ${past.length} of this batch's sessions have happened; four are needed`,
+    );
+    return;
+  }
+  const [present, late, absent, unmarked] = past.slice(0, 4);
+  /*
+   * A SECOND student on this roster, for the length of the check.
+   *
+   * "The register was taken and you are not on it" cannot happen on a roster of
+   * one — there would be no register without them — so on the seeded batch that
+   * case reported itself vacuous and passed. Borrowed, used, and handed back,
+   * exactly as `verify:teach` does for the whole-register property. Retail only:
+   * invariant 2 forbids mixing rosters, and this batch has no college.
+   */
+  const batchRow = await prisma.batch.findUniqueOrThrow({
+    where: { batchId: batch.batchId },
+    select: { collegeId: true },
+  });
+  const roster = await prisma.studentBatchMapping.findMany({
+    where: { batchId: batch.batchId, deletedAt: null },
+    select: { studentId: true },
+  });
+  let borrowed: string | null = null;
+  if (roster.every((row) => row.studentId === studentId)) {
+    const spare = await prisma.student.findFirst({
+      where: {
+        deletedAt: null,
+        accountStatus: "ACTIVE",
+        collegeId: batchRow.collegeId,
+        studentId: { not: studentId },
+        batchMappings: { none: { batchId: batch.batchId, deletedAt: null } },
+      },
+      select: { studentId: true },
+    });
+    if (spare !== null) {
+      await prisma.studentBatchMapping.create({
+        data: { studentId: spare.studentId, batchId: batch.batchId, isActive: true },
+      });
+      borrowed = spare.studentId;
+    }
+  }
+  const somebodyElse = borrowed ?? roster.find((row) => row.studentId !== studentId)?.studentId ?? null;
+
+  try {
+    // Four delivered sessions: the denominator the floor is measured against.
+    await prisma.batchSession.updateMany({
+      where: { sessionId: { in: [present!.sessionId, late!.sessionId, absent!.sessionId, unmarked!.sessionId] } },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    });
+    await prisma.studentAttendance.deleteMany({ where: { session: { batchId: batch.batchId } } });
+
+    const mark = async (sessionId: string, who: string, status: "PRESENT" | "LATE" | "ABSENT") => {
+      await prisma.studentAttendance.create({
+        data: { sessionId, studentId: who, status, markedAt: new Date() },
+      });
+    };
+    await mark(present!.sessionId, studentId, "PRESENT");
+    await mark(late!.sessionId, studentId, "LATE");
+    await mark(absent!.sessionId, studentId, "ABSENT");
+    /* The fourth day: a register WAS taken and this student is not on it. Needs
+       somebody else's row to exist, which is the difference between "you were
+       not marked" and "nobody was marked" — the two the screen must not blur. */
+    if (somebodyElse !== null) await mark(unmarked!.sessionId, somebodyElse, "PRESENT");
+
+    // A floor this register is below: 2 of 4 is 50%.
+    await prisma.course.update({
+      where: { courseId: batch.courseId },
+      data: { attendanceFloorPct: 75 },
+    });
+
+    const token = await signInAtApi(STUDENT, "STUDENT");
+    const read = async () => {
+      const response = await fetch(`${API}/me/attendance`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json()) as {
+        batches?: {
+          batchId: string;
+          deliveredCount: number;
+          attendedCount: number;
+          attendancePct: number | null;
+          attendanceFloorPct: number | null;
+          attendanceCheck: string;
+          sessions: { sessionId: string; status: string | null; counted: boolean; registerTaken: boolean }[];
+        }[];
+      };
+      return (body.batches ?? []).find((row) => row.batchId === batch.batchId);
+    };
+
+    const mine = await read();
+    /*
+     * LATE counts, ABSENT does not, and an unmarked row does not either: 2 of 4.
+     * Asserted as one figure rather than four, because the percentage is the
+     * thing a certificate is refused on and each of those three rules moves it.
+     */
+    if (
+      mine?.deliveredCount === 4 &&
+      mine.attendedCount === 2 &&
+      mine.attendancePct === 50 &&
+      mine.attendanceFloorPct === 75 &&
+      mine.attendanceCheck === "BELOW_FLOOR"
+    ) {
+      ok(
+        "LATE counts as attendance, ABSENT and unmarked do not",
+        `2 of 4 delivered = 50%, below the 75% floor`,
+      );
+    } else {
+      bad(
+        "LATE counts as attendance, ABSENT and unmarked do not",
+        `attended ${mine?.attendedCount} of ${mine?.deliveredCount} = ${mine?.attendancePct}%, floor ${mine?.attendanceFloorPct}, ${mine?.attendanceCheck}`,
+      );
+    }
+
+    /*
+     * The same figure, from the service the CERTIFICATE is judged on.
+     *
+     * This is the check the screen exists to earn: a portal that told a student
+     * 50% while `eligibility.service.ts` read something else would explain a
+     * refusal with a number nobody used. Asked as an admin, because that is the
+     * endpoint the console issues from.
+     */
+    const adminToken = await signInAtApi("priya@gurukulam.test", "ADMIN_USER");
+    const verdict = await fetch(
+      `${API}/certificates/eligibility?studentId=${studentId}&batchId=${batch.batchId}`,
+      { headers: { Authorization: `Bearer ${adminToken}` } },
+    );
+    const eligibility = (await verdict.json()) as {
+      attendancePct?: number | null;
+      sessionsAttended?: number;
+      sessionsCompleted?: number;
+      attendanceCheck?: string;
+    };
+    if (
+      eligibility.attendancePct === mine?.attendancePct &&
+      eligibility.sessionsAttended === mine?.attendedCount &&
+      eligibility.sessionsCompleted === mine?.deliveredCount &&
+      eligibility.attendanceCheck === mine?.attendanceCheck
+    ) {
+      ok(
+        "the portal's figure IS the certificate's figure",
+        `${eligibility.attendancePct}% and ${eligibility.attendanceCheck} on both sides`,
+      );
+    } else {
+      bad(
+        "the portal's figure IS the certificate's figure",
+        `portal ${mine?.attendancePct}%/${mine?.attendanceCheck}, eligibility ${eligibility.attendancePct}%/${eligibility.attendanceCheck}`,
+      );
+    }
+
+    // The three silences, apart.
+    const row = (sessionId: string) => mine?.sessions.find((s) => s.sessionId === sessionId);
+    if (
+      row(absent!.sessionId)?.status === "ABSENT" &&
+      row(unmarked!.sessionId)?.status === null &&
+      row(unmarked!.sessionId)?.registerTaken === (somebodyElse !== null)
+    ) {
+      ok(
+        "an unmarked student is not called absent",
+        somebodyElse === null
+          ? "no spare student of this segment — register-taken is not exercised"
+          : "the register was taken that day, by somebody else, and their row says so",
+      );
+    } else {
+      bad(
+        "an unmarked student is not called absent",
+        `absent row ${row(absent!.sessionId)?.status}, unmarked row ${JSON.stringify(row(unmarked!.sessionId))}`,
+      );
+    }
+
+    // ── The screen, and the warning that travels to Home ──────────────────
+    await page.goto(`${BASE}/portal/learning/attendance`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const register = await page.locator("body").innerText();
+    const saysBelow = /below/i.test(register) && register.includes("75%") && register.includes("50%");
+    const saysUnmarked = somebodyElse === null || /not recorded for you/i.test(register);
+    if (saysBelow && saysUnmarked) {
+      ok("the register screen says all three", "the figure, the floor, and which day is not theirs");
+    } else {
+      bad(
+        "the register screen says all three",
+        `below=${saysBelow} unmarked=${saysUnmarked}`,
+      );
+    }
+
+    await page.goto(`${BASE}/portal`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    if (/below what the course asks for/i.test(await page.locator("body").innerText())) {
+      ok("Home warns them while there are still sessions left to attend");
+    } else {
+      bad("Home warns them while there are still sessions left to attend", "no warning on home");
+    }
+
+    /*
+     * ── NOT_EVALUATED is not 0% ────────────────────────────────────────────
+     *
+     * With every row gone the student has attended none of four delivered
+     * sessions, and the arithmetic would happily say 0% — which would refuse a
+     * certificate on a register nobody took. `eligibility.service.ts` answers
+     * NOT_EVALUATED for exactly this, and the portal must carry that through
+     * rather than render a zero.
+     */
+    await prisma.studentAttendance.deleteMany({ where: { session: { batchId: batch.batchId } } });
+    const untaken = await read();
+    if (untaken?.attendancePct === null && untaken.attendanceCheck === "NOT_EVALUATED") {
+      ok("an untaken register reads as nothing, not as zero", "null and NOT_EVALUATED");
+    } else {
+      bad(
+        "an untaken register reads as nothing, not as zero",
+        `pct ${untaken?.attendancePct}, ${untaken?.attendanceCheck}`,
+      );
+    }
+
+    await page.goto(`${BASE}/portal/learning/attendance`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    /*
+     * The FIGURE, not the word.
+     *
+     * An earlier version grepped the page for "0%" and failed — on the sentence
+     * that exists to say "this is not 0%". So the assertion is about the stat
+     * block: when there is nothing to count the screen must not render the
+     * attendance figure at all, and must say why instead. A check that cannot
+     * tell a number from a sentence about that number is a check that will fail
+     * the day somebody writes a clearer explanation.
+     */
+    const empty = await page.locator("body").innerText();
+    const explains = /no register has been taken/i.test(empty);
+    const showsFigure = (await page.getByText("Your attendance", { exact: true }).count()) > 0;
+    if (explains && !showsFigure) {
+      ok("…and the screen explains it rather than rendering a figure");
+    } else {
+      bad(
+        "…and the screen explains it rather than rendering a figure",
+        showsFigure ? "the attendance figure is on screen with nothing behind it" : "it does not explain",
+      );
+    }
+
+    // And Home stops warning, because an untaken register is nobody's fault.
+    await page.goto(`${BASE}/portal`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    if (!/below what the course asks for/i.test(await page.locator("body").innerText())) {
+      ok("…and Home does not warn about a register nobody took");
+    } else {
+      bad("…and Home does not warn about a register nobody took", "the warning is still there");
+    }
+  } finally {
+    /*
+     * Put it all back, whatever happened above.
+     *
+     * In a `finally`, because a failed assertion between here and the top would
+     * otherwise leave four sessions marked delivered, a course carrying a floor
+     * it never had, and a register this suite invented — and the next run would
+     * measure that instead of the product. The college portal's act-gate probe
+     * learned this by corrupting exactly these tables.
+     */
+    await prisma.studentAttendance.deleteMany({ where: { session: { batchId: batch.batchId } } });
+    for (const row of attendanceBefore) {
+      await prisma.studentAttendance.create({
+        data: {
+          attendanceId: row.attendanceId,
+          sessionId: row.sessionId,
+          studentId: row.studentId,
+          status: row.status,
+          markedAt: new Date(),
+        },
+      });
+    }
+    for (const session of sessionsBefore) {
+      await prisma.batchSession.update({
+        where: { sessionId: session.sessionId },
+        data: { status: session.status, completedAt: session.completedAt },
+      });
+    }
+    await prisma.course.update({
+      where: { courseId: batch.courseId },
+      data: { attendanceFloorPct: courseBefore.attendanceFloorPct },
+    });
+    if (borrowed !== null) {
+      // Hard-deleted, not soft: a `deleted_at` here would be a deallocation
+      // that never happened, and the enrolment reports read deleted rows.
+      await prisma.studentAttendance.deleteMany({ where: { studentId: borrowed, session: { batchId: batch.batchId } } });
+      await prisma.studentBatchMapping.deleteMany({ where: { studentId: borrowed, batchId: batch.batchId } });
+    }
+  }
 }
 
 /**

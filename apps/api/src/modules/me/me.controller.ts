@@ -59,6 +59,18 @@ export class MeController {
    * refusing — a refusal would render as an error on a screen whose honest
    * answer is "your institution is billed for this".
    */
+  /**
+   * The register, per batch, with the figure their certificate turns on.
+   *
+   * Both segments: a college student's attendance decides their certificate the
+   * same way, and the institution holding the FILE (invariant 7) has nothing to
+   * do with who may read the days behind it.
+   */
+  @Get("attendance")
+  attendance(@CurrentPrincipal() p: Principal) {
+    return this.me.attendance(p);
+  }
+
   @Get("fees")
   fees(@CurrentPrincipal() p: Principal) {
     return this.me.fees(p);

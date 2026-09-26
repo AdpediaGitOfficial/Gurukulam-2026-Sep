@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AssignmentCard } from "@/features/me/components/assignment-card";
 import { MoneyCard } from "@/features/me/components/money-card";
@@ -56,6 +57,26 @@ export default async function StudentHomePage() {
         </PortalCard>
       ) : (
         <SessionCard session={home.nextSession} highlight />
+      )}
+
+      {/* ── Attendance, but only when it is a problem ──────────────────────
+          A floor matters to one person and only when they are near it. It sits
+          ABOVE money and work deliberately: those two have dates and can be
+          dealt with later, while the sessions that would fix this are happening
+          now. Absent entirely when they are meeting it — a portal that reports
+          good news in a coloured box teaches people to ignore coloured boxes. */}
+      {home.attendanceAtRisk === 0 ? null : (
+        <Alert intent="warning" title="Your attendance is below what the course asks for">
+          {home.attendanceAtRisk === 1
+            ? "A certificate needs that figure met, so attend what is left and speak to the office. "
+            : `This is true on ${home.attendanceAtRisk} of your batches. A certificate needs that figure met, so speak to the office. `}
+          <Link
+            href="/portal/learning/attendance"
+            className="font-medium text-brand underline-offset-4 hover:underline"
+          >
+            See which sessions you missed
+          </Link>
+        </Alert>
       )}
 
       {fees.billedToCollege ? null : <MoneyCard fees={fees} />}

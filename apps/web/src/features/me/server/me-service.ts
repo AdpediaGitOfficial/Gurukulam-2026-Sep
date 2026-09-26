@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   meAssignmentsSchema,
+  meAttendanceSchema,
   meBatchSchema,
   meCertificatesSchema,
   meJobSchema,
@@ -9,6 +10,7 @@ import {
   meHomeSchema,
   meProfileSchema,
   meScheduleSchema,
+  type MeAttendance,
   type MeBatch,
   type MeHome,
   type MeProfile,
@@ -71,6 +73,19 @@ export async function getSchedule(): Promise<MeSchedule> {
  * because the screen's honest answer is "your institution is billed for this"
  * and a refusal would render as an error.
  */
+/**
+ * The register, per batch.
+ *
+ * Its figures come from the same `EligibilityService` the certificate is judged
+ * on — asked on the API, not recounted here. This function exists to fetch, not
+ * to decide.
+ */
+export async function getAttendance(): Promise<MeAttendance> {
+  const attendance = await apiFetch<MeAttendance>("/me/attendance");
+  checkShape(meAttendanceSchema, attendance, "GET /me/attendance");
+  return attendance;
+}
+
 export async function getFees(): Promise<MeFees> {
   const fees = await apiFetch<MeFees>("/me/fees");
   checkShape(meFeesSchema, fees, "GET /me/fees");

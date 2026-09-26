@@ -106,6 +106,11 @@ export function PortalHighlight({ children }: { children: ReactNode }) {
  *
  * `figure` turns on tabular numerals so a row of them lines up on the decimal
  * — the same reason the console's `DetailRow` has the variant.
+ *
+ * `warning` was added for attendance below a course's floor, and the distinction
+ * from `danger` is doing work: a student under the floor today can still attend
+ * what is left, while `danger` is for a fact that is settled. Colouring a
+ * recoverable figure as a failure tells somebody to give up.
  */
 export function PortalStat({
   label,
@@ -116,7 +121,7 @@ export function PortalStat({
   label: string;
   value: string | number;
   caption?: string;
-  intent?: "neutral" | "danger" | "success";
+  intent?: "neutral" | "danger" | "success" | "warning";
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
@@ -124,7 +129,13 @@ export function PortalStat({
       <span
         className={cn(
           "text-metric-sm tabular-nums",
-          intent === "danger" ? "text-danger" : intent === "success" ? "text-success-strong" : "text-ink",
+          intent === "danger"
+            ? "text-danger"
+            : intent === "success"
+              ? "text-success-strong"
+              : intent === "warning"
+                ? "text-warning-strong"
+                : "text-ink",
         )}
       >
         {value}

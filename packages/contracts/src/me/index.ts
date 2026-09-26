@@ -102,6 +102,38 @@ export const meBatchSchema = z.object({
   completedAt: z.string().nullable(),
   sessionCount: z.number().int(),
   deliveredCount: z.number().int(),
+  /**
+   * Attendance, beside delivery — and it is the SAME arithmetic the certificate
+   * is judged on, not a second count that happens to agree.
+   *
+   * `deliveredCount` is the denominator: the floor is measured against sessions
+   * somebody marked COMPLETED, never against everything on the timetable. A day
+   * that happened and was never closed counts for nobody, which is why the
+   * register screen shows those days rather than letting the denominator look
+   * arbitrary.
+   *
+   * `attendedCount` counts PRESENT **and** LATE. Turning up late to a three-hour
+   * session is attendance; the distinction the register keeps is for the trainer
+   * and for the student, not for the floor.
+   */
+  attendedCount: z.number().int(),
+  /**
+   * Null when no register has been taken for this batch AT ALL — which is a
+   * different fact from 0% and the one this portal must never blur. Reporting
+   * an untaken register as zero would tell a student they attended nothing,
+   * about a course they sat through, on the figure their certificate turns on.
+   */
+  attendancePct: z.number().int().nullable(),
+  /** The course's floor. Null means this course sets none. */
+  attendanceFloorPct: z.number().int().nullable(),
+  /**
+   * The verdict `eligibility.service.ts` reaches, echoed rather than recomputed.
+   *
+   * NOT_EVALUATED — no register exists yet, so there is nothing to be below.
+   * MET           — at or above the floor, or the course sets none.
+   * BELOW_FLOOR   — the one that will refuse a certificate.
+   */
+  attendanceCheck: z.enum(["NOT_EVALUATED", "MET", "BELOW_FLOOR"]),
 });
 
 export type MeBatch = z.infer<typeof meBatchSchema>;
@@ -158,6 +190,84 @@ export const meScheduleSchema = z.object({
 });
 
 export type MeSchedule = z.infer<typeof meScheduleSchema>;
+
+// ── My attendance ─────────────────────────────────────────────────────────
+
+/**
+ * The register, as the student it is about reads it.
+ *
+ * ── Why a row can have no mark, three different ways ───────────────────
+ *
+ * The summary on `meBatchSchema` is one number and it cannot explain itself. A
+ * student who attended eleven days and reads "9 of 11" wants to know which two,
+ * and the answer is not always "you were absent":
+ *
+ *   · **You were marked.** PRESENT, LATE, EXCUSED or ABSENT — `status` carries it.
+ *   · **The register was taken and you are not on it.** `registerTaken` is true
+ *     and `status` is null. This counts against the percentage, and the screen
+ *     says so rather than calling them absent — nobody wrote that, and a
+ *     portal that invents the accusation is worse than one that admits the gap.
+ *   · **Nobody's register was taken that day.** `registerTaken` is false. It
+ *     counts against them too, because the denominator is delivered sessions,
+ *     and that is the trainer's omission rather than theirs to answer for.
+ *
+ * ── Why `counted` exists ───────────────────────────────────────────────
+ *
+ * The floor is measured against sessions marked COMPLETED. A day that happened
+ * and was never closed is in nobody's numerator or denominator — so a student
+ * comparing their own diary with "of 11" needs to see the fourteenth day sitting
+ * there, uncounted, rather than concluding the portal lost it.
+ */
+export const meAttendanceRowSchema = z.object({
+  sessionId: z.string(),
+  sessionCode: z.string(),
+  title: z.string(),
+  scheduledDate: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  /** Their own mark. Null means no row was written about them. */
+  status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]).nullable(),
+  /** Whether this session is in the figures at all — COMPLETED sessions are. */
+  counted: z.boolean(),
+  /** Whether ANY student was marked for this session. */
+  registerTaken: z.boolean(),
+});
+
+export type MeAttendanceRow = z.infer<typeof meAttendanceRowSchema>;
+
+/** One batch of theirs, its figures, and the days behind them. */
+export const meAttendanceBatchSchema = z.object({
+  batchId: z.string(),
+  batchCode: z.string(),
+  name: z.string(),
+  courseName: z.string().nullable(),
+  outcome: z.enum(["ACTIVE", "COMPLETED", "LEFT"]),
+  /* The same five fields `meBatchSchema` carries, from the same call, so the
+     learning card and this screen cannot disagree. */
+  deliveredCount: z.number().int(),
+  attendedCount: z.number().int(),
+  attendancePct: z.number().int().nullable(),
+  attendanceFloorPct: z.number().int().nullable(),
+  attendanceCheck: z.enum(["NOT_EVALUATED", "MET", "BELOW_FLOOR"]),
+  /** Newest first. Only days that have happened — a register has no future. */
+  sessions: z.array(meAttendanceRowSchema),
+});
+
+export type MeAttendanceBatch = z.infer<typeof meAttendanceBatchSchema>;
+
+export const meAttendanceSchema = z.object({
+  batches: z.array(meAttendanceBatchSchema),
+  /**
+   * Whether any course of theirs sets a floor at all.
+   *
+   * The screen explains what a floor IS only when one applies to them. A
+   * student whose courses set none should not be taught a rule that will never
+   * be used against them.
+   */
+  anyFloor: z.boolean(),
+});
+
+export type MeAttendance = z.infer<typeof meAttendanceSchema>;
 
 // ── My assignments ────────────────────────────────────────────────────────
 
@@ -296,6 +406,21 @@ export const meHomeSchema = z.object({
    */
   nextAssignment: meAssignmentSchema.nullable(),
   assignmentsDue: z.number().int(),
+  /**
+   * Batches where their attendance is below the course's floor.
+   *
+   * ── Why this is on HOME and not only on the register ───────────────────
+   *
+   * A floor matters to exactly one person and only when they are near it. A
+   * screen they have to think to visit is the wrong place for the one fact that
+   * can refuse them a certificate — by the time they go looking, the sessions
+   * they could have attended have happened. So the count travels to the screen
+   * they open anyway, and links to the days behind it.
+   *
+   * Zero for a student with no floor, and zero for one who is meeting it: this
+   * is a warning, not a statistic.
+   */
+  attendanceAtRisk: z.number().int(),
 });
 
 export type MeHome = z.infer<typeof meHomeSchema>;
