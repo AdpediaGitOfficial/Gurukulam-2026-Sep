@@ -4,6 +4,7 @@ import {
   meAssignmentsSchema,
   meBatchSchema,
   meCertificatesSchema,
+  meJobSchema,
   meHomeSchema,
   meProfileSchema,
   meScheduleSchema,
@@ -16,6 +17,7 @@ import {
   type MeAssignments,
   type MeCertificates,
   type MeFees,
+  type MeJob,
   type MeSchedule,
 } from "@gurukulam/contracts";
 import { z } from "zod";
@@ -111,4 +113,18 @@ export async function getCertificates(): Promise<MeCertificates> {
   const certificates = await apiFetch<MeCertificates>("/me/certificates");
   checkShape(meCertificatesSchema, certificates, "GET /me/certificates");
   return certificates;
+}
+
+/**
+ * The postings this student matches.
+ *
+ * The matching happened in the API, against the operator's own audience rules,
+ * at the moment of the request. Nothing here filters — a BFF that narrowed a
+ * feed would be a second place the audience is decided, and the whole point of
+ * evaluating at read time is that there is only one.
+ */
+export async function getJobs(): Promise<MeJob[]> {
+  const jobs = await apiFetch<MeJob[]>("/me/jobs");
+  checkShape(z.array(meJobSchema), jobs, "GET /me/jobs");
+  return jobs;
 }

@@ -45,8 +45,8 @@ topics; a topic carries one or more sessions; assignments and recordings hang of
 because the session is the unit that actually happens on a given day.
 
 **Four portals, two started.** Admin is complete. The **student portal** is at `/portal/*` — sign-in,
-home, my learning, assignments, certificates, fees and account; jobs and notifications are specified
-and not yet built. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
+home, my learning, assignments, certificates, jobs, fees and account; notifications are specified and
+not yet built. The public certificate verifier is at `/verify`. Trainer and College come later. The admin portal performs every action they will,
 permanently, because an operations team needs the override regardless.
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
@@ -99,12 +99,25 @@ API's route was already `@Public`; a code we do not hold and one belonging to a 
 never ISSUED answer identically, because confirming that a name sits behind an unissued code
 discloses a record nobody awarded.
 
+**The job audience is evaluated at read time, from both ends, and the two ends are checked against
+each other.** `hiring.service.ts` asks which STUDENTS a posting's rules reach; `/me/jobs` asks which
+POSTINGS reach a student. Neither materialises a grant (invariant 10) — a join table would silently
+miss a student who enrolled this morning and would keep a grant for one moved between batches. But
+an inversion is the same semantics written backwards, and backwards is where two implementations
+drift without anything failing, so `verify:portal` builds one probe posting per audience axis aimed
+at the student under test, with the answer known from that student's own record, and checks three
+links: the suite's reference predicate against the service's own published `reach`, the feed against
+that reference, and every axis against its expectation. The truth table is not optional — breaking
+the inverse's `completedOnly` branch left the first two green, because no seeded posting targeted an
+unfinished student's course with it.
+
 **Guard a portal page as well as its layout.** Layouts and pages render concurrently, so a layout's
 `redirect` does not stop its page calling `/me/*` with the wrong actor's token — the refusal wins the
 race and a correct redirect surfaces as a 500. `npm run verify:portal` holds a student session and
 checks this, the recording's two gates, the draft-and-scope gates on assignments, that a second
 hand-in is refused, invariant 7 from both sides, that a withdrawn certificate keeps its number and
-loses its code, that no admin-only field reaches the screen, and that every portal screen fits 390px.
+loses its code, that every job-audience axis decides the way the student's record says, that no
+admin-only field reaches the screen, and that every portal screen fits 390px.
 
 Certificates carry no PDF yet, so two of those checks would be true for the wrong reason: with every
 `pdf_url` null, "no download offered" holds whatever the access rule says. The suite puts a URL there

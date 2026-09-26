@@ -6,6 +6,7 @@ import type {
   MeBatch,
   MeCertificate,
   MeCertificates,
+  MeJob,
   MeFees,
   MeHome,
   MeInstallment,
@@ -655,6 +656,151 @@ export class MeService {
     };
   }
 
+  // ── Jobs for me ─────────────────────────────────────────────────────────
+
+  /**
+   * The postings this student matches.
+   *
+   * ── The same rules, read from the other end ────────────────────────────
+   *
+   * `hiring.service.ts` builds `audienceWhere`: given a posting's rules, which
+   * STUDENTS does it reach. This needs the inverse: given a student, which
+   * POSTINGS reach them. Both read the same `job_audience_rules` rows at read
+   * time, and neither materialises a grant — invariant 10. A join table of
+   * (student, posting) would look faster and be wrong twice: a student who
+   * enrols tomorrow silently misses the posting, and a student moved between
+   * batches keeps a grant they should have lost.
+   *
+   * An inversion is not free of risk — it is the rule semantics written
+   * backwards, and backwards is where the two can drift apart without anything
+   * failing. So `verify:portal` asserts the two agree over the real data: for
+   * every published posting, the students `audienceWhere` reaches are exactly
+   * the students this predicate accepts it for. That check is the reason this
+   * is allowed to be a second expression at all.
+   *
+   * ── How the predicate reads ────────────────────────────────────────────
+   *
+   * A rule's fields are AND-ed and its rules are OR-ed, so inverted: a rule
+   * matches when EVERY axis it sets is one the student satisfies, and an axis
+   * it leaves null constrains nothing. `{ OR: [{ x: null }, { x: theirs }] }`
+   * says exactly that — and it stays correct when theirs is itself null, which
+   * is a retail student's college: the two branches collapse into "the rule
+   * must not set a college", which is the right answer rather than a special
+   * case.
+   */
+  async jobs(principal: Principal): Promise<MeJob[]> {
+    const student = await this.prisma.student.findFirst({
+      where: { studentId: principal.id, deletedAt: null },
+      select: {
+        passoutYear: true,
+        cityId: true,
+        collegeId: true,
+        enrolmentChannel: true,
+        accountStatus: true,
+        batchMappings: {
+          where: { deletedAt: null },
+          select: { batchId: true, completedAt: true, batch: { select: { courseId: true } } },
+        },
+      },
+    });
+    if (!student) throw ApiException.notFound("Student");
+
+    // `audienceWhere` requires ACTIVE, so the inverse must too — otherwise a
+    // suspended student would be told about openings the admin's own reach
+    // count says they are not part of.
+    if (student.accountStatus !== "ACTIVE") return [];
+
+    // Already narrowed to live mappings by the query above.
+    const live = student.batchMappings;
+    const finished = live.filter((m) => m.completedAt !== null);
+
+    /**
+     * The enrolment half, for a given set of the student's mappings.
+     *
+     * A rule with no `batchId` asks only for the course. One WITH a batchId
+     * asks for that exact batch — and the pair is spelled out per mapping
+     * rather than as two `in` lists, because `batchId IN (…) AND courseId IN
+     * (…)` would also accept a rule naming one of their batches alongside a
+     * different one of their courses. That combination cannot occur in today's
+     * data and is one console form away from occurring.
+     */
+    const enrolled = (
+      rows: typeof student.batchMappings,
+    ): Prisma.JobAudienceRuleWhereInput => ({
+      OR: [
+        { batchId: null, courseId: { in: [...new Set(rows.map((r) => r.batch.courseId))] } },
+        ...rows.map((r) => ({ batchId: r.batchId, courseId: r.batch.courseId })),
+      ],
+    });
+
+    const matches: Prisma.JobAudienceRuleWhereInput = {
+      deletedAt: null,
+      AND: [
+        { OR: [{ passoutYear: null }, { passoutYear: student.passoutYear }] },
+        { OR: [{ segment: null }, { segment: student.enrolmentChannel }] },
+        { OR: [{ collegeId: null }, { collegeId: student.collegeId }] },
+        { OR: [{ cityId: null }, { cityId: student.cityId }] },
+        {
+          OR: [
+            { completedOnly: false, ...enrolled(live) },
+            { completedOnly: true, ...enrolled(finished) },
+          ],
+        },
+      ],
+    };
+
+    const rows = await this.prisma.jobPosting.findMany({
+      where: {
+        deletedAt: null,
+        // PUBLISHED only. A DRAFT is not an opening, and CLOSED or ARCHIVED
+        // links to a form that is shut — unlike an assignment, a job a student
+        // did not apply to is not a record they need to keep.
+        status: "PUBLISHED",
+        // Past its closing date is closed whether or not anyone moved the
+        // status. A feed called "openings you match" must not carry one.
+        OR: [{ closingDate: null }, { closingDate: { gte: startOfToday() } }],
+        audienceRules: { some: matches },
+      },
+      include: {
+        // The SAME predicate, narrowing the rules that come back to the ones
+        // that actually matched — so the reason shown to the student is built
+        // from the rule that put the posting on their screen, and cannot
+        // describe a rule they failed.
+        audienceRules: {
+          where: matches,
+          include: {
+            course: { select: { name: true } },
+            batch: { select: { batchCode: true } },
+          },
+        },
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+    });
+
+    return rows.map((row) => ({
+      jobPostingId: row.jobPostingId,
+      jobCode: row.jobCode,
+      roleTitle: row.roleTitle,
+      companyName: row.companyName,
+      location: row.location,
+      workMode: row.workMode,
+      experienceMinYears: row.experienceMinYears,
+      experienceMaxYears: row.experienceMaxYears,
+      compensationMinMinor: row.compensationMinMinor === null ? null : toWire(row.compensationMinMinor),
+      compensationMaxMinor: row.compensationMaxMinor === null ? null : toWire(row.compensationMaxMinor),
+      compensationPeriod: row.compensationPeriod,
+      skills: row.skills,
+      description: row.description,
+      // Resolved here, once. See the contract for why the student never meets
+      // both columns.
+      applyUrl: row.applyUrl ?? row.externalUrl,
+      applyEmail: row.applyEmail,
+      closingDate: row.closingDate?.toISOString().slice(0, 10) ?? null,
+      publishedAt: row.publishedAt?.toISOString() ?? null,
+      matchedOn: reasons(row.audienceRules),
+    }));
+  }
+
   /**
    * The landing page.
    *
@@ -846,6 +992,42 @@ function toAssignment(row: AssignmentRow, today: Date): MeAssignment {
             gradedAt: submission.gradedAt?.toISOString() ?? null,
           },
   };
+}
+
+/**
+ * Why a posting is on this student's screen, in words they recognise.
+ *
+ * Built only from the axes a student can see in themselves — the course they
+ * took, the batch they sat on, whether they finished, the year they leave.
+ * Segment, college and city are deliberately not named: a rule can target them,
+ * but "you are a COLLEGE student in Kochi" reads as a dossier rather than a
+ * reason, and the student already knows both facts about themselves.
+ *
+ * Deduplicated, because two rules narrowing the same course differently produce
+ * the same sentence often enough to matter.
+ */
+function reasons(
+  rules: {
+    completedOnly: boolean;
+    passoutYear: number | null;
+    course: { name: string } | null;
+    batch: { batchCode: string } | null;
+  }[],
+): string[] {
+  const phrases = rules.map((rule) => {
+    const parts = [rule.course?.name ?? "your course"];
+    if (rule.batch !== null) parts.push(rule.batch.batchCode);
+    let phrase = parts.join(" · ");
+    if (rule.completedOnly) phrase += ", which you have finished";
+    if (rule.passoutYear !== null) phrase += `, class of ${rule.passoutYear}`;
+    return phrase;
+  });
+
+  const unique = [...new Set(phrases)];
+  // Never empty for a posting that came back — the same predicate selected the
+  // posting and these rules. Said rather than assumed, because an empty list
+  // would render as a card claiming no reason at all.
+  return unique.length > 0 ? unique : ["a course you are enrolled on"];
 }
 
 /** An empty string is a cleared field, not a value. */

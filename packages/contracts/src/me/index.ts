@@ -490,3 +490,60 @@ export const meCertificatesSchema = z.object({
 });
 
 export type MeCertificates = z.infer<typeof meCertificatesSchema>;
+
+// ── Jobs for me ───────────────────────────────────────────────────────────
+
+/**
+ * A posting this student matches.
+ *
+ * ── Why `matchedOn` is part of the contract ─────────────────────────────
+ *
+ * A student sees a posting because they FIT ITS AUDIENCE, not because everyone
+ * sees it. Left unsaid, a targeted feed is indistinguishable from a noticeboard
+ * — and the difference matters twice over: it tells a student the listing is
+ * worth their time, and it tells them why the next one did not appear.
+ *
+ * The reasons are built from the rules that actually matched, on the server,
+ * because the rules are not in this contract and must not be: an audience rule
+ * is the operator's targeting, and a student reading "college = Sri Narayana,
+ * passout = 2027, segment = COLLEGE" is reading our filing system rather than
+ * an explanation.
+ *
+ * ── There is no `applied` ───────────────────────────────────────────────
+ *
+ * There is no application table. v1 is: see the posting, follow its link.
+ * Tracking applications is a schema addition and a decision — worth taking
+ * alongside the external feed — and a button that records nothing would be
+ * worse than its absence, because a student would believe they had applied.
+ */
+export const meJobSchema = z.object({
+  jobPostingId: z.string(),
+  jobCode: z.string(),
+  roleTitle: z.string(),
+  companyName: z.string(),
+  location: z.string().nullable(),
+  workMode: z.enum(["ONSITE", "REMOTE", "HYBRID"]),
+  experienceMinYears: z.number().int().nullable(),
+  experienceMaxYears: z.number().int().nullable(),
+  /** Paise, like every other amount that crosses this wire (invariant 5). */
+  compensationMinMinor: moneyMinor.nullable(),
+  compensationMaxMinor: moneyMinor.nullable(),
+  compensationPeriod: z.string().nullable(),
+  skills: z.array(z.string()),
+  description: z.string().nullable(),
+  /**
+   * One resolved link, not two columns.
+   *
+   * `apply_url` and `external_url` are our bookkeeping — the second exists for
+   * the deferred Naukri feed. From the student's side there is one act, "open
+   * the listing", and which column carried it is not their problem.
+   */
+  applyUrl: z.string().nullable(),
+  applyEmail: z.string().nullable(),
+  closingDate: z.string().nullable(),
+  publishedAt: z.string().nullable(),
+  /** In the student's own words: "Data Analytics, which you have finished". */
+  matchedOn: z.array(z.string()),
+});
+
+export type MeJob = z.infer<typeof meJobSchema>;

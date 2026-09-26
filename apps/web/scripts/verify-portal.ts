@@ -28,7 +28,7 @@
  *   npm run start --workspace @gurukulam/web     # in another shell
  *   npm run verify:portal --workspace @gurukulam/web
  */
-import { PrismaClient } from "@gurukulam/db";
+import { PrismaClient, type Prisma } from "@gurukulam/db";
 import { chromium, type Browser, type Page } from "playwright";
 import { formatRupees } from "@gurukulam/contracts";
 
@@ -94,6 +94,7 @@ const ROUTES = [
   "/portal/learning",
   "/portal/assignments",
   "/portal/certificates",
+  "/portal/jobs",
   "/portal/fees",
   "/portal/account",
   "/portal/account/password",
@@ -747,6 +748,371 @@ async function main(): Promise<void> {
     bad("…and refuses a code it does not hold", nonsense.slice(0, 160));
   }
 
+  // ── 9e. Jobs: the audience predicate, checked in both directions ────────
+  /*
+   * The one thing this feature rests on.
+   *
+   * `hiring.service.ts` asks "given a posting's rules, which students does it
+   * reach". `/me/jobs` asks the inverse: "given a student, which postings reach
+   * them". Both read the same rows at read time — nothing is materialised —
+   * but the inverse is the rule semantics written backwards, and backwards is
+   * where two implementations drift apart without anything failing.
+   *
+   * So this checks three links, not one:
+   *
+   *   A. the reference below agrees with the SERVICE's own forward predicate,
+   *      measured through the reach the admin API publishes per posting;
+   *   B. the inverse agrees with the reference, per student;
+   *   C. what the feed withholds — draft, closed, and past its closing date.
+   *
+   * Without A, the reference here would be a second copy free to drift with the
+   * inverse and agree with it while both were wrong.
+   */
+  // ── The axis probes, built BEFORE anything is measured ────────────────
+  /*
+   * Why this exists, and what it replaces.
+   *
+   * A and B compare the two directions over whatever postings the data
+   * happens to hold — and the data holds almost nothing but course-only
+   * rules. Breaking the inverse's `completedOnly` branch on purpose left both
+   * checks green, because no posting targeted an UNFINISHED student's course
+   * with it. A check that cannot fail is not a check, so the suite stops
+   * relying on the seed and builds its own truth table: one posting per axis,
+   * aimed squarely at the student under test, with the answer known in
+   * advance from that student's own record.
+   *
+   * Every probe is also swept up by A and B, so each one is cross-examined by
+   * the service's reach and by the reference predicate as well as by the
+   * expectation written beside it here.
+   */
+  const axisStamp = Date.now().toString().slice(-9);
+  const axisProbes: { jobPostingId: string; label: string; expect: boolean; who: string }[] = [];
+
+  for (const email of [STUDENT, COLLEGE_STUDENT]) {
+    const who = await prisma.student.findFirst({
+      where: { loginEmail: email, deletedAt: null },
+      select: {
+        studentId: true,
+        passoutYear: true,
+        cityId: true,
+        collegeId: true,
+        enrolmentChannel: true,
+        batchMappings: {
+          where: { deletedAt: null },
+          select: { batchId: true, completedAt: true, batch: { select: { courseId: true } } },
+        },
+      },
+    });
+    const mapping = who?.batchMappings[0];
+    if (who === null || mapping === undefined) continue;
+
+    // Something of each kind that is NOT theirs, so "must not match" probes
+    // are aimed at a real row rather than at a fiction the database rejects.
+    const [otherCourse, otherBatch, otherCity] = await Promise.all([
+      prisma.course.findFirst({
+        where: { deletedAt: null, courseId: { not: mapping.batch.courseId } },
+        select: { courseId: true },
+      }),
+      prisma.batch.findFirst({
+        where: { deletedAt: null, batchId: { not: mapping.batchId } },
+        select: { batchId: true },
+      }),
+      prisma.city.findFirst({
+        where: { deletedAt: null, ...(who.cityId === null ? {} : { cityId: { not: who.cityId } }) },
+        select: { cityId: true },
+      }),
+    ]);
+
+    const finished = mapping.completedAt !== null;
+    const course = mapping.batch.courseId;
+
+    const axes: [string, Prisma.JobAudienceRuleUncheckedCreateWithoutJobPostingInput, boolean][] = [
+      ["course", { courseId: course, completedOnly: false }, true],
+      // The one the broken build got wrong: a rule wanting finishers must
+      // reach a student who finished and no one else.
+      ["completedOnly", { courseId: course, completedOnly: true }, finished],
+      ["theirBatch", { courseId: course, batchId: mapping.batchId, completedOnly: false }, true],
+      ["theirPassout", { courseId: course, passoutYear: who.passoutYear, completedOnly: false }, who.passoutYear !== null],
+      ["wrongPassout", { courseId: course, passoutYear: 1899, completedOnly: false }, false],
+      ["theirSegment", { courseId: course, segment: who.enrolmentChannel, completedOnly: false }, true],
+      [
+        "wrongSegment",
+        { courseId: course, segment: who.enrolmentChannel === "RETAIL" ? "COLLEGE" : "RETAIL", completedOnly: false },
+        false,
+      ],
+      ...(who.cityId === null
+        ? []
+        : ([["theirCity", { courseId: course, cityId: who.cityId, completedOnly: false }, true]] as [
+            string,
+            Prisma.JobAudienceRuleUncheckedCreateWithoutJobPostingInput,
+            boolean,
+          ][])),
+      ...(otherCity === null
+        ? []
+        : ([["wrongCity", { courseId: course, cityId: otherCity.cityId, completedOnly: false }, false]] as [
+            string,
+            Prisma.JobAudienceRuleUncheckedCreateWithoutJobPostingInput,
+            boolean,
+          ][])),
+      ...(otherBatch === null
+        ? []
+        : ([["wrongBatch", { courseId: course, batchId: otherBatch.batchId, completedOnly: false }, false]] as [
+            string,
+            Prisma.JobAudienceRuleUncheckedCreateWithoutJobPostingInput,
+            boolean,
+          ][])),
+      ...(otherCourse === null
+        ? []
+        : ([["wrongCourse", { courseId: otherCourse.courseId, completedOnly: false }, false]] as [
+            string,
+            Prisma.JobAudienceRuleUncheckedCreateWithoutJobPostingInput,
+            boolean,
+          ][])),
+    ];
+
+    for (const [label, rule, expect] of axes) {
+      const posting = await prisma.jobPosting.create({
+        data: {
+          jobCode: `JOB-AXIS-${axisStamp}-${axisProbes.length}`,
+          roleTitle: `axis-${label}-${axisStamp}`,
+          companyName: "Axis Probe Ltd",
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          audienceRules: { create: rule },
+        },
+        select: { jobPostingId: true },
+      });
+      axisProbes.push({ jobPostingId: posting.jobPostingId, label, expect, who: email });
+    }
+  }
+
+
+  const inDate: Prisma.JobPostingWhereInput = {
+    deletedAt: null,
+    status: "PUBLISHED",
+    OR: [{ closingDate: null }, { closingDate: { gte: startOfToday() } }],
+  };
+
+  const postings = await prisma.jobPosting.findMany({
+    where: inDate,
+    select: {
+      jobPostingId: true,
+      jobCode: true,
+      roleTitle: true,
+      audienceRules: { where: { deletedAt: null } },
+    },
+  });
+  const targeted = postings.filter((p) => p.audienceRules.length > 0);
+
+  const adminToken = await signInAtApi("priya@gurukulam.test", "ADMIN_USER");
+
+  if (targeted.length === 0 || adminToken === undefined) {
+    console.log("  \x1b[90m· no targeted posting, or no admin token — the audience checks are skipped\x1b[0m");
+  } else {
+    // ── A. the reference matches the service's own reach ──────────────────
+    const drifted: string[] = [];
+    for (const posting of targeted) {
+      const response = await fetch(`${API}/hiring/${posting.jobPostingId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      const { reach } = (await response.json()) as { reach?: number };
+      const mine = await prisma.student.count({ where: audienceOf(posting.audienceRules) });
+      if (reach !== mine) drifted.push(`${posting.jobCode}: service ${String(reach)} ≠ reference ${mine}`);
+    }
+    if (drifted.length === 0) {
+      ok("the reference audience matches the service's own", `${targeted.length} postings, by reach`);
+    } else {
+      bad("the reference audience matches the service's own", drifted.slice(0, 3).join(" · "));
+    }
+
+    // ── B. the inverse agrees with the reference, per student ─────────────
+    for (const [label, email] of [
+      ["retail", STUDENT],
+      ["college", COLLEGE_STUDENT],
+    ] as const) {
+      const who = await prisma.student.findFirstOrThrow({
+        where: { loginEmail: email },
+        select: { studentId: true },
+      });
+
+      const forward: string[] = [];
+      for (const posting of targeted) {
+        const hit = await prisma.student.count({
+          where: { AND: [audienceOf(posting.audienceRules), { studentId: who.studentId }] },
+        });
+        if (hit > 0) forward.push(posting.jobPostingId);
+      }
+
+      const token = await signInAtApi(email, "STUDENT");
+      const feed =
+        token === undefined
+          ? []
+          : ((await (
+              await fetch(`${API}/me/jobs`, { headers: { Authorization: `Bearer ${token}` } })
+            ).json()) as { jobPostingId: string }[]);
+      const inverse = feed.map((job) => job.jobPostingId);
+
+      const onlyForward = forward.filter((id) => !inverse.includes(id));
+      const onlyInverse = inverse.filter((id) => !forward.includes(id));
+
+      if (token === undefined) {
+        bad(`the feed matches the audience (${label})`, "could not sign the student in at the API");
+      } else if (onlyForward.length === 0 && onlyInverse.length === 0) {
+        ok(
+          `the feed matches the audience (${label})`,
+          `${inverse.length} of ${targeted.length} postings, both directions`,
+        );
+      } else {
+        bad(
+          `the feed matches the audience (${label})`,
+          `reached but not fed: ${onlyForward.length}; fed but not reached: ${onlyInverse.length}`,
+        );
+      }
+    }
+
+    // ── C. every axis decides the way the student's record says ──────────
+    if (axisProbes.length === 0) {
+      console.log("  \x1b[90m· neither student is on a batch — the axis table is skipped\x1b[0m");
+    } else {
+      for (const email of [STUDENT, COLLEGE_STUDENT]) {
+        const mine = axisProbes.filter((probe) => probe.who === email);
+        if (mine.length === 0) continue;
+
+        const token = await signInAtApi(email, "STUDENT");
+        const fed =
+          token === undefined
+            ? []
+            : ((await (
+                await fetch(`${API}/me/jobs`, { headers: { Authorization: `Bearer ${token}` } })
+              ).json()) as { jobPostingId: string }[]).map((job) => job.jobPostingId);
+
+        const wrong = mine.filter((probe) => fed.includes(probe.jobPostingId) !== probe.expect);
+        const label = email === STUDENT ? "retail" : "college";
+        if (token === undefined) {
+          bad(`every audience axis decides correctly (${label})`, "could not sign in at the API");
+        } else if (wrong.length === 0) {
+          ok(
+            `every audience axis decides correctly (${label})`,
+            `${mine.length} axes: ${mine.filter((p) => p.expect).length} reach, ${mine.filter((p) => !p.expect).length} do not`,
+          );
+        } else {
+          bad(
+            `every audience axis decides correctly (${label})`,
+            wrong.map((p) => `${p.label} should ${p.expect ? "match" : "not match"}`).join(" · "),
+          );
+        }
+      }
+    }
+
+    // ── D. what the feed withholds ────────────────────────────────────────
+    const onTheirCourse = await prisma.studentBatchMapping.findFirst({
+      where: { student: { loginEmail: STUDENT }, deletedAt: null },
+      select: { batch: { select: { courseId: true } } },
+    });
+
+    if (onTheirCourse === null) {
+      console.log("  \x1b[90m· the student is on no batch — the withholding checks are skipped\x1b[0m");
+    } else {
+      const stamp = Date.now().toString().slice(-9);
+      /*
+       * Three postings a student must never be fed, each for a different
+       * reason, all targeted squarely at them so only the rule under test can
+       * keep them out:
+       *
+       *   DRAFT       — nobody has decided it exists.
+       *   CLOSED      — the link leads to a form that is shut.
+       *   past its date — closed whether or not anyone moved the status.
+       */
+      const probes = await Promise.all(
+        (
+          [
+            ["DRAFT", "DRAFT", null],
+            ["CLOSED", "CLOSED", null],
+            ["EXPIRED", "PUBLISHED", new Date(Date.now() - 2 * 86_400_000)],
+          ] as const
+        ).map(([label, status, closingDate], i) =>
+          prisma.jobPosting.create({
+            data: {
+              jobCode: `JOB-PROBE-${label}-${stamp}`,
+              roleTitle: `probe-${label.toLowerCase()}-${stamp}`,
+              companyName: "Probe Industries",
+              status,
+              publishedAt: new Date(),
+              ...(closingDate === null ? {} : { closingDate }),
+              audienceRules: {
+                create: { courseId: onTheirCourse.batch.courseId, completedOnly: false },
+              },
+            },
+            select: { jobPostingId: true, roleTitle: true },
+          }).then((row) => ({ label, index: i, ...row })),
+        ),
+      );
+
+      const token = await signInAtApi(STUDENT, "STUDENT");
+      const fed =
+        token === undefined
+          ? []
+          : ((await (
+              await fetch(`${API}/me/jobs`, { headers: { Authorization: `Bearer ${token}` } })
+            ).json()) as { jobPostingId: string }[]).map((job) => job.jobPostingId);
+
+      const leaked = probes.filter((probe) => fed.includes(probe.jobPostingId));
+      if (token !== undefined && leaked.length === 0) {
+        ok("draft, closed and expired postings are withheld", "all three targeted at this student");
+      } else {
+        bad(
+          "draft, closed and expired postings are withheld",
+          leaked.length === 0 ? "no student token" : `fed: ${leaked.map((p) => p.label).join(", ")}`,
+        );
+      }
+
+      await prisma.jobAudienceRule.deleteMany({
+        where: { jobPostingId: { in: probes.map((p) => p.jobPostingId) } },
+      });
+      await prisma.jobPosting.deleteMany({
+        where: { jobPostingId: { in: probes.map((p) => p.jobPostingId) } },
+      });
+    }
+
+    // ── E. and the screen says why, not just what ─────────────────────────
+    await page.goto(`${BASE}/portal/jobs`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("load");
+    const board = await page.locator("body").innerText();
+    const token = await signInAtApi(STUDENT, "STUDENT");
+    const feed =
+      token === undefined
+        ? []
+        : ((await (
+            await fetch(`${API}/me/jobs`, { headers: { Authorization: `Bearer ${token}` } })
+          ).json()) as { roleTitle: string; matchedOn: string[] }[]);
+
+    if (feed.length === 0) {
+      console.log("  \x1b[90m· this student matches no posting — the screen is not exercised\x1b[0m");
+    } else {
+      const first = feed[0]!;
+      const named = board.includes(first.roleTitle);
+      const explained = first.matchedOn.every((reason) => board.includes(reason));
+      const saysMatched = /Matched on/i.test(board);
+      if (named && explained && saysMatched) {
+        ok("the board says why each posting is there", first.matchedOn.join("; "));
+      } else {
+        bad(
+          "the board says why each posting is there",
+          `named=${named} explained=${explained} saysMatched=${saysMatched}`,
+        );
+      }
+    }
+  }
+
+  // Swept up whether or not the block above ran, so a skipped suite does not
+  // leave probe postings behind for the next one to measure as real data.
+  await prisma.jobAudienceRule.deleteMany({
+    where: { jobPostingId: { in: axisProbes.map((p) => p.jobPostingId) } },
+  });
+  await prisma.jobPosting.deleteMany({
+    where: { jobPostingId: { in: axisProbes.map((p) => p.jobPostingId) } },
+  });
+
   // ── 10. Invariant 3: absent for a college student, not empty ────────────
   const college = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await college.route("**fonts.g**", (r) => r.abort());
@@ -918,6 +1284,68 @@ async function main(): Promise<void> {
   await prisma.$disconnect();
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+/**
+ * The audience predicate, as `hiring.service.ts` writes it.
+ *
+ * ── Why a copy is tolerable here, and only here ─────────────────────────
+ *
+ * It cannot be imported: it lives in the API workspace, behind Nest's
+ * decorators, and dragging that into a Playwright script would replace one risk
+ * with a worse one. So it is transcribed — and then checked against the real
+ * thing before it is trusted, by comparing what it counts with the `reach` the
+ * admin API publishes for every targeted posting. A transcription that has
+ * drifted fails that comparison, and the checks that depend on it never run on
+ * a reference nobody verified.
+ *
+ * Rules are OR-ed with each other and AND-ed within a rule.
+ */
+function audienceOf(
+  rules: {
+    courseId: string;
+    batchId: string | null;
+    collegeId: string | null;
+    cityId: string | null;
+    passoutYear: number | null;
+    segment: "RETAIL" | "COLLEGE" | null;
+    completedOnly: boolean;
+  }[],
+): Prisma.StudentWhereInput {
+  return {
+    deletedAt: null,
+    accountStatus: "ACTIVE",
+    OR: rules.map((rule) => ({
+      ...(rule.passoutYear !== null ? { passoutYear: rule.passoutYear } : {}),
+      ...(rule.segment !== null ? { enrolmentChannel: rule.segment } : {}),
+      ...(rule.collegeId !== null ? { collegeId: rule.collegeId } : {}),
+      ...(rule.cityId !== null ? { cityId: rule.cityId } : {}),
+      batchMappings: {
+        some: {
+          deletedAt: null,
+          ...(rule.completedOnly ? { completedAt: { not: null } } : {}),
+          batch: {
+            deletedAt: null,
+            courseId: rule.courseId,
+            ...(rule.batchId !== null ? { batchId: rule.batchId } : {}),
+          },
+        },
+      },
+    })),
+  };
+}
+
+/** A token from the API itself. `actor` is part of the credential. */
+async function signInAtApi(
+  email: string,
+  actor: "ADMIN_USER" | "STUDENT",
+): Promise<string | undefined> {
+  const response = await fetch(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: PASSWORD, actor }),
+  });
+  return ((await response.json()) as { tokens?: { accessToken?: string } }).tokens?.accessToken;
 }
 
 /**

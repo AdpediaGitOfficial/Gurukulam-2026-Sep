@@ -69,6 +69,17 @@ export class MeController {
   }
 
   /**
+   * The postings whose audience this student matches.
+   *
+   * Evaluated at read time from the operator's own rules — there is no stored
+   * grant, so a student who enrolled this morning is reached this morning.
+   */
+  @Get("jobs")
+  jobs(@CurrentPrincipal() p: Principal) {
+    return this.me.jobs(p);
+  }
+
+  /**
    * What they have earned, and the batches still to produce one.
    *
    * Answers for a college student too — the record is theirs to see even though
