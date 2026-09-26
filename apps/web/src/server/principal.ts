@@ -50,7 +50,7 @@ export async function requireModule(
  */
 export async function requireStudent(): Promise<Principal> {
   const principal = await requirePrincipal();
-  if (principal.actor !== "STUDENT") redirect("/dashboard");
+  if (principal.actor !== "STUDENT") redirect(homeFor(principal));
   return principal;
 }
 
@@ -64,5 +64,40 @@ export async function requireStudent(): Promise<Principal> {
 export async function requireTrainer(): Promise<Principal> {
   const principal = await requirePrincipal();
   if (principal.actor === "TRAINER") return principal;
-  redirect(principal.actor === "STUDENT" ? "/portal" : "/dashboard");
+  redirect(homeFor(principal));
+}
+
+/**
+ * The same, for the college portal.
+ *
+ * Each actor is sent to the surface that is theirs rather than everybody to
+ * `/dashboard`: a student or a trainer bounced to a console they cannot read
+ * would be shown a refusal for a screen they never asked for.
+ */
+export async function requireCollegeUser(): Promise<Principal> {
+  const principal = await requirePrincipal();
+  if (principal.actor === "COLLEGE_USER") return principal;
+  redirect(homeFor(principal));
+}
+
+/**
+ * Where this actor belongs.
+ *
+ * One table rather than a conditional per guard. With four surfaces the
+ * conditionals stopped being readable and started disagreeing: `requireStudent`
+ * sent a college user to `/dashboard`, which refuses them — so following a
+ * portal link they had no business on produced a refusal for a screen they
+ * never asked for, instead of their own home.
+ */
+function homeFor(principal: Principal): string {
+  switch (principal.actor) {
+    case "STUDENT":
+      return "/portal";
+    case "TRAINER":
+      return "/teach";
+    case "COLLEGE_USER":
+      return "/campus";
+    default:
+      return "/dashboard";
+  }
 }

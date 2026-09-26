@@ -7,10 +7,17 @@ import type {
   IssuedCredential, Page, Principal, RejectRequirementInput, Requirement, RequirementQuery,
   PortalAccessQuery, RevokePortalAccessInput, UpdateRequirementInput,
 } from "@gurukulam/contracts";
+import { COLLEGE_PERMISSIONS } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope,
+  assertOursToDecide,
+  cityScope,
+  collegeScope,
+  liveOnly,
+} from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { hashPassword } from "../auth/password";
@@ -145,7 +152,7 @@ export class RequirementsService {
   async confirm(principal: Principal, requirementId: string, input: ConfirmRequirementInput) {
     // A college cannot confirm its own requirement — colleges do not create
     // batches; an admin does, from a confirmed requirement.
-    if (principal.collegeScope !== null) throw ApiException.forbidden();
+    assertOursToDecide(principal, "confirm a requirement and open the batch it asks for");
 
     const requirement = await this.mustExist(principal, requirementId);
     if (requirement.status === "CONFIRMED" || requirement.batchId) {
@@ -205,7 +212,7 @@ export class RequirementsService {
   }
 
   async reject(principal: Principal, requirementId: string, input: RejectRequirementInput) {
-    if (principal.collegeScope !== null) throw ApiException.forbidden();
+    assertOursToDecide(principal, "decline a requirement");
     const requirement = await this.mustExist(principal, requirementId);
     if (requirement.status === "CONFIRMED") {
       throw ApiException.conflict("That requirement has already produced a batch.");
@@ -221,7 +228,7 @@ export class RequirementsService {
 
   /** Marked fulfilled when its batch completes. */
   async markFulfilled(principal: Principal, requirementId: string) {
-    if (principal.collegeScope !== null) throw ApiException.forbidden();
+    assertOursToDecide(principal, "close a requirement as delivered");
     const requirement = await this.mustExist(principal, requirementId);
     if (requirement.status !== "CONFIRMED") {
       throw ApiException.conflict("Only a confirmed requirement can be fulfilled.");
@@ -334,7 +341,7 @@ export class PortalAccessService {
     input: GrantPortalAccessInput,
   ): Promise<IssuedCredential> {
     // A college cannot grant itself further logins.
-    if (principal.collegeScope !== null) throw ApiException.forbidden();
+    assertOursToDecide(principal, "issue portal access");
     const college = await this.mustFindCollege(principal, collegeId);
 
     let name = input.name;
@@ -380,7 +387,7 @@ export class PortalAccessService {
             // The reason belonged to a revocation that no longer applies.
             // Leaving it would caption a live account with why it was once off.
             revokeReason: null,
-            permissions: DEFAULT_COLLEGE_PERMISSIONS,
+            permissions: COLLEGE_PERMISSIONS,
           },
         })
       : await this.prisma.collegeUser.create({
@@ -395,7 +402,7 @@ export class PortalAccessService {
             mustReset: true,
             accessStatus: "GRANTED",
             grantedAt: new Date(),
-            permissions: DEFAULT_COLLEGE_PERMISSIONS,
+            permissions: COLLEGE_PERMISSIONS,
             createdBy: principal.id,
           },
         });
@@ -413,7 +420,7 @@ export class PortalAccessService {
    * refuses anything but GRANTED, so it does not wait for token expiry.
    */
   async revoke(principal: Principal, collegeUserId: string, input: RevokePortalAccessInput) {
-    if (principal.collegeScope !== null) throw ApiException.forbidden();
+    assertOursToDecide(principal, "withdraw portal access");
 
     const user = await this.prisma.collegeUser.findFirst({
       where: { collegeUserId, deletedAt: null },
@@ -482,15 +489,6 @@ export class PortalAccessService {
     return college;
   }
 }
-
-/** What a college portal login can reach. Mirrors the seed, deliberately. */
-const DEFAULT_COLLEGE_PERMISSIONS = {
-  dashboard: { read: true, edit: false, delete: false },
-  colleges: { read: true, edit: false, delete: false },
-  requirements: { read: true, edit: true, delete: false },
-  students: { read: true, edit: true, delete: false },
-  certificates: { read: true, edit: true, delete: false },
-} as const;
 
 const REQ_INCLUDE = {
   college: { select: { name: true, cityId: true } },

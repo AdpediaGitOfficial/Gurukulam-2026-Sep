@@ -12,7 +12,14 @@ import {
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, inScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope,
+  assertOursToDecide,
+  cityScope,
+  collegeScope,
+  inScope,
+  liveOnly,
+} from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 
@@ -283,6 +290,13 @@ export class StudentsService {
 
   /** Suspends access without touching enrolment, billing or history. */
   async suspend(principal: Principal, studentId: string, input: SuspendStudentInput) {
+    /*
+     * A college adds its students and may correct their details. Turning one's
+     * account off is a different kind of act: it stops a person signing in to
+     * work they are enrolled on, and the college is not who they are enrolled
+     * with. This answered 200 to a college user until it was driven as one.
+     */
+    assertOursToDecide(principal, "suspend a student's account");
     await this.mustExist(principal, studentId);
     const student = await this.prisma.student.update({
       where: { studentId },
@@ -297,6 +311,9 @@ export class StudentsService {
   }
 
   async reinstate(principal: Principal, studentId: string) {
+    // Named for the same reason as `suspend`: whoever may not stop an account
+    // may not restart one either, or the pair becomes a way around the first.
+    assertOursToDecide(principal, "reinstate a student's account");
     await this.mustExist(principal, studentId);
     const student = await this.prisma.student.update({
       where: { studentId },
@@ -307,6 +324,10 @@ export class StudentsService {
   }
 
   async remove(principal: Principal, studentId: string): Promise<void> {
+    // Belt as well as braces: no college matrix carries `students.delete`, so
+    // the guard already refuses this. Stated anyway, because a permission is a
+    // row in a database and this is a rule.
+    assertOursToDecide(principal, "delete a student record");
     await this.mustExist(principal, studentId);
 
     // Money already received is a fact about when it was received. Removing

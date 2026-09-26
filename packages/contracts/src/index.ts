@@ -33,3 +33,4 @@ export * from "./me/index.js";
 export * from "./trainer-me/index.js";
 export * from "./reports/index.js";
 export * from "./notifications/index.js";
+export * from "./college-me/index.js";

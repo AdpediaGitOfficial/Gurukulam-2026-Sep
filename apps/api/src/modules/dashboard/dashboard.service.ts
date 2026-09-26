@@ -2,7 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@gurukulam/db";
 import type { Dashboard, Principal, SegmentedCount, SegmentedMoney } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
-import { cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import { ApiException } from "../../common/errors";
+import { cityScope, collegeScope, isCollegeUser, liveOnly } from "../../common/scope/scope";
 
 /**
  * The executive dashboard.
@@ -70,6 +71,29 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async build(principal: Principal): Promise<Dashboard> {
+    /*
+     * ── Why a college is refused here rather than scoped ──────────────────
+     *
+     * Every ROW-derived figure below is scoped correctly, and the response even
+     * echoes the scope it was computed under. That is not enough, because this
+     * screen also reports facts that are not derived from a scoped row: how
+     * many trainers we have, how big the question bank is, how many courses are
+     * in the catalogue, the bench-to-stretched utilisation spread, which named
+     * trainers are carrying the most delivery, and an operator queue of
+     * sessions missing recordings. Scope has nothing to filter those BY, so
+     * they came out whole — 191 trainers and all of it — for a college user who
+     * asked their own dashboard.
+     *
+     * A projection would work once and then rot: the next figure somebody adds
+     * here is global by default and nothing fails. So the institution gets its
+     * own home, computed from its own rows only, in `college-me.service.ts`.
+     */
+    if (isCollegeUser(principal)) {
+      throw ApiException.forbidden(
+        "This is the operator's dashboard. Your college's own summary is on your portal home.",
+      );
+    }
+
     // Computed once, from the principal, and threaded into every query below.
     // A helper that quietly returned {} for an unrecognised actor would make
     // every figure global, so each fragment is derived explicitly.

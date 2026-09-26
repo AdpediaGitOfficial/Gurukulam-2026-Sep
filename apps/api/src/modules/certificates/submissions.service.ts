@@ -5,7 +5,12 @@ import type {
 } from "@gurukulam/contracts";
 import { PrismaService } from "../prisma/prisma.module";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope,
+  assertOursToDecide,
+  cityScope,
+  liveOnly,
+} from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { EligibilityService } from "./eligibility.service";
 import { CertificatesService } from "./certificates.service";
@@ -157,6 +162,11 @@ export class SubmissionsService {
    * a whole, so a college gets a complete list rather than a trickle.
    */
   async decideRow(principal: Principal, rowId: string, input: DecideRowInput) {
+    // The college submits the list; deciding each name on it is the review the
+    // submission flow exists for. A college approving its own rows would be
+    // the flow with its only check removed.
+    assertOursToDecide(principal, "approve or decline a name on a submission");
+
     // Only an admin decides. A college approving its own list would make the
     // review meaningless.
     if (principal.collegeScope !== null) throw ApiException.forbidden();
@@ -238,6 +248,10 @@ export class SubmissionsService {
    * transaction. Nothing before this point is a certificate (invariant 18).
    */
   async release(principal: Principal, submissionId: string) {
+    // Release is where approved rows BECOME certificates (invariant 18), so it
+    // is the awarding act wearing a different name.
+    assertOursToDecide(principal, "release a submission and award its certificates");
+
     if (principal.collegeScope !== null) throw ApiException.forbidden();
     const submission = await this.mustExist(principal, submissionId);
 

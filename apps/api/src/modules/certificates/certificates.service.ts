@@ -8,7 +8,13 @@ import { randomBytes } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope, cityScope, collegeScope, liveOnly } from "../../common/scope/scope";
+import {
+  assertInScope,
+  assertOursToDecide,
+  cityScope,
+  collegeScope,
+  liveOnly,
+} from "../../common/scope/scope";
 import { listPage, orderBy, paginate } from "../../common/scope/pagination";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { EligibilityService } from "./eligibility.service";
@@ -94,6 +100,15 @@ export class CertificatesService {
    * represent the admin who would otherwise approve the row.
    */
   async issue(principal: Principal, input: IssueCertificateInput): Promise<Certificate> {
+    /*
+     * A college does not award its own students. Eligibility is identical
+     * across segments and ACCESS to the file is the college's (invariant 7) —
+     * but issuing is the awarding act, and a college that could issue could
+     * award a certificate to somebody who never attended. Their route in is the
+     * submission flow, which we review row by row (invariant 18).
+     */
+    assertOursToDecide(principal, "issue a certificate");
+
     const student = await this.prisma.student.findFirst({
       where: { studentId: input.studentId, deletedAt: null },
     });
@@ -131,6 +146,15 @@ export class CertificatesService {
    * cached copy to expire, because the verifier reads the row.
    */
   async revoke(principal: Principal, certificateId: string, input: RevokeCertificateInput) {
+    /*
+     * Withdrawing an award is ours as well, and this answered 200 to a college
+     * user until it was driven as one. `loadForAccess` below asks whether the
+     * caller may SEE this certificate, and for their own student a college may —
+     * that check was doing its job, and was never the one that should have
+     * refused this.
+     */
+    assertOursToDecide(principal, "revoke a certificate");
+
     const certificate = await this.loadForAccess(principal, certificateId);
     if (certificate.status === "REVOKED") {
       throw ApiException.conflict("That certificate is already revoked.");

@@ -44,12 +44,14 @@ contract, and **the college** downloads its students' certificates.
 topics; a topic carries one or more sessions; assignments and recordings hang off the session,
 because the session is the unit that actually happens on a given day.
 
-**Four portals, three started.** Admin is complete. The **student portal** is at `/portal/*` —
-sign-in, home, my learning, assignments, certificates, jobs, fees, updates and account — every screen
-the student-portal plan specifies. The **trainer portal** is at `/teach/*` — home, batches, sessions,
-one session with its register and its marking, availability, invitations and account. The public
-certificate verifier is at `/verify`. College comes later. The admin portal performs every action all
-three do, permanently, because an operations team needs the override regardless.
+**All four portals are built.** Admin is complete. The **student portal** is at `/portal/*` —
+sign-in, home, my learning, assignments, certificates, jobs, fees, updates and account. The **trainer
+portal** is at `/teach/*` — home, batches, sessions, one session with its register and its marking,
+availability, invitations and account. The **college portal** is at `/campus/*` — sign-in, overview,
+requirements (and raising one), students (and adding and placing one), schedule, certificates with
+submissions, billing and account. The public certificate verifier is at `/verify`. The admin console
+performs every action all three portals do, permanently, because an operations team needs the
+override regardless.
 
 **The trainer is the first actor that WRITES, and its scope is a relationship rather than a
 column.** City and college scope are columns: a row is in scope when its column matches.
@@ -104,6 +106,77 @@ with no screen calling it, which meant all 191 trainers were unreachable by any 
 exists, because re-issuing invalidates the password the person is already holding. The temporary
 secret is neither returned nor logged: the login address, derived from the immutable trainer code, is
 the only thing there is to hand over.
+
+**The college portal is the one built by NARROWING, and that was always the plan.** `collegeScope`
+has sat on the principal beside `cityScope` since the first migration precisely so college users
+would be "the same authorisation concept as regional sub-admins rather than a parallel mechanism
+bolted on later" (`architecture.md` §2.2). Driving it as a real college user confirmed the reads:
+1 college of 24, 51 students of 206, 110 batches of 232, every requirement and certificate theirs.
+So `/campus` reads `/students`, `/batches`, `/colleges/requirements` and `/certificates` — the
+console's own endpoints — and a parallel `/me/college/students` would be a second copy of a filter
+that already works, the copy being the one that drifts.
+
+**Scope decides which ROWS; it has nothing to say about which ACTS.** Every row a college portal user
+reaches is legitimately their own, so nothing in `collegeScope` could refuse them revoking their
+student's certificate. Driving the real API as a real college user found three that answered success:
+`POST /certificates/:id/revoke` returned **200**, `POST /students/:id/suspend` returned **200**, and
+`POST /students/:id/deallocate` returned **204**. Issuing a certificate got past authorisation
+entirely and failed only on a business conflict.
+
+**`assertOursToDecide(principal, act)` is that rule, named once.** The check already existed —
+written out by hand as `if (principal.collegeScope !== null) throw forbidden()` in five places in
+`requirements.service.ts`, correct in all five, and absent from every act added afterwards. A rule
+that must be remembered at each new call site is a rule that will be forgotten at one of them.
+Fourteen acts now call it: confirm, decline and close a requirement; issue, revoke, decide and
+release a certificate; suspend, reinstate, deallocate, record a roster outcome and delete a student;
+grant and withdraw portal access. `act` completes the sentence the college reads, so the refusal says
+which decision is not theirs.
+
+**It throws 403 where scope throws 404, and that asymmetry is deliberate.** `assertInScope` hides an
+out-of-region row behind a not-found because a 403 would confirm it exists — that IS the leak. Here
+the record is the caller's own: they are looking at their requirement, their student, their
+certificate. Pretending the row is absent would read as a bug rather than a rule, so the honest
+answer is that they may not act.
+
+**A college's dashboard could not be the operator's with a filter.** `GET /dashboard` scopes every
+figure derived from a row and echoes the scope it was computed under — and then reports several that
+are not row-derived: how many trainers we have (191), the size of the question bank, the whole course
+catalogue, the bench-to-stretched utilisation spread, the trainers carrying the most delivery **by
+name**, and an operator queue of sessions missing recordings. Scope has nothing to filter those BY.
+A projection would strip them once and rot at the next figure somebody adds, so `dashboard` is absent
+from `COLLEGE_PERMISSIONS` and the service refuses a college-scoped principal outright — belt for the
+matrix, braces for a stored permission row that predates it.
+
+**`courses` is absent too, and a college still gets a catalogue.** The trainer needed none — the
+course name rides on every batch they teach. A college has to NAME the course it is asking for, so
+`/me/college/courses` returns `CampusCourse`, which has **no field** for
+`courses.standardMarketValueMinor`. The price we quote from is not this segment's price; the
+negotiated contract is. A type with nowhere to put the number cannot carry it, which a projection one
+`if` away from wrong cannot promise.
+
+**Money is the college's here, and it is not in `feeLedger`.** Invariant 3 runs both ways: a college
+student has no individual ledger, so Fees is absent from their portal's navigation — and the
+INSTITUTION is the payer, so `/campus/billing` is a first-class screen. It reads the CONTRACT and its
+installments (invariant 4's other parent), because `fee_ledgers` would return nothing and render as
+"you owe nothing", the most expensive empty state in the product. Summed in `bigint` on the server;
+`lib/money.ts` holds the conversions both portals share, and "is this installment overdue" is decided
+by the API because it is a comparison on money.
+
+**The college's half of invariant 18 is the submission, and only that half.** They say who they
+believe has finished; we check each name against its eligibility; RELEASE is what creates the
+certificates. A college that could approve its own rows would be the flow with its only check
+removed, so `decide` and `release` answer 403 and neither appears in
+`features/campus/server/actions.ts`. That file has four acts — raise a requirement, add a student,
+place one on a cohort, submit names — and what is absent from it is the security model stated twice:
+the API is the protection, and a portal that offers a button the server will refuse teaches the
+person in front of it that the product is broken.
+
+**Every college download goes through the access rule, not through `pdfUrl`.** The certificate list
+carries the URL and linking to it would work — and would be a SECOND implementation of invariant 7's
+asymmetry, agreeing with `certificateAccess` today. `/campus/certificates/[id]/download` asks the API
+on every click instead. The suite checks both ends: their own student's file is theirs (200), and a
+retail student's is not found (404, never a refusal — a retail student has no college, so saying
+"forbidden" would confirm the record exists).
 
 **The student portal reads `/me/*`, never the admin endpoints.** A student principal carries
 `permissions: {}` and null scopes, so it could not be built by narrowing scope the way the college
@@ -225,6 +298,38 @@ probe for "a student who is not on the roster is refused" picks a stranger with 
 "rows written" means what it says; an absolute count reported the previous run's leftovers as this
 run's failure, twice.
 
+**`npm run verify:campus` holds a college session** — 18 checks, driven through the real screens and
+endpoints and read back out of the database. It measures the scope axis against what an admin sees
+whole, refuses nine acts that are ours and proves nothing was written, checks invariant 7 from both
+ends, manufactures another college's student and requirement so "a college cannot see another's" is
+not vacuous (every other college in the seed has neither), raises a requirement naming somebody
+else's college and checks where it lands, and confirms a revoked account stops on its existing token.
+
+It also drives the FIRST sign-in, because access is issued with `mustReset` set and that screen is
+where every real POC starts. Access is re-granted on each run against the same contact address, so
+the temporary password is known to that process only and the check is repeatable rather than a
+one-shot that passed once.
+
+**A suite that corrupts its own data reports the wrong failure — including when the fault is real.**
+The act-gate probe restores what it broke, in the FAILING branch: when those nine acts are refused
+there is nothing to undo, and when one goes through it has revoked a real certificate, suspended a
+real student and taken them off a real roster. The first injection run left exactly that behind, and
+the next run reported "no real row of this college's to probe with" instead of the fault.
+
+**Three checks in this suite were too weak to catch the fault they were written for**, and each was
+found by injecting it: `pathname.startsWith("/campus")` is true of `/campus/login`, so the sign-in
+assertion read the door and the check after it passed on a session that was never established; a
+`pageSize=200` sweep for another college's student passed with the scope filter removed entirely,
+because the estate holds 206 students and the probe row was on a page nobody fetched; and posting a
+made-up college id was refused as "that college no longer exists" rather than demonstrating the
+leak. Searching by the row's own address, waiting on a path that is not the door, and naming a real
+other college fixed them.
+
+**Sometimes the injection proves the opposite, and that is worth recording.** Breaking `create` so it
+trusts the posted college id did NOT put a student at another institution: the `assertInScope` that
+follows refuses it. Two independent enforcement points, so the check asserts the PROPERTY — no
+student ever lands at another college — and passes whichever of the two answers.
+
 **A restart that did not restart is worse than no restart.** `pkill -f "apps/api/dist/main.js"` never
 matched — the process is `node dist/main.js` with `apps/api` as its cwd — so the "restarted" API went
 on serving the previous build, and a fault injection and its restoration read as the same result,
@@ -345,8 +450,9 @@ what makes institutional intake auditable.
 
 | Deferred | Where it lands |
 | --- | --- |
-| College portal | `college_users` + `collegeScope` on the principal; the trainer's `/me/trainer` is the pattern for its own surface |
 | Marking a session delivered, setting work, attaching a recording, from `/teach` | The endpoints already authorise a trainer through `assertTrainerMayWrite`; the console owns the screens and `/teach` only reads |
+| Bulk student import from `/campus` | `POST /students/import` is the same code the console calls and `collegeScope` already forces the college; the portal adds one at a time |
+| A narrower college account | `college_users.permissions` is a JSON column and the principal builder reads it, so `COLLEGE_PERMISSIONS` is what `grant()` writes rather than the only set that can exist |
 | Naukri feed | `job_postings.source` / `external_ref` / `external_url` already carried |
 | Payment gateway | Not used — payments are collected offline and recorded |
 

@@ -311,3 +311,59 @@ export function assertOwnTrainerRecord(principal: Principal, trainerId: string):
   if (!isTrainer(principal)) return;
   if (principal.trainerScope !== trainerId) throw ApiException.outOfScope();
 }
+
+/* ── The college axis, on the WRITE side ────────────────────────────────────
+ *
+ * `collegeScope` above answers "which rows". This answers a different
+ * question: which ACTS. A college portal user is scoped to their own
+ * institution and every row they can reach is legitimately theirs — so scope
+ * has nothing left to say about whether they may confirm their own
+ * requirement, revoke their student's certificate, or suspend that student's
+ * account. Those are not visibility questions. They are ours to decide.
+ *
+ * ── Why a named function rather than the check itself ──────────────────────
+ *
+ * The check itself was already here, written out by hand as
+ * `if (principal.collegeScope !== null) throw ApiException.forbidden()`, in
+ * five places in `requirements.service.ts` — confirm, reject, fulfil, and the
+ * two portal-access verbs. It was correct in all five. It was also absent from
+ * every act added afterwards, and driving the real API as a real college user
+ * found three that mattered: revoking a certificate answered 200, suspending a
+ * student answered 200, and removing one from a roster answered 204.
+ *
+ * A rule that must be remembered at each new call site is a rule that will be
+ * forgotten at one of them. Naming it does not make it stronger — it makes it
+ * greppable, and it gives the reason one home instead of five.
+ *
+ * ── Why 403 here and 404 for scope ────────────────────────────────────────
+ *
+ * `assertInScope` throws a 404 on purpose: a 403 would confirm that a record
+ * exists in another region, which is itself the leak. Here the record is the
+ * caller's OWN — they are looking at their requirement, their student, their
+ * certificate. Hiding it would be a lie, and "not found" on a row they can see
+ * listed reads as a bug rather than a refusal. What they may not do is act, so
+ * the honest answer is that they may not.
+ */
+
+/** True when this principal is acting for one institution. */
+export const isCollegeUser = (principal: Principal): boolean =>
+  principal.actor === "COLLEGE_USER" || principal.collegeScope !== null;
+
+/**
+ * Refuses an act that belongs to US rather than to the institution.
+ *
+ * `act` completes the sentence a college user reads, so the refusal says which
+ * decision is not theirs rather than only that something was refused.
+ *
+ *     assertOursToDecide(principal, "confirm a requirement");
+ *
+ * Silent for everybody else: an admin, an API client and the cron pass
+ * through, and their authority is their permission plus city scope, which the
+ * caller has already applied.
+ */
+export function assertOursToDecide(principal: Principal, act: string): void {
+  if (!isCollegeUser(principal)) return;
+  throw ApiException.forbidden(
+    `Only Gurukulam can ${act}. Your college's copy of this record is unchanged.`,
+  );
+}

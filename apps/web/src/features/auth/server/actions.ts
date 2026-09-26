@@ -157,6 +157,56 @@ export async function trainerLogin(
   redirect(session.mustResetPassword ? "/teach/account/password?reason=first-login" : "/teach");
 }
 
+/**
+ * Sign-in for a college.
+ *
+ * The fourth door, and the one where the login identity is least guessable: it
+ * is derived from the college's immutable CODE (`snc@gurukulam.com`), not from
+ * the POC's own address, so that several people at one institution can hold
+ * separate accounts and a change of contact does not change the login. The hint
+ * on the field says so, because the alternative is a TPO typing their work
+ * address and concluding the portal is broken.
+ */
+export async function collegeLogin(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    actor: "COLLEGE_USER",
+    deviceLabel: "College portal",
+  });
+
+  if (!parsed.success) {
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      if (typeof key === "string" && fields[key] === undefined) fields[key] = issue.message;
+    }
+    return formError("Check the details below.", fields);
+  }
+
+  let session;
+  try {
+    session = sessionSchema.parse(
+      await apiFetch("/auth/login", { method: "POST", body: parsed.data, anonymous: true }),
+    );
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      // A revoked account and a wrong password answer identically here, which
+      // is deliberate: the principal builder refuses anything but GRANTED, and
+      // saying which of the two it was would tell an outsider that the account
+      // exists.
+      return formError(error.message, Object.keys(error.fields).length > 0 ? error.fields : undefined);
+    }
+    return formError("Could not reach the server. Try again shortly.");
+  }
+
+  await writeSession(session.tokens);
+  redirect(session.mustResetPassword ? "/campus/account/password?reason=first-login" : "/campus");
+}
+
 export async function logout(): Promise<void> {
   const refreshToken = await readRefreshToken();
 
@@ -233,6 +283,8 @@ export async function changePassword(
       ? "/portal?password=changed"
       : principal.actor === "TRAINER"
         ? "/teach?password=changed"
-        : "/dashboard?password=changed",
+        : principal.actor === "COLLEGE_USER"
+          ? "/campus?password=changed"
+          : "/dashboard?password=changed",
   );
 }

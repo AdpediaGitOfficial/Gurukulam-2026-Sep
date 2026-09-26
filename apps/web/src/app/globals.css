@@ -63,6 +63,22 @@
   --color-teach-soft: #e8f5ec;
   --color-on-teach: #0d2415;
 
+  /* ---- The college portal's rail ---------------------------------------
+   *
+   * Indigo 300. Measured to sit where the trainer's green sits: dark ink
+   * `#10162E` on it is 5.17:1 against the green's 5.37:1, and white on it is
+   * 3.45:1 — failing, exactly as white on the green does. So the third portal
+   * joins the same family rather than inventing a fourth rule: light rail,
+   * dark text, one colour spent on the active entry.
+   *
+   * Indigo rather than a second blue, because `--color-brand` #0058BB IS the
+   * console, and a college rail in the console's blue would read as the
+   * operator's product with the wrong nav. Institutional without being ours.
+   * -------------------------------------------------------------------- */
+  --color-campus: #7986cb;
+  --color-campus-soft: #eceef9;
+  --color-on-campus: #10162e;
+
   /* Chart series: retail and college, the one distinction the whole product
      turns on. Kept as their own tokens rather than reusing --color-accent
      because that amber sits at 1.88:1 on a white card — fine behind a label,

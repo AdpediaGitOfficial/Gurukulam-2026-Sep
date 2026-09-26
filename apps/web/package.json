@@ -18,7 +18,8 @@
     "verify:type": "tsx scripts/verify-type.ts",
     "verify:portal": "tsx scripts/verify-portal.ts",
     "shoot": "tsx scripts/shoot.ts",
-    "verify:teach": "tsx scripts/verify-teach.ts"
+    "verify:teach": "tsx scripts/verify-teach.ts",
+    "verify:campus": "tsx scripts/verify-campus.ts"
   },
   "dependencies": {
     "@gurukulam/contracts": "*",

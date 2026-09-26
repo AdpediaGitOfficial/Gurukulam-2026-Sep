@@ -172,6 +172,63 @@ export const TRAINER_READ_ONLY: Record<string, Permission> = Object.fromEntries(
   ]),
 );
 
+/**
+ * What a college portal login may reach, as a fixed matrix.
+ *
+ * ── Why it is fixed, when the column is not ────────────────────────────
+ *
+ * `college_users.permissions` is a JSON column and the principal builder reads
+ * it, so a narrower account remains possible — §3.6 of the admin plan wanted
+ * "setting what their college can do". There is no screen for that and there is
+ * one kind of college user, so this is what `grant()` writes: one canonical set
+ * with a reason attached, rather than an object literal buried in a service.
+ *
+ * ── What is absent, and why ───────────────────────────────────────────
+ *
+ * `dashboard` USED to be here, and that was the most expensive entry in the
+ * set. Every row-derived figure on the operator dashboard is scoped correctly —
+ * but the screen also reports how many trainers we have, how large the question
+ * bank is, how many courses are in the catalogue, the bench-to-stretched
+ * utilisation spread, the names of the trainers carrying the most delivery, and
+ * an operator queue. None of those are derived from a scoped row, so scope had
+ * nothing to filter them by and they came out whole. The institution gets its
+ * own home instead, computed from its own rows.
+ *
+ * `feeLedger` is absent although the college is the PAYER (invariant 3),
+ * because that module is the per-STUDENT ledger — a college student has no
+ * individual ledger at all, and the institution's own billing runs through its
+ * contract. Its portal reads that through its own surface.
+ *
+ * `courses`, `trainers`, `hiring`, `reports` and `settings` do not appear:
+ * absent is stronger than `false`, because `can()` reads a missing module as
+ * no.
+ *
+ * ── What `edit` means where it appears ────────────────────────────────
+ *
+ * `students` edit: adding their own intake, correcting it, and putting it on
+ * their own cohort. NOT suspending an account, ending an enrolment, or
+ * recording how somebody's time on a batch went.
+ *
+ * `requirements` edit: raising one, and amending it while it is still a
+ * request. NOT confirming, declining or closing it — those are ours.
+ *
+ * `certificates` edit: submitting the list of names they believe are finished.
+ * NOT issuing, revoking, deciding a row on that list, or releasing it.
+ *
+ * Module-and-action is too coarse to say any of that, so it does not try. Each
+ * of those acts calls `assertOursToDecide` in its own service, and
+ * `college-acts.test.ts` pins them.
+ *
+ * Nothing carries `delete`.
+ */
+export const COLLEGE_PERMISSIONS: Record<string, Permission> = {
+  colleges: { read: true, edit: false, delete: false },
+  requirements: { read: true, edit: true, delete: false },
+  students: { read: true, edit: true, delete: false },
+  batches: { read: true, edit: false, delete: false },
+  certificates: { read: true, edit: true, delete: false },
+};
+
 /** A principal for internal work — the cron, migrations, system notifications. */
 export const SYSTEM_PRINCIPAL: Principal = {
   id: "system",

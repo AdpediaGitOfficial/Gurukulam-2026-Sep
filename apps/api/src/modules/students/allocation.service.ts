@@ -3,7 +3,7 @@ import type { AllocateStudentInput, AllocationResult, Principal } from "@gurukul
 import { PrismaService } from "../prisma/prisma.module";
 import { IdService } from "../ids/id.service";
 import { ApiException } from "../../common/errors";
-import { assertInScope } from "../../common/scope/scope";
+import { assertInScope, assertOursToDecide } from "../../common/scope/scope";
 import { withBusinessIdRetry } from "../../common/business-id-retry";
 import { hashPassword } from "../auth/password";
 import { studentLoginEmail,
@@ -233,6 +233,15 @@ export class AllocationService {
 
   /** Removes a student from a roster without touching what they already paid. */
   async deallocate(principal: Principal, studentId: string, batchId: string, reason: string) {
+    /*
+     * Putting their own students ON a cohort is the college's act — the whole
+     * point of the portal. Taking one OFF is not: it withdraws the session
+     * access and the credential that allocation granted, and leaves paid
+     * installments attached to an enrolment that no longer shows. This answered
+     * 204 to a college user until it was driven as one.
+     */
+    assertOursToDecide(principal, "remove a student from a batch");
+
     const student = await this.prisma.student.findFirst({ where: { studentId, deletedAt: null } });
     if (!student) throw ApiException.notFound("Student");
     assertInScope(principal, student);
@@ -279,6 +288,13 @@ export class AllocationService {
     studentId: string,
     input: RosterOutcomeInput,
   ): Promise<void> {
+    /*
+     * Whether a student COMPLETED or dropped out is a delivery judgement, and
+     * it decides certificate eligibility. A college recording its own outcomes
+     * would be marking its own homework.
+     */
+    assertOursToDecide(principal, "record how a student's time on a batch ended");
+
     const student = await this.prisma.student.findFirst({
       where: { studentId, deletedAt: null },
     });
