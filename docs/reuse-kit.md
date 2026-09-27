@@ -127,8 +127,10 @@ font-size utility overrides `leading-*`, so write `text-[52px]/none`, not
 ## 5. Verify the port
 
 ```bash
-npm run build && npm run lint
+npm run build && npm run typecheck
 ```
+
+There is no `lint` script — see the stack section of `CLAUDE.md`.
 
 Then open `/design-system`. If tokens did not come across you will see it immediately — swatches
 render as transparent, and type specimens all collapse to the same size.

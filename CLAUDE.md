@@ -476,6 +476,16 @@ Full list with enforcement points in `docs/architecture.md` §4. The ones that b
 Next.js (App Router) · React · TypeScript strict · Tailwind v4 with a `@theme` token layer ·
 PostgreSQL + Prisma · Server Components and Server Actions.
 
+**There is no linter, and the scripts that pretended otherwise are gone.** `npm run lint` ran
+`next lint` against a repo with no ESLint config and no ESLint dependency, so it prompted for setup
+and exited 1 — it had never once run. A command in `package.json` that cannot succeed is worse than an
+absent one: it goes in a checklist, fails for everybody, and teaches the team that a red script is
+normal. What actually guards this codebase is `tsc --noEmit` under `strict` across six workspaces plus
+the `verify:*` suites, which check the things a linter cannot — that a control does something, that a
+screen fits a phone, that a size is on the scale, that an endpoint has a way in from the surface that
+owes it one. Adding ESLint is a live option; it is a decision with its own config, its own noise and
+its own argument about rules, not a script to leave lying around.
+
 **No client state library and no data-fetching library.** Filters and pagination live in
 `searchParams`, so views stay server-rendered and shareable. This is a deliberate departure from the
 original spec's Express + Zustand + React Query design; the reasons are recorded in

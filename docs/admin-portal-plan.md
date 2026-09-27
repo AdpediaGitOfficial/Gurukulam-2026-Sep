@@ -654,7 +654,7 @@ requirement.
   students, on every screen including the dashboard.
 - Fee recalculation and the reminder cron covered by direct tests.
 - No `ModulePlaceholder` routes remain; no mock arrays in `features/*/server/`.
-- `npm run build` and `npm run lint` clean; `/design-system` still renders every primitive in use.
+- `npm run build` and `npm run typecheck` clean; `/design-system` still renders every primitive in use.
 - Payment reminders reach the **student** in retail and the **college** in B2B — never a college's
   student.
 - A job posting can be authored, targeted by course, previewed for reach, published, and shown to
