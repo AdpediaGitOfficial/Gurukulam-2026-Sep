@@ -478,7 +478,9 @@ PostgreSQL + Prisma · Server Components and Server Actions.
 
 **CI runs the two checks, and neither is self-sufficient on a fresh checkout.**
 `.github/workflows/ci.yml` runs `npm run lint` and `npm run typecheck` as separate jobs
-on every pull request and on the two branches that deploy. Both first run
+on every pull request and on pushes to `main` — not on the deploy branch as well,
+because a branch with a pull request open would then be checked twice on one commit,
+once per event, and `concurrency` cannot merge them (a push carries no `head_ref`). Both first run
 `db:generate`, because `packages/db/src/generated` is not committed, and the lint job
 also builds `@gurukulam/contracts` and `@gurukulam/db`, because the apps consume them
 from `dist`. Typecheck gets that for free from turbo's `dependsOn: ["^build"]`; a raw

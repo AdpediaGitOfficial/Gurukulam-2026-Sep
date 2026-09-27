@@ -16,9 +16,12 @@ about it.
 | Checks | `.github/workflows/ci.yml` — lint and typecheck, on GitHub's runners |
 
 **The checks do not gate the deploy.** `ci.yml` runs `npm run lint` and
-`npm run typecheck` on every pull request and on the same two branches, on
+`npm run typecheck` on every pull request and on pushes to `main`, on
 `ubuntu-latest` rather than on the box; `deployment.yml` starts at the same moment
-and does not wait for it. So a red check and a deployed commit are both possible
+and does not wait for it. Note the asymmetry: the deploy fires on a push to THIS
+branch, and the checks only see that push if a pull request is open for it — which
+it is. Without one, run CI by hand from the Actions tab before pushing something
+you have not run locally. So a red check and a deployed commit are both possible
 from one push. Gating it is a `workflow_run` trigger on the deploy, which is a
 deliberate change to make — it would mean no deploy until the checks pass, which
 is usually what people want and is a slower loop than this project has had so far.

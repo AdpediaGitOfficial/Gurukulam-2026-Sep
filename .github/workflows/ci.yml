@@ -33,20 +33,28 @@ name: CI
 
 on:
   pull_request:
+  # `main` only, deliberately. A branch with a pull request open is already
+  # covered by `pull_request`, and listing it here as well checks every commit
+  # TWICE — one run per event, on the same SHA, which is what happened to this
+  # workflow's own first two commits. `concurrency` cannot merge them: a push
+  # carries no `head_ref`, so the two events cannot be given the same group.
+  #
+  # The cost is that a push to a branch with NO pull request is unchecked, which
+  # includes the branch this project currently deploys from. Open the pull
+  # request — that is where the checks are meant to be read anyway — or run this
+  # by hand below.
   push:
     branches:
       - main
-      - claude/project-analysis-6t08cr
-  # So a failure can be re-run without pushing an empty commit.
+  # So a failure can be re-run without pushing an empty commit, and so an
+  # unproposed branch can be checked on demand.
   workflow_dispatch:
 
 # A second push supersedes the first: nobody needs the verdict on a commit that
-# has already been replaced.
-#
-# Keyed on `head_ref` when there is one, so the pull_request run and the push run
-# for the same branch land in the same group instead of both linting the same
-# commit — this workflow's own first commit was checked twice, once per event,
-# because the branch that deploys also has a pull request open.
+# has already been replaced. `head_ref` for a pull request, so successive pushes
+# to one branch collapse into the latest; it does NOT merge a push run with a
+# pull_request run — a push has no `head_ref` — which is why `push` above is
+# restricted to `main` instead.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
