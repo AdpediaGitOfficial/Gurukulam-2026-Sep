@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -80,7 +81,14 @@ export function StudentImportPanel({
             <>
               All {plan.unallocated} of the new records are unallocated — an import creates the
               record and nothing else. Course, batch, price and credentials are decided per student
-              on <a href="/students/unallocated" className="text-brand underline underline-offset-4">the unallocated queue</a>.
+              on{" "}
+              <Link
+                href="/students/unallocated"
+                className="text-brand underline underline-offset-4"
+              >
+                the unallocated queue
+              </Link>
+              .
             </>
           )}
         </Alert>

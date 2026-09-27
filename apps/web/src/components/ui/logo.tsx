@@ -56,9 +56,13 @@ export interface LogoProps {
 export function Logo({ variant = "mark", className, decorative = false }: LogoProps) {
   const art = ART[variant];
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- a fixed-colour SVG
-    // needs no optimisation pipeline, and next/image would require
-    // dangerouslyAllowSVG to serve it at all.
+    /* A fixed-colour SVG needs no optimisation pipeline, and `next/image` would
+       require `dangerouslyAllowSVG` to serve it at all. The directive below has
+       to be the LAST line before the element: it was written above this reason,
+       where "next line" meant the rest of the comment, so it disabled nothing and
+       the rule was never actually suppressed — which only a linter that runs can
+       tell you. */
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={art.src}
       width={art.width}

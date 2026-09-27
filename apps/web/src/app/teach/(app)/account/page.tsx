@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TeachCard, TeachPage } from "@/features/teach/components/teach-page";
 import { getTrainer } from "@/features/teach/server/teach-service";
-import { logout } from "@/features/auth/server/actions";
+import { logout } from "@/server/auth";
 import { requireTrainer } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Account — Gurukulam" };

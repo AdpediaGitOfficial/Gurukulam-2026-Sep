@@ -81,7 +81,7 @@ export async function runReport<TRow extends z.ZodTypeAny>(
     reportQuerySchema,
   );
   const response = await apiFetch(`/reports/${key}${query}`);
-  return reportEnvelope(row).parse(response) as Report<z.infer<TRow>>;
+  return reportEnvelope(row).parse(response);
 }
 
 /**

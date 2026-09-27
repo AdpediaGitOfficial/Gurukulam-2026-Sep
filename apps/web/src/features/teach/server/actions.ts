@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { markAttendanceSchema, type AttendanceStatus } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
-import { apiFormError } from "@/lib/action";
+import { apiFormError, asText } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -36,7 +36,7 @@ export async function markAttendance(
     const remarks = formData.get(`remarks:${studentId}`);
     entries.push({
       studentId,
-      status: String(value) as AttendanceStatus,
+      status: asText(value) as AttendanceStatus,
       ...(typeof remarks === "string" && remarks.trim() !== "" ? { remarks: remarks.trim() } : {}),
     });
   }

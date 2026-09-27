@@ -25,10 +25,29 @@ import "server-only";
  * than the format.
  */
 export function csvField(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const text = String(value);
+  const text = cell(value);
   const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+}
+
+/**
+ * One cell's value as text, with nothing guessed.
+ *
+ * A column accessor returns `unknown`, and `String(value)` on an object gives
+ * the literal `"[object Object]"` — a cell that looks like data, exports without
+ * complaint and cannot be reconciled against anything. Finance opens these files.
+ * So the primitives are formatted, a Date goes out as an ISO instant, and
+ * anything else is serialised rather than flattened: `{"a":1}` in a cell is at
+ * least a thing somebody can read and report.
+ */
+function cell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  return JSON.stringify(value) ?? "";
 }
 
 /** Header row plus one line per record. */
@@ -90,7 +109,9 @@ export async function collectAll<TRow>(
 ): Promise<ExportedRows<TRow>> {
   const rows: TRow[] = [];
   let page = 1;
-  let totalPages = 1;
+  /* No initialiser: the body always runs before the condition reads this, so a
+     starting value would be a number nothing ever uses. */
+  let totalPages: number;
 
   do {
     const result = await fetchPage({

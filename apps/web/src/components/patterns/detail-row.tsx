@@ -75,7 +75,7 @@ export function DetailRow({ label, value, variant = "text", href, strong = false
       {href === undefined ? (
         value
       ) : (
-        <Link href={href as never} className="text-gold underline-offset-4 hover:underline">
+        <Link href={href} className="text-gold underline-offset-4 hover:underline">
           {value}
         </Link>
       )}

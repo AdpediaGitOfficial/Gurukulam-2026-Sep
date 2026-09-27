@@ -25,9 +25,7 @@ import {
 } from "@gurukulam/contracts";
 
 import { apiFetch } from "@/server/api";
-import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
-import { BATCH_FILTERS } from "@/features/batches/server/batches-service";
-import { STUDENT_FILTERS } from "@/features/students/server/students-service";
+import { BATCH_FILTERS, fetchPage, PAGE_KEYS, STUDENT_FILTERS, type SearchParams } from "@/server/list";
 
 /** Filters this module accepts from the URL. Anything else is dropped. */
 export const COLLEGE_FILTERS = [...PAGE_KEYS, "cityId", "discipline", "isActive"] as const;

@@ -496,7 +496,7 @@ function toTrainer(row: TrainerRow): Trainer {
     qualification: row.qualification,
     experienceYears: row.experienceYears,
     skillTags: row.skillTags,
-    engagement: row.engagement as "IN_HOUSE" | "FREELANCE",
+    engagement: row.engagement,
     payModel: row.payModel,
     payRateMinor: row.payRateMinor?.toString() ?? null,
     maxWeeklyHours: row.maxWeeklyHours,

@@ -255,7 +255,7 @@ async function run(browser: Browser): Promise<void> {
       .slice(0, 200)
       .map((e) => {
         const s = getComputedStyle(e);
-        return { className: (e.className as string), fontSize: s.fontSize, color: s.color };
+        return { className: (e.className), fontSize: s.fontSize, color: s.color };
       }),
   );
   check("the page pairs a type token with a colour token", pairs.length > 0, `${pairs.length} elements`);

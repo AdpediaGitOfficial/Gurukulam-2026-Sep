@@ -913,4 +913,11 @@ async function finish(): Promise<never> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main();
+/* Every other suite ends this way, and this one did not: a rejection inside
+   `main` was an unhandled promise, which Node reports as a crash with a stack
+   into the runtime rather than as this file's own failure. */
+main().catch(async (error: unknown) => {
+  console.error(error);
+  await prisma.$disconnect();
+  process.exit(1);
+});

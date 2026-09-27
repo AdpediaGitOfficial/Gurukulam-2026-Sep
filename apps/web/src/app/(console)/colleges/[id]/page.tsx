@@ -5,7 +5,6 @@ import { can, type Batch, type CollegeDetail, type Student } from "@gurukulam/co
 import { DeleteRecord } from "@/components/patterns/delete-record";
 import { PageHeader } from "@/components/patterns/page-header";
 import { PageBody, PageSection } from "@/components/patterns/page-section";
-import { SegmentTag } from "@/components/patterns/segment-tag";
 import { StatTile, StatTileGrid } from "@/components/patterns/stat-tile";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";

@@ -1,4 +1,4 @@
-import type { Metadata, Route } from "next";
+import type { Metadata } from "next";
 
 import { FilterTabs } from "@/components/patterns/filter-tabs";
 import { FilterToolbar } from "@/components/patterns/filter-toolbar";
@@ -511,7 +511,7 @@ function DesignSystem() {
                 page={2}
                 pageCount={5}
                 hrefForPage={(page) =>
-                  (page === 1 ? "/design-system" : `/design-system?page=${page}`) as Route
+                  (page === 1 ? "/design-system" : `/design-system?page=${page}`)
                 }
                 summary="Showing 9–16 of 38"
               />

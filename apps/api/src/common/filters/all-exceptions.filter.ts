@@ -1,3 +1,17 @@
+/*
+ * This file's whole job is mapping an HTTP status to a stable error code, and a
+ * status arrives from the framework as a plain `number`: a thrown
+ * `HttpException` can carry any of them. Comparing that number against
+ * `HttpStatus.NOT_FOUND` rather than against `404` is the point — the rule reads
+ * it as mixing a nominal enum with a number, which is exactly what reading a
+ * number through a named constant looks like. Left on everywhere else, where a
+ * mismatched enum comparison is a real bug.
+ *
+ * (The directive below is its own comment: a block comment only carries a
+ * directive when `eslint-disable` is the first thing in it, so the version with
+ * the reason above it silenced nothing.)
+ */
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 import {
   ArgumentsHost,
   Catch,

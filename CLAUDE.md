@@ -476,15 +476,83 @@ Full list with enforcement points in `docs/architecture.md` §4. The ones that b
 Next.js (App Router) · React · TypeScript strict · Tailwind v4 with a `@theme` token layer ·
 PostgreSQL + Prisma · Server Components and Server Actions.
 
-**There is no linter, and the scripts that pretended otherwise are gone.** `npm run lint` ran
-`next lint` against a repo with no ESLint config and no ESLint dependency, so it prompted for setup
-and exited 1 — it had never once run. A command in `package.json` that cannot succeed is worse than an
-absent one: it goes in a checklist, fails for everybody, and teaches the team that a red script is
-normal. What actually guards this codebase is `tsc --noEmit` under `strict` across six workspaces plus
-the `verify:*` suites, which check the things a linter cannot — that a control does something, that a
-screen fits a phone, that a size is on the scale, that an endpoint has a way in from the surface that
-owes it one. Adding ESLint is a live option; it is a decision with its own config, its own noise and
-its own argument about rules, not a script to leave lying around.
+**ESLint runs, as one flat config and one script.** `npm run lint` is
+`eslint . --max-warnings 0` from the root: one `eslint.config.mjs` covering four
+workspaces, rather than a config per package fanned out by turbo. Five copies of a
+rule set is one that disagrees with itself the first time somebody tightens a rule in
+the app they happen to be working in. The predecessor was `next lint` against a repo
+with no ESLint config and no ESLint dependency — it prompted for setup and exited 1,
+so it had never once run.
+
+**Nothing is a warning.** A warning does not fail, so it accumulates, and a run that
+prints two hundred lines and exits 0 teaches everybody to stop reading it. Every rule
+is an error; a rule not worth fixing is turned off in the config WITH ITS REASON,
+which is also the record of what this codebase decided. Off today: `require-await`
+(here `async` is as often an interface — a Nest service family, a Next config's
+`headers()` — as it is a missing await, and the dangerous case is
+`no-floating-promises`, which stays); the unsafe-`any` family in the probe scripts
+ONLY, because `await response.json()` is `any` by construction and those files exist
+to distrust the contract rather than to restate it; `no-unused-expressions` relaxed to
+allow `condition ? ok(…) : bad(…)` in the same scripts, where seventy-four of them
+read as a table of assertions.
+
+**The type-checked rules are the reason to run it at all.** `no-floating-promises` and
+`no-misused-promises` catch a dropped `await` inside one of the transactions this
+product is built on — the happy path still returns, so nothing else here would notice.
+`projectService: true` finds each file's own tsconfig, which matters because there is
+no root one.
+
+**The dependency rule is now enforced rather than asserted.** `tokens → primitives →
+patterns → features → routes`, and the config states it as `no-restricted-imports`: a
+primitive, pattern or `lib` file may not import `@/features/*`, and a feature may not
+import another feature — one generated block per slice, read off disk so it stays true
+as modules are added. It found seven violations on its first run, and both were real
+architecture rather than nits:
+
+· **`features/auth/server/actions.ts` was the module every surface needed.** Four of
+  its eight callers were not allowed to import it — `components/layout/top-bar.tsx` is
+  a primitive, and the student, trainer and college login forms are three other
+  slices. It is not a module in the sense the others are: no nav entry, no query
+  contract, no service applying scope. It is the SESSION, so it now lives at
+  `@/server/auth` beside `server/session.ts`, which holds where the tokens are kept.
+  `features/auth` keeps its two console forms.
+· **Two filter vocabularies were being imported across slices.** `BATCH_FILTERS` and
+  `STUDENT_FILTERS` list which URL keys `/batches` and `/students` accept, and a
+  college's record and a student's allocation form send them to the same endpoints. A
+  filter list belongs to the endpoint it narrows, not to whichever module owns a
+  screen, so both moved to `@/server/list.ts` beside `PAGE_KEYS`. A vocabulary used by
+  exactly one feature stays in that feature.
+
+**What the first clean run cost, and what it was worth.** 1,281 findings became 45
+once the probe scripts and the copy-only `design-kit/` handoff bundle were accounted
+for, and every one of those 45 was then read. The ones that were bugs rather than
+tidying: `String(formData.get(…))` in eight places, where a `File` stringifies to the
+literal `"[object File]"` and passes validation as a name — `asText()` in
+`lib/action.ts` refuses it now; both CSV exporters wrote `"[object Object]"` into a
+cell for any non-primitive, in the files finance reconciles against; `verify:campus`
+ended with a bare `main()`, so a rejection inside it surfaced as an unhandled promise
+rather than as the suite's own failure; a raw `<a>` did a full page reload to the
+unallocated queue; and `logo.tsx` carried an `eslint-disable-next-line` whose next
+line was the rest of its own comment, so it suppressed nothing — which only a linter
+that runs can tell you.
+
+**Two findings pointed at code where the naive fix would have broken something.**
+`register("ApiError", apiErrorSchema)` in `openapi.ts` bound a variable nothing read —
+and deleting the line would have removed the schema every error response `$ref`s, so
+the call stays and the binding goes. In the nav rail, `set-state-in-effect` flagged an
+effect that synchronised two pieces of state whenever the route's module changed: a
+render, an effect, then a second render, the first of which paints the previous
+module's menu. It is derived now, and the override remembers which route it was made
+on, so a manual toggle survives moving between pages of one module and is discarded
+when the module changes.
+
+**Deliberately not added:** `eslint-config-next` (its peer range stops at ESLint 9 and
+it carries React and a11y presets nobody chose — the Next rules come from
+`@next/eslint-plugin-next` directly, pinned to the app's own 15.5);
+`eslint-plugin-jsx-a11y`, which is a real audit across ninety screens rather than a
+config change, and half-applied accessibility rules read as "we looked at this" when
+nobody has; and any formatting rule, because no formatter is configured and a linter
+arguing about commas is how a team learns to run `--fix` without reading it.
 
 **No client state library and no data-fetching library.** Filters and pagination live in
 `searchParams`, so views stay server-rendered and shareable. This is a deliberate departure from the
@@ -528,7 +596,8 @@ features/<module>/
 7. **Check the invariants.** If the module touches enrolment, money, scheduling or visibility, at
    least one applies.
 
-**Do not:** reach into another feature's service · put business logic in a route or component · add a
+**Do not:** reach into another feature's service — `npm run lint` refuses it, and so does a primitive
+importing a feature · put business logic in a route or component · add a
 client component to make a filter work · add a raw hex, px size or one-off shadow · add a token to
 `globals.css` without also registering it in `lib/cn.ts` (it will silently vanish from the DOM) · put a
 wide table in a bare `overflow-x-auto` div — use `TableScroll`, which also contains paint, because

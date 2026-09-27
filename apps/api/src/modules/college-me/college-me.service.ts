@@ -192,7 +192,7 @@ export class CollegeMeService {
       contractCode: contract.contractCode,
       courseName: contract.course?.name ?? null,
       batchCode: contract.batch?.batchCode ?? null,
-      commercialBasis: contract.commercialBasis as "PER_STUDENT" | "FLAT_COHORT",
+      commercialBasis: contract.commercialBasis,
       perStudentRateMinor: contract.perStudentRateMinor?.toString() ?? null,
       billableHeadcount: contract.billableHeadcount,
       totalValueMinor: contract.totalValueMinor?.toString() ?? null,

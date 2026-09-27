@@ -115,7 +115,11 @@ const errorResponse = (description: string) => ({
 });
 
 export function buildOpenApiDocument(basePath: string): Record<string, unknown> {
-  const ApiError = register("ApiError", apiErrorSchema);
+  /* Registered, not bound: `errorResponse` above points at
+     `#/components/schemas/ApiError` by name, so the call is what puts it in the
+     document. Deleting the line to satisfy an unused variable would quietly
+     remove the error schema every response refers to. */
+  register("ApiError", apiErrorSchema);
   const Login = register("LoginInput", loginSchema);
   const Refresh = register("RefreshInput", refreshSchema);
   const Session = register("Session", sessionSchema);

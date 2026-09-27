@@ -6,7 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/input";
-import { login } from "@/features/auth/server/actions";
+import { login } from "@/server/auth";
 import { IDLE } from "@/lib/form";
 
 export interface LoginFormProps {

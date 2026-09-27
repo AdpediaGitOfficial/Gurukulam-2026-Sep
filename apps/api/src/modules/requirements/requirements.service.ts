@@ -346,7 +346,7 @@ export class PortalAccessService {
 
     let name = input.name;
     let email = input.email;
-    let pocId = input.pocId ?? null;
+    const pocId = input.pocId ?? null;
 
     if (pocId) {
       const poc = await this.prisma.collegePoc.findFirst({

@@ -69,7 +69,6 @@ async function tokenFor(email: string, password = PASSWORD): Promise<string> {
 
 const stamp = Date.now();
 const READ = { read: true, edit: false, delete: false };
-const NONE = { read: false, edit: false, delete: false };
 
 async function main() {
   // The suites share one address; the throttle is not aimed at them.

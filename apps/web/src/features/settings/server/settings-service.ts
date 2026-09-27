@@ -25,14 +25,14 @@ export async function listRoles(params: SearchParams): Promise<Page<Role>> {
   const response = await apiFetch(
     `/settings/roles${queryString(params, PAGE_KEYS, roleQuerySchema)}`,
   );
-  return pageOf(roleSchema).parse(response) as Page<Role>;
+  return pageOf(roleSchema).parse(response);
 }
 
 export async function listAdministrators(params: SearchParams): Promise<Page<AdminUser>> {
   const response = await apiFetch(
     `/settings/administrators${queryString(params, PAGE_KEYS, adminUserQuerySchema)}`,
   );
-  return pageOf(adminUserSchema).parse(response) as Page<AdminUser>;
+  return pageOf(adminUserSchema).parse(response);
 }
 
 /** One role, for the edit form. */

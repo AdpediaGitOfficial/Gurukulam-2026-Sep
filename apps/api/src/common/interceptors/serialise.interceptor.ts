@@ -14,7 +14,9 @@ import { map, type Observable } from "rxjs";
 @Injectable()
 export class SerialiseInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    return next.handle().pipe(map((value) => serialise(value)));
+    /* Annotated: `CallHandler.handle()` is `Observable<any>`, so without this
+       the value arrives as `any` and every field below it is unchecked. */
+    return next.handle().pipe(map((value: unknown) => serialise(value)));
   }
 }
 
@@ -27,11 +29,17 @@ export function serialise(value: unknown): unknown {
   if (typeof value === "object") {
     // Anything with a custom prototype (a Buffer, a stream, a class instance
     // the handler meant to return as-is) is left alone.
-    const proto = Object.getPrototypeOf(value);
+    /* Annotated: `getPrototypeOf` is typed `any`, and an `any` here would make
+       every comparison below it unchecked. */
+    const proto: unknown = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) return value;
 
     const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) out[key] = serialise(item);
+    /* Asserted, because `Object.entries` on an `object` hands back `any` values
+       and every field below would be unchecked from here on. */
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = serialise(item);
+    }
     return out;
   }
 

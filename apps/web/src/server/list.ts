@@ -146,8 +146,44 @@ export async function fetchPage<TRow extends z.ZodTypeAny>(
     throw parsed.error;
   }
 
-  return parsed.data as Page<z.infer<TRow>>;
+  return parsed.data;
 }
 
 /** Every list endpoint accepts these on top of its own filters. */
 export const PAGE_KEYS = ["page", "pageSize", "q", "sort", "order"] as const;
+
+/*
+ * The filter vocabularies more than one slice sends to the SAME endpoint.
+ *
+ * A filter list belongs to the endpoint it narrows rather than to whichever
+ * module happens to own the screen: `/batches` accepts these keys whether the
+ * batches list, a college's record or a student's allocation form is asking. The
+ * two below were declared in `features/batches` and `features/students` and
+ * imported across slice boundaries — three cross-feature imports for two string
+ * arrays, which the dependency rule correctly refuses and which a copy in each
+ * caller would answer by drifting.
+ *
+ * A vocabulary used by exactly one feature stays in that feature. This file is
+ * for the shared ones, beside the pagination keys they all extend.
+ */
+export const BATCH_FILTERS = [
+  ...PAGE_KEYS,
+  "attention",
+  "courseId",
+  "collegeId",
+  "cityId",
+  "trainerId",
+  "status",
+  "segment",
+] as const;
+
+export const STUDENT_FILTERS = [
+  ...PAGE_KEYS,
+  "collegeId",
+  "cityId",
+  "batchId",
+  "courseId",
+  "segment",
+  "accountStatus",
+  "allocated",
+] as const;

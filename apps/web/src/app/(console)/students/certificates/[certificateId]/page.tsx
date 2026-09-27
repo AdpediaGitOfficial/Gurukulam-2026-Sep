@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { can } from "@gurukulam/contracts";
-import Link from "next/link";
 
 import { DetailRow } from "@/components/patterns/detail-row";
 import { PageHeader } from "@/components/patterns/page-header";

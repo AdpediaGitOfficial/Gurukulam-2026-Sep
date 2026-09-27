@@ -49,7 +49,7 @@ function safeHref(value: string | null): Route | undefined {
   if (value === null) return undefined;
   if (!value.startsWith("/") || value.startsWith("//")) return undefined;
   if (!isBuiltRoute(value)) return undefined;
-  return value as Route;
+  return value;
 }
 
 function NotificationRow({ item }: { item: Notification }) {

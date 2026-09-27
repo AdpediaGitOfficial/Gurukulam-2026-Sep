@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { can, formatRupees, fromWire, type Receipt } from "@gurukulam/contracts";
+import { can, formatRupees, fromWire } from "@gurukulam/contracts";
 
 import { ConfirmWithReason } from "@/components/patterns/confirm-with-reason";
 import { PrintButton } from "@/features/ledger/components/print-button";

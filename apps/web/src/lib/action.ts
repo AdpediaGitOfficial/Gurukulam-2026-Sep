@@ -41,6 +41,22 @@ export function text(formData: FormData, key: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
+/**
+ * One repeated field's value, as text.
+ *
+ * `FormData.get` and `getAll` return `string | File`, so `String(value)` on a
+ * file gives the literal text `"[object File]"` — which then passes validation
+ * as a perfectly good name. Nothing in this product posts a file today, which is
+ * exactly why it is worth refusing rather than assuming: the assumption is
+ * invisible until somebody adds an upload to a form that already works.
+ *
+ * `text()` above does this for a single field; this is for the ones read in a
+ * loop, where there is no key to pass.
+ */
+export function asText(value: FormDataEntryValue | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
 /** Reads a checkbox. An unchecked box is absent from the payload, not false. */
 export function checked(formData: FormData, key: string): boolean {
   return formData.get(key) === "on";

@@ -14,7 +14,7 @@ import {
 } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { apiFormError, checked, fieldErrors, text } from "@/lib/action";
+import { apiFormError, asText, checked, fieldErrors, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -118,7 +118,7 @@ export async function createSubmission(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const names = parseNames(formData.get("names")?.toString() ?? "");
+  const names = parseNames(asText(formData.get("names") ?? undefined));
   const parsed = createSubmissionSchema.safeParse({
     batchId: text(formData, "batchId"),
     names,

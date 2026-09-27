@@ -19,21 +19,9 @@ import {
   assignmentSubmissionQuerySchema,
 } from "@gurukulam/contracts";
 
-import { BATCH_FILTERS } from "@/features/batches/server/batches-service";
 
 import { apiFetch } from "@/server/api";
-import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
-
-export const STUDENT_FILTERS = [
-  ...PAGE_KEYS,
-  "collegeId",
-  "cityId",
-  "batchId",
-  "courseId",
-  "segment",
-  "accountStatus",
-  "allocated",
-] as const;
+import { BATCH_FILTERS, fetchPage, PAGE_KEYS, STUDENT_FILTERS, type SearchParams } from "@/server/list";
 
 export async function listStudents(params: SearchParams): Promise<Page<Student>> {
   return fetchPage("/students", studentSchema, params, STUDENT_FILTERS, studentQuerySchema);

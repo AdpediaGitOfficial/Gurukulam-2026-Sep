@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { can, formatRupees, formatRupeesShort, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
+import { can, formatRupeesShort, fromWire, PARTNERSHIP_LABELS, type College } from "@gurukulam/contracts";
 
 import { ListFilters } from "@/components/patterns/list-filters";
 import { ListPage } from "@/components/patterns/list-page";

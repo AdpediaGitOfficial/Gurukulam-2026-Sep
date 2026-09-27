@@ -26,7 +26,7 @@
  *   npm run verify:teach --workspace @gurukulam/web
  */
 import { PrismaClient } from "@gurukulam/db";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Page } from "playwright";
 
 const BASE = process.env["VERIFY_BASE_URL"] ?? "http://127.0.0.1:3000";
 const API = process.env["API_INTERNAL_URL"] ?? "http://127.0.0.1:4000/api/v1";

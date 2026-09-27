@@ -15,7 +15,7 @@
  * be tested the moment the services exist.
  */
 import { randomBytes, scryptSync } from "node:crypto";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 /**
  * Portal login identities, derived from immutable business IDs. Kept in step

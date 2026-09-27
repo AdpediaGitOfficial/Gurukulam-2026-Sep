@@ -231,7 +231,7 @@ const HEADER_ALIASES: Record<string, string> = {
 };
 
 const normaliseHeader = (raw: string): string => {
-  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_").replace(/^﻿/, "");
+  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_").replace(/^\uFEFF/, "");
   return HEADER_ALIASES[key] ?? key;
 };
 
@@ -242,7 +242,7 @@ const normaliseHeader = (raw: string): string => {
  * rejection they read has to match the row they scroll to.
  */
 export function parseStudentImport(text: string): ParsedStudentImport {
-  const table = parseDelimited(text.replace(/^﻿/, ""));
+  const table = parseDelimited(text.replace(/^\uFEFF/, ""));
   if (table.length === 0) return { ok: false, error: "That file is empty." };
 
   const header = (table[0] ?? []).map(normaliseHeader);

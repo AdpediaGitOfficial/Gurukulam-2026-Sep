@@ -49,7 +49,7 @@ async function call<T = any>(path: string, init: { method?: string; body?: unkno
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
   const text = await res.text();
-  let body: any = null;
+  let body: any;
   try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   return { status: res.status, body, text };
 }

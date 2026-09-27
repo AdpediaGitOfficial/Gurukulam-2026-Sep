@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     await page
       .waitForFunction(() => {
         const candidates = [...document.querySelectorAll("button")].filter((element) => {
-          const button = element as HTMLButtonElement;
+          const button = element;
           return !button.disabled && button.closest("form") === null && button.closest("a") === null;
         });
         if (candidates.length === 0) return true;
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
 
       const inert: string[] = [];
       document.querySelectorAll("button").forEach((element) => {
-        const button = element as HTMLButtonElement;
+        const button = element;
         if (button.disabled) return;
         // Wired three legitimate ways: it submits a form, it sits inside a
         // link, or React gave it a click handler. React attaches handlers as

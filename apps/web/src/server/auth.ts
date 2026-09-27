@@ -1,5 +1,25 @@
 "use server";
 
+/**
+ * Signing in, signing out, and changing a password — for every surface.
+ *
+ * ── Why this is not a feature slice ─────────────────────────────────────
+ *
+ * It lived at `features/auth/server/actions.ts`, and four of its eight callers
+ * were not allowed to import it: `components/layout/top-bar.tsx` is a primitive,
+ * and the student, trainer and college login forms are three other slices. The
+ * dependency rule is one-way — `tokens → primitives → patterns → features →
+ * routes` — so the module every surface needs cannot sit inside one of them.
+ *
+ * It is also not a module in the sense the other slices are: there is no nav
+ * entry, no `AuthQuery`, no service applying scope. It is the SESSION, which the
+ * console and all three portals have one of. `server/session.ts` holds where the
+ * tokens are kept; this holds the acts that put them there.
+ *
+ * `features/auth` keeps its two console FORMS, which are console UI and nothing
+ * else's business.
+ */
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { changePasswordSchema, loginSchema, sessionSchema } from "@gurukulam/contracts";

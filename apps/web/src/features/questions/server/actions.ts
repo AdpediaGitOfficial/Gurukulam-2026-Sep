@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createQuestionSchema, questionSchema } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { apiFormError, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, asText, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -22,8 +22,8 @@ import { formError, type FormState } from "@/lib/form";
  * the pairing that feeds it is right.
  */
 function readQuestion(formData: FormData): unknown {
-  const keys = formData.getAll("optionKey").map((v) => v.toString().trim());
-  const texts = formData.getAll("optionText").map((v) => v.toString().trim());
+  const keys = formData.getAll("optionKey").map((v) => asText(v).trim());
+  const texts = formData.getAll("optionText").map((v) => asText(v).trim());
 
   const options = keys
     .map((key, index) => ({ key, text: texts[index] ?? "" }))
@@ -35,7 +35,7 @@ function readQuestion(formData: FormData): unknown {
   const correctAnswers =
     type === "TRUE_FALSE"
       ? [text(formData, "trueFalse") ?? ""].filter((v) => v !== "")
-      : formData.getAll("correct").map((v) => v.toString());
+      : formData.getAll("correct").map((v) => asText(v));
 
   const tags = (text(formData, "tags") ?? "")
     .split(",")

@@ -55,7 +55,7 @@ function QuestionCard({
         {question.topicTitle === null || question.topicTitle === undefined ? null : (
           <Chip>{question.topicTitle}</Chip>
         )}
-        <Chip color={DIFFICULTY[question.difficulty as keyof typeof DIFFICULTY]}>
+        <Chip color={DIFFICULTY[question.difficulty]}>
           {question.difficulty.toLowerCase()}
         </Chip>
         <Chip>{question.questionType.replace(/_/g, " ").toLowerCase()}</Chip>

@@ -29,7 +29,7 @@ export function withParam(
   if (key !== "page") next.delete("page");
 
   const query = next.toString();
-  return (query === "" ? pathname : `${pathname}?${query}`) as Route;
+  return (query === "" ? pathname : `${pathname}?${query}`);
 }
 
 /** "Showing 1–25 of 342" — the summary above a pager. */

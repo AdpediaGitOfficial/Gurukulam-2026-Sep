@@ -87,7 +87,9 @@ async function main() {
       },
       select: { trainerId: true, name: true },
     });
-    const approval = await prisma.trainerCourse.create({
+    /* The call matters, its id does not: this is what approves the trainer for
+       the batch's course, and invariant 15 refuses the assignment without it. */
+    await prisma.trainerCourse.create({
       data: { trainerId: created.trainerId, courseId: batch!.courseId },
       select: { trainerCourseId: true },
     });

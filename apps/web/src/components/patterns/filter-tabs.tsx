@@ -107,7 +107,7 @@ function FilterTabsLinks({ param, tabs, className }: FilterTabsProps) {
     // Changing the filter invalidates the current page number.
     next.delete("page");
     const query = next.toString();
-    return (query ? `${pathname}?${query}` : pathname) as Route;
+    return (query ? `${pathname}?${query}` : pathname);
   };
 
   return (

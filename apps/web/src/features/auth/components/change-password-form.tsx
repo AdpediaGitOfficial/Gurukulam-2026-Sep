@@ -6,7 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/input";
-import { changePassword } from "@/features/auth/server/actions";
+import { changePassword } from "@/server/auth";
 import { IDLE, type FormState } from "@/lib/form";
 
 export function ChangePasswordForm({ required }: { required: boolean }) {

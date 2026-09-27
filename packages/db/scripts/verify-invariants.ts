@@ -30,8 +30,16 @@ function bad(name: string, detail: string) {
   console.log(`  \x1b[31m✗\x1b[0m ${name}\n      \x1b[31m${detail}\x1b[0m`);
 }
 
-/** Asserts a value. */
-function expect(name: string, actual: unknown, wanted: unknown) {
+/**
+ * Asserts a scalar.
+ *
+ * Typed rather than `unknown`: these are counts and codes, and a template hole
+ * that accepts an object prints `[object Object]` in the one line somebody reads
+ * to find out what failed.
+ */
+type Scalar = string | number | bigint | boolean | null | undefined;
+
+function expect(name: string, actual: Scalar, wanted: Scalar) {
   if (actual === wanted) ok(name, `${actual}`);
   else bad(name, `expected ${wanted}, got ${actual}`);
 }

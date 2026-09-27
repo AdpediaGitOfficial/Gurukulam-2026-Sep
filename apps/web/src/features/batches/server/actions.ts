@@ -24,7 +24,7 @@ import {
 } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { apiFormError, checked, clearable, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, asText, checked, clearable, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -663,7 +663,7 @@ export async function markAttendance(
     const remarks = formData.get(`remarks:${studentId}`);
     entries.push({
       studentId,
-      status: String(value) as AttendanceStatus,
+      status: asText(value) as AttendanceStatus,
       ...(typeof remarks === "string" && remarks.trim() !== "" ? { remarks: remarks.trim() } : {}),
     });
   }

@@ -170,7 +170,6 @@ async function main(): Promise<void> {
       batch: { studentMappings: { some: { studentId: student.studentId, deletedAt: null } } },
     },
   });
-  const onPage = (learning.match(/SES-/g) ?? []).length;
   console.log(`  \x1b[90m· ${sessions} session(s) in the data\x1b[0m`);
 
   // ── 5. The recording's two gates ────────────────────────────────────────
@@ -1129,9 +1128,6 @@ async function main(): Promise<void> {
     console.log("  \x1b[90m· no admin token or no batch — the notification checks are skipped\x1b[0m");
   } else {
     const noticeStamp = Date.now().toString().slice(-9);
-    const before = await prisma.notification.count({
-      where: { recipientType: "STUDENT", recipientId: student.studentId },
-    });
 
     /*
      * A cancelled session, driven through the admin API exactly as an operator

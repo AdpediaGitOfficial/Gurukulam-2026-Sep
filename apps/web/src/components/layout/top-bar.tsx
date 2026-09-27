@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Principal } from "@gurukulam/contracts";
 
 import { Icon } from "@/components/ui/icon";
-import { logout } from "@/features/auth/server/actions";
+import { logout } from "@/server/auth";
 import { cn } from "@/lib/cn";
 
 export interface TopBarProps {

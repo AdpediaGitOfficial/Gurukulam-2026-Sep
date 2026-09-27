@@ -14,7 +14,7 @@ import {
 } from "@gurukulam/contracts";
 
 import { apiFetch, ApiRequestError, checkShape } from "@/server/api";
-import { apiFormError, fieldErrors, number, text } from "@/lib/action";
+import { apiFormError, asText, fieldErrors, number, text } from "@/lib/action";
 import { formError, type FormState } from "@/lib/form";
 
 /**
@@ -183,8 +183,8 @@ export async function setSchedule(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const amounts = formData.getAll("amount").map((v) => v.toString().trim());
-  const dueDates = formData.getAll("dueDate").map((v) => v.toString().trim());
+  const amounts = formData.getAll("amount").map((v) => asText(v).trim());
+  const dueDates = formData.getAll("dueDate").map((v) => asText(v).trim());
 
   const installments = amounts
     .map((amount, index) => ({ amount, dueDate: dueDates[index] ?? "" }))

@@ -5,7 +5,6 @@ import type { Principal } from "@gurukulam/contracts";
 
 import { NavigationRail } from "@/components/layout/navigation-rail";
 import { TopBar } from "@/components/layout/top-bar";
-import { ModuleTabs } from "@/components/patterns/module-tabs";
 import { cn } from "@/lib/cn";
 
 export interface ConsoleShellProps {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { can, type Principal } from "@gurukulam/contracts";
 
 import { Icon } from "@/components/ui/icon";
@@ -34,17 +34,30 @@ export function NavigationRail({ principal, expanded, onToggleExpanded }: Naviga
    * One sub-menu open at a time. Moving to a different module opens that
    * module's and closes the rest; moving between pages inside a module leaves a
    * manual toggle alone.
+   *
+   * ── Why this is derived rather than synchronised ────────────────────────
+   *
+   * It used to be two pieces of state and an effect that compared them and
+   * called `setState` when the route's module changed. That is a render, then an
+   * effect, then a second render — and the first one paints the previous
+   * module's menu, which is a visible flicker on a rail the operator is looking
+   * at while they click. React's own answer is to compute it.
+   *
+   * So the OVERRIDE is the state, and it remembers which route it was made on:
+   * a manual toggle survives moving between pages of the same module and is
+   * discarded the moment the module itself changes. `react-hooks` flags the
+   * effect version as a cascading render, which is what led to this.
    */
   const current = navItemFor(pathname);
-  const [openModule, setOpenModule] = useState<string | undefined>(current?.module);
-  const [lastModule, setLastModule] = useState<string | undefined>(current?.module);
-
-  useEffect(() => {
-    if (current?.module !== lastModule) {
-      setLastModule(current?.module);
-      setOpenModule(current?.module);
-    }
-  }, [current?.module, lastModule]);
+  const routeModule = current?.module;
+  const [override, setOverride] = useState<{ module: string | undefined; at: string | undefined }>({
+    module: routeModule,
+    at: routeModule,
+  });
+  const openModule = override.at === routeModule ? override.module : routeModule;
+  const toggleModule = (module: string) => {
+    setOverride({ module: openModule === module ? undefined : module, at: routeModule });
+  };
 
   const visible = (items: readonly NavItem[]) =>
     items.filter((item) => can(principal, item.module, "read"));
@@ -112,9 +125,7 @@ export function NavigationRail({ principal, expanded, onToggleExpanded }: Naviga
             pathname={pathname}
             expanded={expanded}
             open={openModule === item.module}
-            onToggle={() =>
-              setOpenModule((open) => (open === item.module ? undefined : item.module))
-            }
+            onToggle={() => toggleModule(item.module)}
           />
         ))}
       </ul>
@@ -128,9 +139,7 @@ export function NavigationRail({ principal, expanded, onToggleExpanded }: Naviga
             pathname={pathname}
             expanded={expanded}
             open={openModule === item.module}
-            onToggle={() =>
-              setOpenModule((open) => (open === item.module ? undefined : item.module))
-            }
+            onToggle={() => toggleModule(item.module)}
           />
         ))}
       </ul>

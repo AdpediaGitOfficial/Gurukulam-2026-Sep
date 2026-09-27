@@ -142,7 +142,7 @@ export class AuthService {
     // Every other session dies with the old password. A password change is
     // usually a response to a suspected compromise, and leaving other devices
     // signed in would defeat it.
-    await this.revokeAllFor(principal.actor as ActorType, principal.id);
+    await this.revokeAllFor(principal.actor, principal.id);
   }
 
   // ── Token issue ─────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ export class AuthService {
     await this.prisma.$transaction(async (tx) => {
       const created = await tx.refreshToken.create({
         data: {
-          actorType: principal.actor as ActorType,
+          actorType: principal.actor,
           actorId: principal.id,
           tokenHash: hashToken(refreshToken),
           deviceLabel: context.deviceLabel ?? null,

@@ -175,7 +175,7 @@ function Status({ assignment }: { assignment: MeAssignment }) {
 
   if (submission?.gradedAt != null) return <StatusPill intent="success">marked</StatusPill>;
   if (handedIn) {
-    return submission!.status === "LATE" ? (
+    return submission.status === "LATE" ? (
       <StatusPill intent="warning">handed in late</StatusPill>
     ) : (
       <StatusPill intent="info">handed in</StatusPill>

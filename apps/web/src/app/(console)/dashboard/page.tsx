@@ -241,7 +241,7 @@ export default async function DashboardPage() {
     title: b.title,
     count: countOf(portfolio.delivery, b.bucket),
     color: deliveryRamp[index] ?? deliveryRamp[0],
-    href: b.href as Route,
+    href: b.href,
   }));
 
   const utilisationSlices: BandSlice[] = UTILISATION_BUCKETS.map((b, index) => ({
@@ -250,7 +250,7 @@ export default async function DashboardPage() {
     title: b.title,
     count: countOf(capacity.utilisation, b.bucket),
     color: utilisationRamp[index] ?? utilisationRamp[0],
-    href: b.href as Route,
+    href: b.href,
   }));
 
   /* Completion and drop-out are independent: a student can finish, and a
@@ -303,28 +303,28 @@ export default async function DashboardPage() {
       count: portfolio.stalledBatches,
       label: "Batches past their start date with no session delivered",
       tone: "danger",
-      href: "/batches?attention=STALLED" as Route,
+      href: "/batches?attention=STALLED",
     },
     {
       key: "noEnrolment",
       count: portfolio.coursesWithoutEnrolment,
       label: "Courses with live batches and nobody enrolled",
       tone: "warning",
-      href: "/courses?attention=NO_ENROLMENT" as Route,
+      href: "/courses?attention=NO_ENROLMENT",
     },
     {
       key: "overCapacity",
       count: portfolio.batchesOverCapacity,
       label: "Batches over their capacity",
       tone: "warning",
-      href: "/batches?attention=OVER_CAPACITY" as Route,
+      href: "/batches?attention=OVER_CAPACITY",
     },
     {
       key: "noTopics",
       count: portfolio.coursesWithoutTopics,
       label: "Courses with no topics defined",
       tone: "warning",
-      href: "/courses?attention=NO_TOPICS" as Route,
+      href: "/courses?attention=NO_TOPICS",
     },
   ];
 
@@ -334,28 +334,28 @@ export default async function DashboardPage() {
       count: capacity.unstaffedBatchesSoon,
       label: "Batches starting in 14 days with no trainer confirmed",
       tone: "danger",
-      href: "/batches?attention=UNSTAFFED_SOON" as Route,
+      href: "/batches?attention=UNSTAFFED_SOON",
     },
     {
       key: "doubleBooked",
       count: capacity.doubleBookedTrainers,
       label: "Trainers double-booked on the same morning",
       tone: "danger",
-      href: "/trainers?attention=DOUBLE_BOOKED" as Route,
+      href: "/trainers?attention=DOUBLE_BOOKED",
     },
     {
       key: "staleProposals",
       count: capacity.staleProposals,
       label: "Proposals waiting on a trainer for over 7 days",
       tone: "warning",
-      href: "/batches?status=SCHEDULED" as Route,
+      href: "/batches?status=SCHEDULED",
     },
     {
       key: "noCourses",
       count: capacity.trainersWithoutCourses,
       label: "Trainers approved to deliver nothing",
       tone: "warning",
-      href: "/trainers?attention=NO_COURSES" as Route,
+      href: "/trainers?attention=NO_COURSES",
     },
   ];
 

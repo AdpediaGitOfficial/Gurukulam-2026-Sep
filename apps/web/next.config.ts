@@ -69,6 +69,8 @@ const config: NextConfig = {
   reactStrictMode: true,
   // The contracts package ships TypeScript source for the browser bundle.
   transpilePackages: ["@gurukulam/contracts"],
+  /* Linting is `npm run lint` at the root, over every workspace at once, so the
+     build does not do it a second time with a different config. */
   eslint: { ignoreDuringBuilds: true },
   // Names the framework and its version to anyone who asks. Free reconnaissance.
   poweredByHeader: false,

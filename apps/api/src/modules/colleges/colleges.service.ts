@@ -487,7 +487,7 @@ function toContact(
     collegeName: row.college?.name ?? null,
     collegeCode: row.college?.collegeCode ?? null,
     cityName: row.college?.city?.name ?? null,
-    portalAccessStatus: (account?.accessStatus ?? null) as CollegeContact["portalAccessStatus"],
+    portalAccessStatus: (account?.accessStatus ?? null),
   };
 }
 

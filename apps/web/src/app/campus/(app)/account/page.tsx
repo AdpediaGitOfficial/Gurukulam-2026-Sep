@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CampusCard, CampusPage } from "@/features/campus/components/campus-page";
 import { campusDate } from "@/features/campus/format";
 import { getCollege } from "@/features/campus/server/campus-service";
-import { logout } from "@/features/auth/server/actions";
+import { logout } from "@/server/auth";
 import { requireCollegeUser } from "@/server/principal";
 
 export const metadata: Metadata = { title: "Account — Gurukulam" };

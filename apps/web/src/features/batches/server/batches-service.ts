@@ -24,18 +24,7 @@ import {
 } from "@gurukulam/contracts";
 
 import { apiFetch, checkShape } from "@/server/api";
-import { fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
-
-export const BATCH_FILTERS = [
-  ...PAGE_KEYS,
-  "attention",
-  "courseId",
-  "collegeId",
-  "cityId",
-  "trainerId",
-  "status",
-  "segment",
-] as const;
+import { BATCH_FILTERS, fetchPage, PAGE_KEYS, type SearchParams } from "@/server/list";
 
 export async function listBatches(params: SearchParams): Promise<Page<Batch>> {
   return fetchPage("/batches", batchSchema, params, BATCH_FILTERS, batchQuerySchema);

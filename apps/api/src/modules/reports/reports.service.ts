@@ -457,8 +457,21 @@ function bucketOf(days: number): OutstandingRow["bucket"] {
 export function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
   const headers = Object.keys(rows[0]!);
+  /* Nothing guessed: `String(value)` on an object writes the literal
+     "[object Object]" into a cell somebody reconciles a month's collections
+     against. Primitives format, a Date goes out as an ISO instant, and anything
+     else is serialised rather than flattened. */
   const escape = (v: unknown) => {
-    const text = v === null || v === undefined ? "" : String(v);
+    const text =
+      v === null || v === undefined
+        ? ""
+        : typeof v === "string"
+          ? v
+          : typeof v === "number" || typeof v === "bigint" || typeof v === "boolean"
+            ? String(v)
+            : v instanceof Date
+              ? v.toISOString()
+              : (JSON.stringify(v) ?? "");
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   return [
