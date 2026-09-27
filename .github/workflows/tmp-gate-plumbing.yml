@@ -1,0 +1,16 @@
+# TEMPORARY. Proves that `deployment.yml`'s `checks` job can actually call
+# `ci.yml`, which cannot be tested through the deploy workflow itself: that one is
+# disabled, and enabling it to find out would deploy to production.
+#
+# Delete once this has run green.
+name: Gate plumbing check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
