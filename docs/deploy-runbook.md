@@ -13,6 +13,15 @@ about it.
 | Backups | `/var/www/html/gurukulam/db-bakup/gurukulamdbbackup_<timestamp>.sql` |
 | Processes | `pm2` — `gurukulam-api`, `gurukulam-web` |
 | Workflow | `.github/workflows/deployment.yml` |
+| Checks | `.github/workflows/ci.yml` — lint and typecheck, on GitHub's runners |
+
+**The checks do not gate the deploy.** `ci.yml` runs `npm run lint` and
+`npm run typecheck` on every pull request and on the same two branches, on
+`ubuntu-latest` rather than on the box; `deployment.yml` starts at the same moment
+and does not wait for it. So a red check and a deployed commit are both possible
+from one push. Gating it is a `workflow_run` trigger on the deploy, which is a
+deliberate change to make — it would mean no deploy until the checks pass, which
+is usually what people want and is a slower loop than this project has had so far.
 
 **Deployment is automatic.** Pushing to the branch deploys it. There is no
 manual step in the normal case, and running one by hand *while a run is in
@@ -93,8 +102,16 @@ not.
 
 `npm ci` installs strictly from the lockfile and never writes to it, which is
 what the manual path below already uses. Changing the workflow's `npm install`
-to `npm ci` stops the box going dirty at all. It is one word, and
-`npm ci --dry-run` passes against the current lockfile.
+to `npm ci` stops the box going dirty at all. It is one word, and `npm ci` passes
+against the current lockfile — verified on a fresh checkout of it, which is also
+what `ci.yml` does on every push.
+
+That verification found something worth knowing: `npm ci` refused outright for a
+while, because `eslint-plugin-jsx-a11y` declares a peer range that stops at ESLint
+9 and this repo is on 10. `npm install` would have refused for the same reason, on
+the box, mid-deploy. It is fixed by an `overrides` entry naming that one package
+rather than by a `--legacy-peer-deps` flag, so both commands work with no
+arguments anywhere.
 
 Read the last three rows of section 2 and the whole of section 3.
 

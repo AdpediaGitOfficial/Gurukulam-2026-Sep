@@ -1,0 +1,96 @@
+# Lint and typecheck, on every pull request and on the branches that deploy.
+#
+# ── Why these two, and why they are separate jobs ─────────────────────────
+#
+# They fail for different reasons and start different conversations: a type error
+# is "this cannot be true", a lint error is usually "this is true and should not
+# be". Two jobs means two checks on the pull request and a red X that says which.
+# Both are a couple of minutes, so running them in parallel costs nothing.
+#
+# ── Why every job generates and builds before checking ────────────────────
+#
+# Neither check is self-sufficient on a fresh checkout, and the way they fail is
+# not symmetrical:
+#
+#   · `packages/db/src/generated` is not committed, so without `db:generate` the
+#     Prisma client does not exist and everything it types collapses to `any`.
+#   · `@gurukulam/contracts` and `@gurukulam/db` are consumed from `dist`, so
+#     without building them `@gurukulam/db` cannot be resolved at all.
+#
+# Typecheck says so, loudly — that is how this was found. Lint does NOT: an
+# unresolvable import becomes `any`, the type-aware rules go quiet, and the run
+# exits 0 having checked a fraction of what it claims. A green lint on an unbuilt
+# tree is the most misleading result this repository can produce, so the build is
+# not an optimisation here and must not be dropped to save a minute.
+#
+# ── Why not the self-hosted runner ────────────────────────────────────────
+#
+# `deployment.yml` uses `self-hosted`, and that runner is the production box: it
+# checks out into /var/www, builds, and restarts PM2. Linting there would install
+# dev dependencies into the live tree and compete with the app for CPU. If hosted
+# minutes ever become the constraint, `runs-on` is the one line to change.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - claude/project-analysis-6t08cr
+  # So a failure can be re-run without pushing an empty commit.
+  workflow_dispatch:
+
+# A second push supersedes the first: nobody needs the verdict on a commit that
+# has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The repo's own `.nvmrc`, so CI and a laptop cannot disagree.
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` rather than `npm install`: the lockfile is the input, and a
+      # resolution CI invents for itself is not the one anybody tested.
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npm run db:generate
+
+      - run: npm run typecheck
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npm run db:generate
+
+      # Only the two packages, not the apps: `next build` takes a minute and a
+      # half and produces nothing ESLint reads. Typecheck gets this for free from
+      # turbo's `dependsOn: ["^build"]`; a raw `eslint .` has no such edge.
+      - name: Build the packages the linter needs types from
+        run: npx turbo run build --filter=@gurukulam/contracts --filter=@gurukulam/db
+
+      - run: npm run lint

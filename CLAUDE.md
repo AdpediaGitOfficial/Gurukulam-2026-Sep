@@ -476,6 +476,35 @@ Full list with enforcement points in `docs/architecture.md` §4. The ones that b
 Next.js (App Router) · React · TypeScript strict · Tailwind v4 with a `@theme` token layer ·
 PostgreSQL + Prisma · Server Components and Server Actions.
 
+**CI runs the two checks, and neither is self-sufficient on a fresh checkout.**
+`.github/workflows/ci.yml` runs `npm run lint` and `npm run typecheck` as separate jobs
+on every pull request and on the two branches that deploy. Both first run
+`db:generate`, because `packages/db/src/generated` is not committed, and the lint job
+also builds `@gurukulam/contracts` and `@gurukulam/db`, because the apps consume them
+from `dist`. Typecheck gets that for free from turbo's `dependsOn: ["^build"]`; a raw
+`eslint .` has no such edge.
+
+**Skipping that build does not fail the lint — it quietly shrinks it.** An unresolvable
+import becomes `any`, every type-aware rule goes silent, and the run exits 0 having
+checked a fraction of what it claims. Typecheck is what says so out loud, which is how
+this was found: on a clean checkout it could not resolve `@gurukulam/db` from
+`apps/web/scripts`, because **`apps/web` used that package in eight files and never
+declared it** — it worked locally only through workspace hoisting, and turbo therefore
+had no reason to build it first. The manifest says so now.
+
+**`npm ci` refused outright, and `npm install` would have too — on the box, mid-deploy.**
+`eslint-plugin-jsx-a11y` declares a peer range that stops at ESLint 9. The fix is an
+`overrides` entry naming that one package (`{"eslint": "$eslint"}`) rather than a
+`--legacy-peer-deps` flag: the exception is scoped to the package that needs it, peer
+checking stays on everywhere else, and both commands work with no arguments in CI, on a
+laptop and on the deploy runner. Verified by installing a fresh checkout of the lockfile
+from scratch.
+
+**The checks do not gate the deploy.** `deployment.yml` fires on the same push and does
+not wait, so a red check and a deployed commit are both possible. Gating it is a
+`workflow_run` trigger on the deploy — a deliberate change, not an oversight to fix in
+passing.
+
 **ESLint runs, as one flat config and one script.** `npm run lint` is
 `eslint . --max-warnings 0` from the root: one `eslint.config.mjs` covering four
 workspaces, rather than a config per package fanned out by turbo. Five copies of a

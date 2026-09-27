@@ -32,6 +32,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@gurukulam/db": "*",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.7",
