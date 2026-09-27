@@ -43,7 +43,15 @@ Dependencies point one way only. A primitive importing from a feature is a bug.
 4. **Server Components by default.** Add `"use client"` only for genuine interactivity. Today only five opt in:
    `NavRailLink`, `Tabs`, `FilterTabs`, `Dialog` and `Drawer`.
 5. **Every control has an accessible name.** Icon-only buttons need `aria-label`; inputs need a
-   `label`; tables need a `caption`.
+   `label`; tables need a `caption`. `npm run lint` checks this: `jsx-a11y` runs in its strict
+   form and is told what each primitive renders (`Button` → `button`, `Link` → `a`, the field
+   wrappers → their controls), so the rules follow a component through to its DOM instead of
+   stopping at the capital letter. A new primitive that wraps a control belongs in that map —
+   `settings["jsx-a11y"].components` in `eslint.config.mjs` — or the rules will not see it.
+
+   The exception is a composed graphic: an avatar's initials, a donut, a stacked bar. Those carry
+   `role="img"` with an `aria-label`, which is how an inline SVG is named, and
+   `prefer-tag-over-role` is off because its advice — use `<img alt>` — cannot draw them.
 6. **Filters and pagination live in the URL**, not client state — views stay shareable and
    server-rendered.
 7. **`className` is always accepted** on a component and merged with `cn()`, so callers can adjust

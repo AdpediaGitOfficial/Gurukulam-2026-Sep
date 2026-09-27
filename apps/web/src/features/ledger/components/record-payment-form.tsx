@@ -28,6 +28,17 @@ export function RecordPaymentForm({ ledgerId, installments }: RecordPaymentFormP
 
   const selected = installments.find((i) => i.installmentId === installmentId);
   const field = (key: string) => state.fields?.[key];
+  /*
+   * Computed here rather than in the attribute.
+   *
+   * Money is `bigint`, and `jsx-a11y` reads every JSX attribute through
+   * `jsx-ast-utils`, which tries to constant-fold what it finds: a bigint divided
+   * by `100n` inside an attribute makes its evaluator throw "Cannot mix BigInt and
+   * other types" and takes the whole lint run down with it. One value on one line
+   * is also easier to read than a ternary inside a prop.
+   */
+  const clearingAmount =
+    selected === undefined ? "" : (fromWire(selected.outstandingMinor) / 100n).toString();
 
   if (installments.length === 0) {
     return (
@@ -95,11 +106,7 @@ export function RecordPaymentForm({ ledgerId, installments }: RecordPaymentFormP
                 required
                 // Defaults to clearing the installment, which is what happens
                 // most of the time; a part payment is typed over it.
-                defaultValue={
-                  selected === undefined
-                    ? ""
-                    : (fromWire(selected.outstandingMinor) / 100n).toString()
-                }
+                defaultValue={clearingAmount}
                 key={installmentId}
                 className={cn(controlClass, "pl-8 font-mono tabular-nums")}
               />

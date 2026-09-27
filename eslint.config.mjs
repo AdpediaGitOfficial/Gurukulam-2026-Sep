@@ -5,6 +5,7 @@ import { join } from "node:path";
 import js from "@eslint/js";
 import nextPlugin from "@next/eslint-plugin-next";
 import reactHooks from "eslint-plugin-react-hooks";
+import a11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
@@ -35,9 +36,6 @@ import tseslint from "typescript-eslint";
  *   legacy-config shim, React and a11y presets we have not chosen. The Next
  *   rules we do want come from `@next/eslint-plugin-next` directly, pinned to
  *   the same 15.5 as the app.
- * · `eslint-plugin-jsx-a11y` — worth adding, and a decision of its own: it would
- *   open a real audit across ninety screens rather than a config change, and
- *   half-applied accessibility rules read as "we looked at this" when nobody has.
  * · `stylisticTypeChecked` and any formatting rules — no formatter is configured,
  *   and a linter arguing about commas is how a team learns to pass `--fix` at
  *   everything without reading it.
@@ -199,18 +197,102 @@ export default tseslint.config(
     files: ["apps/web/**/*.{ts,tsx}"],
     plugins: {
       "@next/next": nextPlugin,
+      "jsx-a11y": a11y,
       "react-hooks": reactHooks,
     },
     /* Where the app actually is. Without it the plugin looks for `pages/` beside
        this config, does not find one, and says so on every run — and
        `no-html-link-for-pages` has nothing to check against. */
-    settings: { next: { rootDir: "apps/web" } },
+    settings: {
+      next: { rootDir: "apps/web" },
+      /*
+       * What the design system's primitives actually render.
+       *
+       * Without this, `jsx-a11y` only inspects raw DOM elements — and almost
+       * nothing in this app is a raw DOM element. `<Button>` is a `<button>`,
+       * `<Link>` is an `<a>`, and the field wrappers are their controls, so the
+       * rules follow them through instead of stopping at a capital letter.
+       *
+       * `Icon` is deliberately absent: it renders an inline `<svg aria-hidden>`,
+       * and mapping it to `img` would demand alt text on decoration that is
+       * correctly hidden from a screen reader.
+       */
+      "jsx-a11y": {
+        components: {
+          Button: "button",
+          Link: "a",
+          Select: "select",
+          SelectField: "select",
+          TextField: "input",
+          TextareaField: "textarea",
+        },
+      },
+    },
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },
     rules: {
-      ...nextPlugin.flatConfig.coreWebVitals.rules,
+      /*
+       * The Next plugin ships some of its rules as warnings, and a warning is
+       * against the house rule: it does not fail, so it accumulates. Promoted to
+       * errors on the way in, which is also what `--max-warnings 0` would do to
+       * them — except visibly, in the config, rather than by accident in the
+       * script.
+       */
+      ...Object.fromEntries(
+        Object.keys(nextPlugin.flatConfig.coreWebVitals.rules).map((rule) => [rule, "error"]),
+      ),
       ...reactHooks.configs.recommended.rules,
+      /*
+       * STRICT rather than recommended, which here means the option objects stop
+       * excusing things: `allowExpressionValues` comes off
+       * `no-static-element-interactions` and `no-noninteractive-tabindex`, and the
+       * role allowances come off the element-to-role rules. The codebase passed
+       * `recommended` with nothing to fix, so the weaker set would have been a
+       * badge rather than a check.
+       */
+      ...a11y.flatConfigs.strict.rules,
+      /*
+       * Four the presets leave out or drop, each a real class of defect:
+       *
+       * · `anchor-ambiguous-text` — "click here" and "read more" are the whole
+       *   link as a screen reader lists it, and this product's links are verbs.
+       *   `strict` drops it; it comes back.
+       * · `lang` — a document with no language makes a screen reader guess at
+       *   pronunciation for every word on it.
+       * · `no-aria-hidden-on-focusable` — hiding something the keyboard can still
+       *   reach is worse than either, because the focus lands nowhere announceable.
+       */
+      "jsx-a11y/anchor-ambiguous-text": "error",
+      "jsx-a11y/lang": "error",
+      "jsx-a11y/no-aria-hidden-on-focusable": "error",
+      /*
+       * `prefer-tag-over-role` was tried and turned off, which is worth recording
+       * rather than quietly not adding.
+       *
+       * It reported eleven, and following its advice would have made every one of
+       * them worse. Eight are `role="img"` with an `aria-label` on a composed
+       * graphic — an avatar's initials, a donut, a stacked bar, a sparkline — which
+       * is the recommended way to name an inline SVG and cannot be written as
+       * `<img alt>` without giving up the markup that draws it. Two are
+       * `role="status"` live regions, one of which computes its role
+       * (`intent === "danger" ? "alert" : "status"`), and `<output>` can express
+       * neither. The last is `role="progressbar"`, where `<progress>` cannot be
+       * styled to the design.
+       *
+       * The case the rule is really for — `role="button"` on a div — does not
+       * occur here, and would be caught anyway by `interactive-supports-focus`,
+       * `click-events-have-key-events` and `no-static-element-interactions`, all
+       * of which are on in their strict form.
+       */
+      "jsx-a11y/prefer-tag-over-role": "off",
+      /*
+       * A label's text is three levels down in this design system — the control,
+       * then a wrapper, then the name and its hint as two spans — and the rule's
+       * default only looks two deep. It is the nesting that is real here, not a
+       * missing name: `depth` exists for exactly this.
+       */
+      "jsx-a11y/label-has-associated-control": ["error", { depth: 3 }],
     },
   },
 

@@ -546,13 +546,51 @@ module's menu. It is derived now, and the override remembers which route it was 
 on, so a manual toggle survives moving between pages of one module and is discarded
 when the module changes.
 
+**`jsx-a11y` runs in its STRICT form, and it had to be taught what the design system
+renders.** Almost nothing in this app is a raw DOM element, so without
+`settings["jsx-a11y"].components` the rules stop at the capital letter and inspect
+nothing: `Button` is a `button`, `Link` is an `a`, and the field wrappers are their
+controls. `Icon` is deliberately not mapped — it renders an inline `<svg aria-hidden>`,
+and calling it an `img` would demand alt text on decoration that is correctly hidden.
+Strict rather than recommended because recommended passed with nothing to fix, and the
+difference is that the option objects stop excusing things: `allowExpressionValues`
+comes off `no-static-element-interactions` and `no-noninteractive-tabindex`, and the
+role allowances come off the element-to-role rules. Four more are on that neither preset
+enables or that strict drops: `anchor-ambiguous-text` (this product's links are verbs,
+and "click here" is the whole link as a screen reader lists it), `lang`,
+`no-aria-hidden-on-focusable`, and `label-has-associated-control` at `depth: 3`, which
+is how deep a label's text actually sits here.
+
+**One a11y rule was tried and turned off, which is worth recording rather than quietly
+not adding.** `prefer-tag-over-role` reported eleven, and following its advice would
+have made every one of them worse: eight are `role="img"` with an `aria-label` on a
+composed graphic — an avatar's initials, a donut, a stacked bar, a sparkline — which is
+the recommended way to name an inline SVG and cannot become `<img alt>` without giving
+up the markup that draws it; two are `role="status"` live regions, one computing its
+role from the intent, where `<output>` can express neither; and one is
+`role="progressbar"`, where `<progress>` cannot be styled to the design. The case the
+rule is really for, `role="button"` on a div, does not occur here — and is covered by
+`interactive-supports-focus`, `click-events-have-key-events` and
+`no-static-element-interactions` regardless.
+
+**Money in `bigint` crashed the a11y plugin, once.** `jsx-a11y` reads every JSX
+attribute through `jsx-ast-utils`, which tries to constant-fold what it finds — and
+`(fromWire(x) / 100n).toString()` inside a `defaultValue` made its evaluator throw
+"Cannot mix BigInt and other types" and took the whole run down. The value is computed
+above the JSX now, which is easier to read anyway. Worth knowing before the next
+arithmetic goes in an attribute.
+
 **Deliberately not added:** `eslint-config-next` (its peer range stops at ESLint 9 and
 it carries React and a11y presets nobody chose — the Next rules come from
-`@next/eslint-plugin-next` directly, pinned to the app's own 15.5);
-`eslint-plugin-jsx-a11y`, which is a real audit across ninety screens rather than a
-config change, and half-applied accessibility rules read as "we looked at this" when
-nobody has; and any formatting rule, because no formatter is configured and a linter
-arguing about commas is how a team learns to run `--fix` without reading it.
+`@next/eslint-plugin-next` directly, pinned to the app's own 15.5, with its warnings
+promoted to errors on the way in); and any formatting rule, because no formatter is
+configured and a linter arguing about commas is how a team learns to run `--fix`
+without reading it.
+
+**`eslint-plugin-jsx-a11y@6.10.2` declares a peer range that stops at ESLint 9**, so it
+went in with `--legacy-peer-deps`. The lockfile gained the plugin and its dependencies
+and nothing else changed version; `npm ls eslint` shows one copy, deduped. A newer
+release that names ESLint 10 should replace the flag.
 
 **No client state library and no data-fetching library.** Filters and pagination live in
 `searchParams`, so views stay server-rendered and shareable. This is a deliberate departure from the
