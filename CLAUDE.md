@@ -502,10 +502,25 @@ checking stays on everywhere else, and both commands work with no arguments in C
 laptop and on the deploy runner. Verified by installing a fresh checkout of the lockfile
 from scratch.
 
-**The checks do not gate the deploy.** `deployment.yml` fires on the same push and does
-not wait, so a red check and a deployed commit are both possible. Gating it is a
-`workflow_run` trigger on the deploy — a deliberate change, not an oversight to fix in
-passing.
+**The checks gate the deploy, and the deploy migrates.** `deployment.yml` has a `checks`
+job that CALLS `ci.yml` and a `deploy` job that `needs` it, so lint or typecheck red
+means the box is not touched. Reused rather than copied, because a second definition of
+"checked" inside the deploy workflow would drift in the direction of passing. It also
+runs `prisma migrate deploy` between the install and the build — it never had, in two
+successive versions of that file, in two different silent ways — and it uses `npm ci`
+rather than `npm install`, so a deploy stops rewriting the tracked lockfile and leaving
+the box's tree dirty.
+
+**Its first migration run will fail, on purpose.** The live database has tables and no
+migration history, so `migrate deploy` answers P3005 until somebody baselines it with
+`docs/deploy-runbook.md` Section 0 — a decision about the live schema, which is why it
+is not automated. The step prints that pointer when it fails, and nothing is built or
+restarted, so the box keeps serving the previous release.
+
+**And it deployed the wrong branch from `main`.** `TARGET_BRANCH` was hardcoded to the
+claude branch while the workflow fired on two, so a push to `main` built and restarted
+the other one. `${GITHUB_REF_NAME}` now — which the gate needs to be true, or the checks
+verify one commit while the box builds another.
 
 **ESLint runs, as one flat config and one script.** `npm run lint` is
 `eslint . --max-warnings 0` from the root: one `eslint.config.mjs` covering four

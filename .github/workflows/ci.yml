@@ -49,12 +49,22 @@ on:
   # So a failure can be re-run without pushing an empty commit, and so an
   # unproposed branch can be checked on demand.
   workflow_dispatch:
+  # Callable, so `deployment.yml` gates on THESE checks rather than a second
+  # copy of them. One definition of what "checked" means, invoked from both
+  # places: a copy in the deploy workflow would be the one that drifts, and it
+  # would drift in the direction of passing.
+  workflow_call:
 
 # A second push supersedes the first: nobody needs the verdict on a commit that
 # has already been replaced. `head_ref` for a pull request, so successive pushes
 # to one branch collapse into the latest; it does NOT merge a push run with a
 # pull_request run — a push has no `head_ref` — which is why `push` above is
 # restricted to `main` instead.
+#
+# `github.workflow` is load-bearing, not decoration: in a reusable workflow it is
+# the CALLER's name, so the copy `deployment.yml` calls sits in its own group. Take
+# it out and a deploy's checks and the branch's own CI run share a group, where
+# `cancel-in-progress` makes one kill the other and the survivor looks flaky.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true

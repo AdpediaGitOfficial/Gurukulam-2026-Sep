@@ -14,14 +14,18 @@ about it.
 | Processes | `pm2` — `gurukulam-api`, `gurukulam-web` |
 | Workflow | `.github/workflows/deployment.yml` |
 | Checks | `.github/workflows/ci.yml` — lint and typecheck, on GitHub's runners |
+| Gate | `deployment.yml` calls `ci.yml` and the deploy job `needs` it |
+| Migrations | `prisma migrate deploy`, between the install and the build |
 
-**The checks do not gate the deploy.** `ci.yml` runs `npm run lint` and
-`npm run typecheck` on every pull request and on pushes to `main`, on
-`ubuntu-latest` rather than on the box; `deployment.yml` starts at the same moment
-and does not wait for it. Note the asymmetry: the deploy fires on a push to THIS
-branch, and the checks only see that push if a pull request is open for it — which
-it is. Without one, run CI by hand from the Actions tab before pushing something
-you have not run locally. So a red check and a deployed commit are both possible
+**The checks gate the deploy.** `deployment.yml` has two jobs: `checks`, which
+calls `ci.yml` on GitHub's runners, and `deploy`, which `needs` it. Lint or
+typecheck red means the box is not touched at all. The checks are REUSED rather
+than copied — a second definition inside the deploy workflow would drift, and it
+would drift in the direction of passing.
+
+This makes a deploy depend on GitHub-hosted minutes as well as on the self-hosted
+runner. If minutes ever run out, deploys stop; that is the intended direction of
+failure, but it is worth knowing which of the two is the reason. So a red check and a deployed commit are both possible
 from one push. Gating it is a `workflow_run` trigger on the deploy, which is a
 deliberate change to make — it would mean no deploy until the checks pass, which
 is usually what people want and is a slower loop than this project has had so far.
@@ -104,10 +108,10 @@ deploys survive it because step 4 resets first; a human running `git pull` does
 not.
 
 `npm ci` installs strictly from the lockfile and never writes to it, which is
-what the manual path below already uses. Changing the workflow's `npm install`
-to `npm ci` stops the box going dirty at all. It is one word, and `npm ci` passes
-against the current lockfile — verified on a fresh checkout of it, which is also
-what `ci.yml` does on every push.
+what the manual path below already uses. **The workflow uses it now** — that is
+what stops the box going dirty, and it passes against the current lockfile,
+verified on a fresh checkout of it, which is also what `ci.yml` does on every
+push.
 
 That verification found something worth knowing: `npm ci` refused outright for a
 while, because `eslint-plugin-jsx-a11y` declares a peer range that stops at ESLint
@@ -397,41 +401,67 @@ curl -fsS -o /dev/null -w 'console %{http_code}\n' http://127.0.0.1:3000/login
 
 ---
 
+## The workflow deployed the wrong branch from `main`
+
+`TARGET_BRANCH` was hardcoded to `claude/project-analysis-6t08cr`, and this
+workflow fires on two branches. So a push to `main` backed up the database,
+checked out the CLAUDE branch, built that, and restarted PM2 on it — a deploy of
+something nobody had just pushed. It is `${GITHUB_REF_NAME}` now, which is
+whatever was actually pushed.
+
+It also mattered for the gate: the checks verify the pushed commit, so a deploy
+that checked out a different branch would have been gated on a SHA it never built.
+
+---
+
 ## Why nothing has been migrating
 
-**The workflow on this branch does not run migrations.** It was reverted on
-16 September to the version that decides whether to migrate by grepping
-`prisma migrate status` for:
+**Two versions of this workflow failed to migrate, in two different ways, and both
+were silent.** The version reverted to on 16 September decided whether to migrate
+by grepping `prisma migrate status` for:
 
 ```
 Following migration(s) have not yet been applied
 ```
 
 Prisma 6 prints `Following migrations have not yet been applied` — no `(s)`.
-Reproduced against a scratch database on this branch: that grep matches **zero**
-times, so the script takes the `else` branch, prints "No pending migrations",
-and `prisma migrate deploy` is never reached. It has never run.
+Reproduced against a scratch database: that grep matches **zero** times, so the
+script took the `else` branch, printed "No pending migrations", and never reached
+`prisma migrate deploy`. The version that replaced it had no migration step at all
+— `grep -c prisma .github/workflows/deployment.yml` answered 0.
 
-Two migrations are waiting:
+**It runs now**, between the install and the build, so a refused migration stops
+the deploy while PM2 is still serving the previous release against the unchanged
+schema. Failing there costs nothing; failing after the restart is an outage.
+
+**Its first run will fail, on purpose.** The live database has tables and no
+migration history, so `migrate deploy` answers P3005 and refuses — Section 0 below
+is the baselining, and it belongs to a person rather than to a workflow because it
+starts by asking whether the hand-written constraints are actually present. The
+step prints that pointer when it fails. After baselining it is idempotent and
+silent.
+
+Three migrations are waiting:
 
 | Migration | What it adds |
 | --- | --- |
 | `20260916090000_session_day_uniqueness` | the partial unique index on `(batch, date, start time)` |
 | `20260916120000_college_partnership_type` | the `partnership_type` column and its enum |
+| `20260926090000_fee_installment_reminders` | the reminder ladder's table, with its unique key on `(installment, offset)` |
 
 **The second one is not optional.** `colleges.service.ts` selects
 `partnership_type`, and the college directory, the college export and every
 college detail page read it. Until the migration runs, those pages answer 500
 on the live box — the column the query names does not exist.
 
-The one-line fix is to stop asking and just do it, because `migrate deploy` is
-idempotent — it applies what is missing and does nothing otherwise:
+The workflow now does exactly this, because `migrate deploy` is idempotent — it
+applies what is missing and does nothing otherwise:
 
 ```bash
 npx prisma migrate deploy --schema="${SCHEMA_PATH}"
 ```
 
-**But do not paste that in blind.** The live database has tables and no
+**But it cannot be the whole answer, and neither can pasting it in blind.** The live database has tables and no
 migration history, so `migrate deploy` will answer P3005 and stop the deploy —
 which is exactly why the workflow "worked" while skipping migrations. Section 0
 is the baselining procedure, and it starts by asking whether the hand-written
