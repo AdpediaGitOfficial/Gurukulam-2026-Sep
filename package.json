@@ -1,0 +1,46 @@
+{
+  "name": "gurukulam",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.7",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "audit:prod": "npm audit --omit=dev",
+    "audit:why": "node scripts/audit-explain.mjs",
+    "dev": "turbo run dev",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:migrate": "npm run migrate --workspace @gurukulam/db",
+    "db:generate": "npm run generate --workspace @gurukulam/db",
+    "db:seed": "npm run seed --workspace @gurukulam/db",
+    "db:reset": "npm run reset --workspace @gurukulam/db",
+    "db:studio": "npm run studio --workspace @gurukulam/db",
+    "db:deploy": "npm run migrate:deploy --workspace @gurukulam/db"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^15.5.25",
+    "eslint": "^10.11.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.70.1"
+  },
+  "overrides": {
+    "fastify": "^5.12.3",
+    "eslint-plugin-jsx-a11y": {
+      "eslint": "$eslint"
+    }
+  }
+}

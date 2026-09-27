@@ -1,0 +1,120 @@
+# Deploy to the box, after the checks pass, with the migrations applied.
+#
+# ── What changed, and why ─────────────────────────────────────────────────
+#
+# Four things, all of which this file needed before it could be trusted:
+#
+#   · `checks` runs `ci.yml` and `deploy` needs it, so the box only ever gets
+#     code that linted and typechecked. Reused rather than copied: a second copy
+#     of the checks inside this file is the one that drifts, and it drifts in the
+#     direction of passing.
+#   · `prisma migrate deploy` runs, between the install and the build. It never
+#     has — the version of this file that grepped `prisma migrate status` looked
+#     for a string Prisma 6 does not print, and the version that replaced it had
+#     no migration step at all. Both failed silently, which is the worst way to
+#     fail: `colleges.partnership_type` is read by every college page, and those
+#     pages answer 500 until its migration runs.
+#   · `npm ci` instead of `npm install`, which is what `docs/deploy-runbook.md`
+#     already prescribes: `install` may rewrite `package-lock.json`, a TRACKED
+#     file, so a deploy could end with the box's tree dirty and the next manual
+#     `git pull` conflicting on exactly that file.
+#   · `TARGET_BRANCH` is the branch that was actually pushed. It was hardcoded to
+#     `claude/project-analysis-6t08cr`, so a push to `main` checked out and
+#     deployed the claude branch instead — which would also have made the gate
+#     above meaningless, since the checks would have verified one SHA and the box
+#     would have built another.
+#
+# ── What is still not automated, deliberately ─────────────────────────────
+#
+# THE FIRST RUN OF THE MIGRATION STEP WILL FAIL, and that is the honest outcome.
+# The live database has tables and no migration history, so `migrate deploy`
+# answers P3005 and refuses. Baselining is a decision about the live schema — the
+# hand-written constraints may or may not be there, depending on whether it came
+# from `db push` — so it belongs to a person with `docs/deploy-runbook.md`
+# Section 0 open, not to this file. Once that is done, this step is idempotent and
+# silent forever after.
+name: Deploy Gurukulam Application
+
+on:
+  push:
+    branches:
+      - main
+      - claude/project-analysis-6t08cr
+
+# Deploys QUEUE; they never overlap and they are never cancelled half way. The
+# runbook calls a second run arriving mid-deploy the main way to get a broken
+# box, and `cancel-in-progress: true` would be exactly that with extra steps:
+# killing the runner between `npm ci` and `pm2 restart` leaves the box serving a
+# build that no longer matches its node_modules.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The gate. Same two jobs a pull request gets, on the exact commit being
+  # deployed.
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: checks
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Run Deployment & PM2 Restart
+        run: |
+          set -e
+          PROJECT_DIR="/var/www/html/gurukulam/gurukulam-claude/Gurukulam-2026-Sep"
+          BACKUP_DIR="/var/www/html/gurukulam/db-bakup"
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          BACKUP_FILE="${BACKUP_DIR}/gurukulamdbbackup_${TIMESTAMP}.sql"
+          DB_NAME="gurukulam"
+          SCHEMA_PATH="./packages/db/prisma/schema.prisma"
+          # Whatever was pushed. Never a hardcoded branch: this workflow fires on
+          # two of them.
+          TARGET_BRANCH="${GITHUB_REF_NAME}"
+
+          echo "1. Backing up the database..."
+          sudo mkdir -p "${BACKUP_DIR}"
+          sudo -u postgres pg_dump "${DB_NAME}" | sudo tee "${BACKUP_FILE}" > /dev/null
+
+          echo "2. Entering the project directory..."
+          cd "${PROJECT_DIR}"
+
+          echo "3. Fetching and checking out ${TARGET_BRANCH}..."
+          git fetch origin
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B "${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
+          git pull origin "${TARGET_BRANCH}"
+
+          echo "4. Installing dependencies from the lockfile..."
+          npm ci
+
+          # Before the build and the restart, so a refused migration stops the
+          # deploy while PM2 is still serving the previous build against the
+          # unchanged schema. Failing here costs nothing; failing after the
+          # restart is an outage.
+          echo "5. Applying migrations..."
+          if ! npx prisma migrate deploy --schema="${SCHEMA_PATH}"; then
+            echo "::error::migrate deploy refused. If that was P3005, the live database"
+            echo "::error::has tables and no migration history and must be baselined first:"
+            echo "::error::docs/deploy-runbook.md, Section 0 (repair-schema.sql, then"
+            echo "::error::migrate resolve --applied for each migration already present)."
+            echo "::error::Nothing was built and PM2 was not restarted, so the box is"
+            echo "::error::still serving the previous release."
+            exit 1
+          fi
+
+          echo "6. Building..."
+          npm run build
+
+          echo "7. Restarting PM2 services..."
+          sudo pm2 restart gurukulam-api gurukulam-web --update-env
